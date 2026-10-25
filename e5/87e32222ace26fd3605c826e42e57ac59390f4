@@ -1,0 +1,36 @@
+README.md
+  s_3d6e78ea1e9f59::t_df5c753fda229f 28
+Sources/NousBrowser/AddressPalette.swift
+  s_3d6e78ea1e9f59::t_df5c753fda229f 47,88-89,112,116
+  s_3d6e78ea1e9f59::t_9b883284907cd7 118
+Sources/NousBrowser/QuickLinkIcon.swift
+  s_3d6e78ea1e9f59::t_6434df1e839c89 35-38
+  s_3d6e78ea1e9f59::t_9ed072ab95febb 5-9,33
+  s_3d6e78ea1e9f59::t_df5c753fda229f 11,13,15-21,25,34
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_df5c753fda229f 24
+Sources/NousBrowser/FaviconStore.swift
+  s_3d6e78ea1e9f59::t_c738f40c5a6379 12,52,110-116
+  s_3d6e78ea1e9f59::t_473bf7f59dfb42 42-51,53-61,70-73,94,124,138-144,169-175
+  s_3d6e78ea1e9f59::t_d60c1c1ad89740 176
+Tests/NousBrowserTests/FaviconStoreTests.swift
+  s_3d6e78ea1e9f59::t_72ce7f8b657012 137-138
+  s_3d6e78ea1e9f59::t_19054e608f25bf 2,39-136,139-143
+  s_3d6e78ea1e9f59::t_4c0afdab543d28 144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e587e32222ace26fd3605c826e42e57ac59390f4",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
