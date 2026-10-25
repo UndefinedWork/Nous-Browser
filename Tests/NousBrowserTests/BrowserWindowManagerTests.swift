@@ -1,0 +1,191 @@
+import AppKit
+import Foundation
+import Testing
+@testable import NousBrowser
+
+@Suite("Independent browser windows", .serialized)
+@MainActor
+struct BrowserWindowManagerTests {
+    @MainActor private struct Fixture {
+        let directory: URL
+        let sessionURL: URL
+        let defaults: UserDefaults
+        let defaultsDomain: String
+        let manager: BrowserWindowManager
+
+        func cleanUp() {
+            manager.prepareForTermination()
+            manager.windows.forEach { $0.window.close() }
+            defaults.removePersistentDomain(forName: defaultsDomain)
+            try? FileManager.default.removeItem(at: directory)
+        }
+    }
+
+    private func fixture(restoringBlankWindow: Bool = true) throws -> Fixture {
+        _ = NSApplication.shared
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let sessionURL = directory.appendingPathComponent("session.json")
+        if restoringBlankWindow {
+            let tab = BrowserSession.Tab(id: UUID(), title: "Fixture", url: nil)
+            let session = BrowserSession(tabs: [tab], selectedTabID: tab.id, isSidebarVisible: true)
+            try JSONEncoder().encode(session).write(to: sessionURL)
+        }
+        let defaultsDomain = "NousBrowserWindowTests-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: defaultsDomain)!
+        let manager = BrowserWindowManager(workspace: BrowserWorkspaceStore(sessionURL: sessionURL),
+                                           appearance: BrowserAppearanceSettings(defaults: defaults),
+                                           showsWindows: false, startsHibernationMonitors: false)
+        return Fixture(directory: directory, sessionURL: sessionURL, defaults: defaults,
+                       defaultsDomain: defaultsDomain, manager: manager)
+    }
+
+    @Test func windowsOwnTheirTabsAndTransientUIWhileSharingAppearanceAndWebsiteStore() throws {
+        let fixture = try fixture()
+        defer { fixture.cleanUp() }
+        let manager = fixture.manager
+        manager.restoreWindows()
+        let first = try #require(manager.activeContext)
+        let second = try #require(manager.newWindow())
+
+        #expect(first.controller !== second.controller)
+        #expect(first.controller.model !== second.controller.model)
+        #expect(first.controller.passwords !== second.controller.passwords)
+        #expect(first.controller.appearance === second.controller.appearance)
+        #expect(first.controller.appearance === manager.appearance)
+        let firstTab = try #require(first.controller.model.selectedTab)
+        let secondTab = try #require(second.controller.model.selectedTab)
+        #expect(firstTab.webView !== secondTab.webView)
+        #expect(firstTab.webView.configuration.websiteDataStore === secondTab.webView.configuration.websiteDataStore)
+        #expect(firstTab.webView.configuration.websiteDataStore.isPersistent)
+
+        first.controller.addressText = "Window One"
+        first.controller.toast = "First window only"
+        first.controller.passwords.presentImport()
+        #expect(second.controller.addressText.isEmpty)
+        #expect(second.controller.toast == nil)
+        #expect(!second.controller.passwords.isPresented)
+        #expect(second.controller.model.tabs.count == 1)
+        #expect(secondTab.url == nil)
+    }
+
+    @Test func commandsFollowTheLatestKeyBrowserWindow() throws {
+        let fixture = try fixture()
+        defer { fixture.cleanUp() }
+        let manager = fixture.manager
+        manager.restoreWindows()
+        let first = try #require(manager.activeContext)
+        let second = try #require(manager.newWindow())
+        first.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: first.window))
+        manager.newTab()
+        #expect(manager.activeController === first.controller)
+        #expect(first.controller.model.tabs.count == 2)
+        #expect(second.controller.model.tabs.count == 1)
+
+        first.controller.passwords.presentImport()
+        #expect(first.controller.passwords.isPresented)
+        second.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: second.window))
+        #expect(!first.controller.passwords.isPresented)
+        manager.newTab()
+        #expect(manager.activeController === second.controller)
+        #expect(first.controller.model.tabs.count == 2)
+        #expect(second.controller.model.tabs.count == 2)
+        #expect(second.controller.isAddressPresented)
+        let reloaded = BrowserWorkspaceStore(sessionURL: fixture.sessionURL)
+        #expect(reloaded.restoredActiveWindowID == second.session.id)
+    }
+
+    @Test func closingOneWindowStopsItsPageAndKeepsTheOtherWindowIntact() throws {
+        let fixture = try fixture()
+        defer { fixture.cleanUp() }
+        let manager = fixture.manager
+        manager.restoreWindows()
+        let first = try #require(manager.activeContext)
+        let second = try #require(manager.newWindow())
+        let survivingPage = try #require(first.controller.model.selectedTab?.webView)
+        let closingPage = try #require(second.controller.model.selectedTab?.webView)
+        second.controller.passwords.presentImport()
+        manager.closeActiveWindow()
+
+        #expect(manager.windows.count == 1)
+        #expect(manager.activeController === first.controller)
+        #expect(first.controller.model.selectedTab?.webView === survivingPage)
+        #expect(survivingPage.navigationDelegate != nil)
+        #expect(closingPage.navigationDelegate == nil)
+        #expect(closingPage.uiDelegate == nil)
+        #expect(second.window.contentView == nil)
+        #expect(!second.controller.passwords.isPresented)
+        let reloaded = BrowserWorkspaceStore(sessionURL: fixture.sessionURL)
+        #expect(reloaded.restoredWindows == [first.session])
+    }
+
+    @Test func newTabWithNoWindowsCreatesExactlyOneBlankTabAndCallbacksTargetTheirWindow() throws {
+        let fixture = try fixture()
+        defer { fixture.cleanUp() }
+        let manager = fixture.manager
+        manager.restoreWindows()
+        manager.closeActiveWindow()
+        #expect(manager.windows.isEmpty)
+        #expect(BrowserWorkspaceStore(sessionURL: fixture.sessionURL).restoredWindows.isEmpty)
+        manager.newTab()
+        let first = try #require(manager.activeContext)
+        #expect(manager.windows.count == 1)
+        #expect(first.controller.model.tabs.count == 1)
+        #expect(first.controller.model.selectedTab?.url == nil)
+        #expect(first.controller.isAddressPresented)
+
+        first.controller.newWindow()
+        #expect(manager.windows.count == 2)
+        let second = try #require(manager.activeContext)
+        #expect(second !== first)
+        first.controller.closeWindow()
+        #expect(manager.windows.count == 1)
+        #expect(manager.activeContext === second)
+    }
+
+    @Test func externalHTMLOnFirstLaunchCreatesOneTargetTabWithoutAnApplePage() throws {
+        let fixture = try fixture(restoringBlankWindow: false)
+        defer { fixture.cleanUp() }
+        let page = fixture.directory.appendingPathComponent("target.html")
+        try "<!doctype html><title>Local target</title>".write(to: page, atomically: true, encoding: .utf8)
+        let manager = fixture.manager
+        manager.open([page])
+        #expect(manager.windows.count == 1)
+        #expect(manager.activeController?.model.tabs.count == 1)
+        #expect(manager.activeController?.model.selectedTab?.url == page)
+        // A later launch notification must not restore a second workspace.
+        manager.restoreWindows()
+        #expect(manager.windows.count == 1)
+        manager.closeActiveWindow()
+        manager.open([page])
+        #expect(manager.windows.count == 1)
+        #expect(manager.activeController?.model.tabs.count == 1)
+        #expect(manager.activeController?.model.selectedTab?.url == page)
+    }
+
+    @Test func terminationPreservesAllOpenWindowSessionsAndTheActiveIdentity() throws {
+        let fixture = try fixture()
+        defer { fixture.cleanUp() }
+        let manager = fixture.manager
+        manager.restoreWindows()
+        let first = try #require(manager.activeContext)
+        let second = try #require(manager.newWindow())
+        first.controller.newTab()
+        second.controller.newTab()
+        second.controller.newTab()
+        manager.activate(first)
+        let expectedSessions = manager.windows.map(\.session)
+        let expectedTabs = manager.windows.map { $0.controller.model.tabs.map(\.id) }
+        manager.prepareForTermination()
+        manager.windows.forEach { $0.window.close() }
+
+        let reloaded = BrowserWorkspaceStore(sessionURL: fixture.sessionURL)
+        #expect(reloaded.restoredWindows == expectedSessions)
+        #expect(reloaded.restoredActiveWindowID == first.session.id)
+        for (index, session) in reloaded.restoredWindows.enumerated() {
+            let data = try Data(contentsOf: reloaded.sessionURL(for: session))
+            let saved = try JSONDecoder().decode(BrowserSession.self, from: data)
+            #expect(saved.tabs.map(\.id) == expectedTabs[index])
+        }
+    }
+}

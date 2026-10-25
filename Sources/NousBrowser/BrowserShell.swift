@@ -11,10 +11,10 @@ enum BrowserDesign {
 }
 
 enum BrowserMotion {
-    static let spring = Animation.spring(response: 0.46, dampingFraction: 0.86)
-    static let interaction = Animation.spring(response: 0.3, dampingFraction: 0.72)
+    static let spring = Animation.spring(response: 0.28, dampingFraction: 0.86)
+    static let interaction = Animation.spring(response: 0.18, dampingFraction: 0.72)
     /// Tab selection should feel immediate; web content itself swaps without animation.
-    static let tabSwitch = Animation.spring(response: 0.20, dampingFraction: 0.90)
+    static let tabSwitch = Animation.spring(response: 0.14, dampingFraction: 0.90)
 }
 
 struct BrowserShell: View {
@@ -226,7 +226,7 @@ private struct BrowserSidebar: View {
                                 }
                             }
                             .opacity(dragSession?.id == tab.id ? 0 : 1)
-                            .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .scale(scale: 0.92).combined(with: .opacity)))
+                            .transition(.asymmetric(insertion: .identity, removal: .scale(scale: 0.92).combined(with: .opacity)))
                         }
                     }
                     .padding(.horizontal, BrowserDesign.inset)
@@ -325,9 +325,11 @@ private struct BrowserSidebar: View {
         .contextMenu {
             Button(L10n.string("Open Address…"), systemImage: "magnifyingglass", action: controller.showAddress)
             Button(L10n.string("New Tab"), systemImage: "plus", action: controller.newTab)
+            Button(L10n.string("New Window"), systemImage: "macwindow.badge.plus", action: controller.newWindow)
             Divider()
             Button(L10n.string("Minimize Window"), systemImage: "minus") { NSApp.keyWindow?.miniaturize(nil) }
             Button(L10n.string("Enter Full Screen"), systemImage: "arrow.up.left.and.arrow.down.right") { NSApp.keyWindow?.toggleFullScreen(nil) }
+            Button(L10n.string("Close Window"), systemImage: "xmark.rectangle", action: controller.closeWindow)
         }
     }
 

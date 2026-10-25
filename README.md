@@ -10,6 +10,7 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 
 - **简洁的侧边栏**：完整展开或收起；拖动右边缘调整宽度，双击恢复默认宽度，布局会自动保存。
 - **标签页管理**：获取网站 favicon，支持复制、置顶、拖拽排序和恢复最近关闭的标签页。拖动到列表边缘可自动滚动，按 Esc 取消拖动。
+- **多窗口**：新建窗口与新建标签页分开操作，每个窗口分别管理自己的标签页。
 - **原生外观**：Liquid Glass、Spring 弹性过渡和 SF Symbols；侧边栏与网页隐藏滚动条，仍可正常滚动。
 - **保留浏览状态**：恢复标签页、顺序和侧边栏状态；通过 WebKit 持久化网站数据保留网站自身的登录会话。
 - **密码导入与填写**：手动导入 Apple「密码」或 Chrome 导出的 CSV，经设备验证后填写支持的 HTTPS 登录表单。
@@ -22,7 +23,7 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 - 当前首个预编译包为 **Apple Silicon** 版本；Intel Mac 可在满足系统与开发环境要求时从源码构建。
 - 从源码构建需要 **Xcode 26 或更新版本、Swift 6.2 或更新版本**。
 
-当前版本：**1.0.0（Build 19）**。
+当前源码版本：**1.0.0（Build 20）**。预编译安装包的构建号见对应 Release。
 
 ## 下载与安装
 
@@ -42,14 +43,20 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 
 界面、菜单、提示和权限说明支持英语、简体中文、繁体中文、日语、韩语、德语、法语、西班牙语、巴西葡萄牙语、意大利语和俄语。默认使用系统语言，也可在 macOS 中为应用单独指定语言；不支持的语言回退到英语。
 
+### 窗口与标签页
+
+当前源码中，**⌘N** 新建浏览器窗口，**⌘T** 在当前窗口新建标签页，**⌘⇧W** 关闭当前窗口。新建标签页直接显示，不播放展开动画；其他 Spring 过渡缩短时长，让侧边栏、标签切换和浮层响应更快。预编译安装包包含哪些改动，请以对应 Release 说明为准。
+
 ## 快捷键
 
 | 快捷键 | 功能 |
 | --- | --- |
 | ⌘ / | 展开或完全收起侧边栏 |
 | ⌘ L | 打开或关闭网址／搜索输入框 |
-| ⌘ T | 新建标签页 |
+| ⌘ N | 新建窗口 |
+| ⌘ T | 在当前窗口新建标签页 |
 | ⌘ W | 关闭当前标签页 |
+| ⌘ ⇧ W | 关闭当前窗口 |
 | ⌘ ⇧ T | 重新打开最近关闭的标签页 |
 | ⌘ ⇧ ] / ⌘ ⇧ [ | 下一个／上一个标签页 |
 | ⌘ [ / ⌘ ] | 后退／前进 |
@@ -88,6 +95,8 @@ Cookie、Local Storage 等网站数据由 WebKit 的持久化存储管理。正�
 | 数据 | 位置 |
 | --- | --- |
 | 标签页、排序和侧边栏状态 | `~/Library/Application Support/Nous Browser/session.json` |
+| 多窗口清单与当前窗口 | `~/Library/Application Support/Nous Browser/session.windows.json` |
+| 其他窗口的标签页和布局 | `~/Library/Application Support/Nous Browser/session-windows/` |
 | 网站图标缓存 | `~/Library/Caches/Nous Browser/Favicons/` |
 | 外观等应用偏好 | macOS `UserDefaults`，应用标识为 `com.cellier.nous-browser` |
 | 导入的密码库 | 本机登录钥匙串，服务名为 `com.nous.browser.password-vault` |

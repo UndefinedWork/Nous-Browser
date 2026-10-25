@@ -102,6 +102,7 @@ final class BrowserModel {
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var closedTabs: [BrowserSession.Tab] = []
     @ObservationIgnored private var isRestoring = true
+    @ObservationIgnored private var isShutDown = false
     /// Injectable so tests can age tabs without waiting.
     @ObservationIgnored var now: () -> Date = Date.init
 
@@ -109,7 +110,7 @@ final class BrowserModel {
     var addressDisplay: String { selectedTab?.url?.absoluteString ?? "" }
     var canRestoreClosedTab: Bool { !closedTabs.isEmpty }
 
-    init(sessionURL: URL? = nil, restoreSession: Bool = true, loadSelectedTab: Bool = true) {
+    init(sessionURL: URL? = nil, restoreSession: Bool = true, loadSelectedTab: Bool = true, startWithBlankTab: Bool = false) {
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Nous Browser", isDirectory: true)
         self.sessionURL = sessionURL ?? directory.appendingPathComponent("session.json")
@@ -123,7 +124,9 @@ final class BrowserModel {
             isSidebarVisible = session.isSidebarVisible
             sidebarWidth = SidebarSizing.clampedWidth(session.sidebarWidth)
         } else {
-            let tab = BrowserTab(title: "Apple", url: URL(string: "https://www.apple.com"), owner: self)
+            let tab = startWithBlankTab
+                ? BrowserTab(owner: self)
+                : BrowserTab(title: "Apple", url: URL(string: "https://www.apple.com"), owner: self)
             tabs = [tab]
             selectedTabID = tab.id
         }
@@ -285,7 +288,7 @@ final class BrowserModel {
     }
 
     func persistSession() {
-        guard !isRestoring else { return }
+        guard !isRestoring, !isShutDown else { return }
         saveTask?.cancel()
         let session = BrowserSession(
             tabs: tabs.map { .init(id: $0.id, title: $0.title, url: Self.persistableURL($0.url), isPinned: $0.isPinned) },
@@ -304,13 +307,24 @@ final class BrowserModel {
     }
 
     fileprivate func scheduleSave() {
-        guard !isRestoring else { return }
+        guard !isRestoring, !isShutDown else { return }
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(350))
             guard !Task.isCancelled else { return }
             self?.persistSession()
         }
+    }
+
+    /// Closing a window preserves its final session without closing its tabs
+    /// one by one or allowing late WebKit observations to rewrite the snapshot.
+    func shutdown() {
+        guard !isShutDown else { return }
+        persistSession()
+        isShutDown = true
+        saveTask?.cancel()
+        saveTask = nil
+        tabs.forEach { $0.shutdown() }
     }
 
     /// Strip embedded basic-auth credentials before storing an address on disk.
@@ -325,6 +339,7 @@ final class BrowserModel {
     /// or video are skipped; asking WebKit for that state is asynchronous.
     @discardableResult
     func hibernateBackgroundTabs(for pressure: TabHibernation.Pressure) async -> [UUID] {
+        guard !isShutDown else { return [] }
         let candidates = tabs.map {
             TabHibernation.Candidate(id: $0.id, isSelected: $0.id == selectedTabID, isPinned: $0.isPinned,
                                      isLoaded: $0.isHibernatable, isCapturingMedia: $0.isCapturingMedia,
@@ -335,6 +350,7 @@ final class BrowserModel {
             guard let tab = tabs.first(where: { $0.id == id }) else { continue }
             let playback = await tab.webView.requestMediaPlaybackState()
             // The tab may have been shown or closed while WebKit answered.
+            guard !isShutDown else { return hibernated }
             guard playback != .playing, tabs.contains(where: { $0 === tab }), selectedTabID != id else { continue }
             tab.hibernate()
             hibernated.append(id)
@@ -569,6 +585,19 @@ final class BrowserTab: NSObject, Identifiable {
         faviconTask?.cancel()
         faviconTask = nil
         faviconRequestID = UUID()
+    }
+
+    fileprivate func shutdown() {
+        cancelFaviconLoading()
+        detachWebView()
+        owner = nil
+        pendingInteractionState = nil
+        webView.stopLoading()
+        webView.pauseAllMediaPlayback(completionHandler: nil)
+        let closingView = webView
+        closingView.closeAllMediaPresentations { [closingView] in
+            closingView.removeFromSuperview()
+        }
     }
 
     private func refreshFavicon(for pageURL: URL, candidates: [URL] = []) {
