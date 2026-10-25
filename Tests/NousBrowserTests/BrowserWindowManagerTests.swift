@@ -35,6 +35,7 @@ struct BrowserWindowManagerTests {
         let defaults = UserDefaults(suiteName: defaultsDomain)!
         let manager = BrowserWindowManager(workspace: BrowserWorkspaceStore(sessionURL: sessionURL),
                                            appearance: BrowserAppearanceSettings(defaults: defaults),
+                                           preferences: BrowserPreferences(defaults: defaults),
                                            showsWindows: false, startsHibernationMonitors: false)
         return Fixture(directory: directory, sessionURL: sessionURL, defaults: defaults,
                        defaultsDomain: defaultsDomain, manager: manager)
@@ -53,6 +54,10 @@ struct BrowserWindowManagerTests {
         #expect(first.controller.passwords !== second.controller.passwords)
         #expect(first.controller.appearance === second.controller.appearance)
         #expect(first.controller.appearance === manager.appearance)
+        #expect(first.controller.preferences === second.controller.preferences)
+        #expect(first.controller.preferences === manager.preferences)
+        manager.preferences.selectSearchEngine(.duckDuckGo)
+        #expect(second.controller.preferences.searchEngine == .duckDuckGo)
         let firstTab = try #require(first.controller.model.selectedTab)
         let secondTab = try #require(second.controller.model.selectedTab)
         #expect(firstTab.webView !== secondTab.webView)
@@ -67,6 +72,19 @@ struct BrowserWindowManagerTests {
         #expect(!second.controller.passwords.isPresented)
         #expect(second.controller.model.tabs.count == 1)
         #expect(secondTab.url == nil)
+    }
+
+    @Test func settingsCanImportPasswordsWithoutABrowserWindow() {
+        let importer = BrowserPasswordController()
+        #expect(importer.model == nil)
+        #expect(!importer.canFill)
+        importer.presentFill()
+        #expect(!importer.isPresented)
+        importer.presentImport()
+        #expect(importer.isPresented)
+        #expect(importer.mode == .importing)
+        importer.dismiss()
+        #expect(!importer.isPresented)
     }
 
     @Test func commandsFollowTheLatestKeyBrowserWindow() throws {
@@ -117,6 +135,46 @@ struct BrowserWindowManagerTests {
         #expect(!second.controller.passwords.isPresented)
         let reloaded = BrowserWorkspaceStore(sessionURL: fixture.sessionURL)
         #expect(reloaded.restoredWindows == [first.session])
+    }
+
+    @Test func keyBrowserControllerClearsForSettingsAndReturnsWithoutLosingTheActiveWindow() throws {
+        let fixture = try fixture()
+        defer { fixture.cleanUp() }
+        let manager = fixture.manager
+        manager.restoreWindows()
+        let first = try #require(manager.activeContext)
+
+        first.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: first.window))
+        #expect(manager.keyWindowID == first.session.id)
+        #expect(manager.keyController === first.controller)
+
+        // A Settings or other non-browser window becoming key resigns the
+        // browser's key status without changing its last-active identity.
+        first.windowDidResignKey(Notification(name: NSWindow.didResignKeyNotification, object: first.window))
+        #expect(manager.keyWindowID == nil)
+        #expect(manager.keyController == nil)
+        #expect(manager.activeController === first.controller)
+
+        first.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: first.window))
+        #expect(manager.keyController === first.controller)
+
+        let second = try #require(manager.newWindow())
+        second.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: second.window))
+        // A late resignation from the former window cannot clear the new key.
+        first.windowDidResignKey(Notification(name: NSWindow.didResignKeyNotification, object: first.window))
+        #expect(manager.keyController === second.controller)
+
+        second.windowDidResignKey(Notification(name: NSWindow.didResignKeyNotification, object: second.window))
+        #expect(manager.keyController == nil)
+        #expect(manager.activeController === second.controller)
+        second.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: second.window))
+        #expect(manager.keyController === second.controller)
+
+        manager.closeWindow(second.session.id)
+        #expect(manager.keyWindowID == nil)
+        #expect(manager.keyController == nil)
+        #expect(manager.activeController === first.controller)
+        #expect(second.onResignKey == nil)
     }
 
     @Test func newTabWithNoWindowsCreatesExactlyOneBlankTabAndCallbacksTargetTheirWindow() throws {

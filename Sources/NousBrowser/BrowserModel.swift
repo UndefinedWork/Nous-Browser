@@ -210,8 +210,8 @@ final class BrowserModel {
         persistSession()
     }
 
-    func navigate(_ input: String) {
-        guard let url = Self.normalizeAddress(input) else { return }
+    func navigate(_ input: String, searchEngine: BrowserSearchEngine = .google) {
+        guard let url = Self.normalizeAddress(input, searchEngine: searchEngine) else { return }
         if selectedTab == nil { newTab(url: url) }
         else { selectedTab?.load(url) }
         persistSession()
@@ -229,7 +229,7 @@ final class BrowserModel {
 
     /// Supports URL entry, localhost development addresses, and ordinary search queries.
     /// Active-content and file schemes cannot be entered through the address field.
-    nonisolated static func normalizeAddress(_ input: String) -> URL? {
+    nonisolated static func normalizeAddress(_ input: String, searchEngine: BrowserSearchEngine = .google) -> URL? {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
         let lower = text.lowercased()
@@ -246,9 +246,7 @@ final class BrowserModel {
             if isLocal { return URL(string: "http://" + text) }
             if host.contains("."), let url = URL(string: "https://" + text), url.host != nil { return url }
         }
-        var components = URLComponents(string: "https://www.google.com/search")!
-        components.queryItems = [URLQueryItem(name: "q", value: text)]
-        return components.url
+        return searchEngine.searchURL(query: text)
     }
 
     func goBack() { selectedTab?.webView.goBack() }

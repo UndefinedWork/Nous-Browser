@@ -8,8 +8,11 @@ import SwiftUI
 @Observable
 final class BrowserWindowManager {
     let appearance: BrowserAppearanceSettings
+    let preferences: BrowserPreferences
+    let passwordImporter = BrowserPasswordController()
     private(set) var windows: [BrowserWindowContext] = []
     private(set) var activeWindowID: UUID?
+    private(set) var keyWindowID: UUID?
 
     @ObservationIgnored private let workspace: BrowserWorkspaceStore
     @ObservationIgnored private let showsWindows: Bool
@@ -22,11 +25,16 @@ final class BrowserWindowManager {
     }
     var activeController: BrowserController? { activeContext?.controller }
     var activeWindow: NSWindow? { activeContext?.window }
+    var keyController: BrowserController? {
+        windows.first { $0.session.id == keyWindowID }?.controller
+    }
 
     init(workspace: BrowserWorkspaceStore, appearance: BrowserAppearanceSettings = BrowserAppearanceSettings(),
+         preferences: BrowserPreferences = BrowserPreferences(),
          showsWindows: Bool = true, startsHibernationMonitors: Bool = true) {
         self.workspace = workspace
         self.appearance = appearance
+        self.preferences = preferences
         self.showsWindows = showsWindows
         self.startsHibernationMonitors = startsHibernationMonitors
     }
@@ -144,20 +152,26 @@ final class BrowserWindowManager {
         // windows. Those close callbacks must not erase the restore manifest.
         saveWorkspace()
         isTerminating = true
+        passwordImporter.dismiss()
         windows.forEach { $0.shutdown() }
     }
 
     private func makeWindow(session: BrowserWindowSession, restoring: Bool) -> BrowserWindowContext {
         let model = BrowserModel(sessionURL: workspace.sessionURL(for: session), restoreSession: restoring,
                                  startWithBlankTab: !restoring || !session.usesLegacySession)
-        let controller = BrowserController(model: model, appearance: appearance)
+        let controller = BrowserController(model: model, appearance: appearance, preferences: preferences)
         let context = BrowserWindowContext(session: session, controller: controller,
                                            cascadeFrom: activeWindow,
                                            startsHibernationMonitor: startsHibernationMonitors)
         context.onBecomeKey = { [weak self, weak context] in
             guard let self, let context, !self.isTerminating else { return }
             self.setActiveWindow(context.session.id)
+            self.keyWindowID = context.session.id
             self.saveWorkspace()
+        }
+        context.onResignKey = { [weak self, weak context] in
+            guard let self, let context, !self.isTerminating else { return }
+            if self.keyWindowID == context.session.id { self.keyWindowID = nil }
         }
         context.onClose = { [weak self, weak context] in
             guard let self, let context else { return }
@@ -174,6 +188,7 @@ final class BrowserWindowManager {
         guard let index = windows.firstIndex(where: { $0 === context }) else { return }
         context.shutdown()
         windows.remove(at: index)
+        if keyWindowID == context.session.id { keyWindowID = nil }
         if activeWindowID == context.session.id { activeWindowID = windows.last?.session.id }
         if !isTerminating { saveWorkspace() }
     }
@@ -200,6 +215,7 @@ final class BrowserWindowContext: NSObject, NSWindowDelegate {
     let controller: BrowserController
     let window: NSWindow
     var onBecomeKey: (() -> Void)?
+    var onResignKey: (() -> Void)?
     var onClose: (() -> Void)?
     private let hibernationMonitor: TabHibernationMonitor
     private var isShutDown = false
@@ -244,6 +260,8 @@ final class BrowserWindowContext: NSObject, NSWindowDelegate {
         onBecomeKey?()
     }
 
+    func windowDidResignKey(_ notification: Notification) { onResignKey?() }
+
     func windowWillClose(_ notification: Notification) { onClose?() }
 
     func shutdown() {
@@ -255,6 +273,7 @@ final class BrowserWindowContext: NSObject, NSWindowDelegate {
         window.contentView = nil
         window.delegate = nil
         onBecomeKey = nil
+        onResignKey = nil
         onClose = nil
     }
 

@@ -8,7 +8,7 @@ import WebKit
 @Observable
 final class BrowserPasswordController {
     enum Mode { case importing, filling }
-    let model: BrowserModel
+    let model: BrowserModel?
     var isPresented = false
     var mode: Mode = .importing
     var isChoosingFile = false
@@ -22,10 +22,11 @@ final class BrowserPasswordController {
     @ObservationIgnored private var expiry: Task<Void, Never>?
     @ObservationIgnored private var operationTask: Task<Void, Never>?
 
-    init(model: BrowserModel) { self.model = model }
+    init(model: BrowserModel? = nil) { self.model = model }
 
     var canFill: Bool {
-        model.selectedTab?.passwordCandidate != nil && model.selectedTab?.errorDescription == nil
+        guard let model else { return false }
+        return model.selectedTab?.passwordCandidate != nil && model.selectedTab?.errorDescription == nil
             && model.selectedTab?.isLoading == false
     }
 
@@ -37,7 +38,7 @@ final class BrowserPasswordController {
     }
 
     func presentFill() {
-        guard !isBusy else { return }
+        guard !isBusy, let model else { return }
         reset()
         mode = .filling
         targetTabID = model.selectedTabID
@@ -82,7 +83,7 @@ final class BrowserPasswordController {
     }
 
     private func validTarget() -> (BrowserTab, BrowserPasswordAutofill.Candidate)? {
-        guard let id = targetTabID, model.selectedTabID == id,
+        guard let model, let id = targetTabID, model.selectedTabID == id,
               let tab = model.selectedTab, tab.errorDescription == nil, !tab.webView.isLoading, let expected = target,
               let live = tab.passwordCandidate, live.token == expected.token,
               live.origin == expected.origin,
@@ -324,7 +325,7 @@ struct BrowserPasswordsSheet: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
             controller.clearUnlockedAccounts()
         }
-        .onChange(of: controller.model.selectedTab?.passwordCandidate?.token) { _, _ in
+        .onChange(of: controller.model?.selectedTab?.passwordCandidate?.token) { _, _ in
             controller.clearUnlockedAccounts()
             controller.dismissIfPageChanged()
         }

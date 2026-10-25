@@ -6,7 +6,11 @@ struct NousBrowserApp: App {
     @NSApplicationDelegateAdaptor(BrowserAppDelegate.self) private var delegate
 
     var body: some Scene {
-        Settings { EmptyView() }
+        Settings {
+            BrowserSettingsView(preferences: delegate.windowManager.preferences,
+                                appearance: delegate.windowManager.appearance,
+                                passwordImporter: delegate.windowManager.passwordImporter)
+        }
             .commands { BrowserCommands(windows: delegate.windowManager) }
     }
 }
@@ -17,12 +21,15 @@ final class BrowserController {
     let model: BrowserModel
     let passwords: BrowserPasswordController
     let appearance: BrowserAppearanceSettings
+    let preferences: BrowserPreferences
     @ObservationIgnored var onNewWindow: (() -> Void)?
     @ObservationIgnored var onCloseWindow: (() -> Void)?
 
-    init(model: BrowserModel = BrowserModel(), appearance: BrowserAppearanceSettings = BrowserAppearanceSettings()) {
+    init(model: BrowserModel = BrowserModel(), appearance: BrowserAppearanceSettings = BrowserAppearanceSettings(),
+         preferences: BrowserPreferences = BrowserPreferences()) {
         self.model = model
         self.appearance = appearance
+        self.preferences = preferences
         passwords = BrowserPasswordController(model: model)
     }
     var isAddressPresented = false
@@ -57,11 +64,11 @@ final class BrowserController {
 
     func submitAddress() {
         guard !addressText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        guard BrowserModel.normalizeAddress(addressText) != nil else {
+        guard BrowserModel.normalizeAddress(addressText, searchEngine: preferences.searchEngine) != nil else {
             showToast(L10n.string("Enter a valid address or search."))
             return
         }
-        model.navigate(addressText)
+        model.navigate(addressText, searchEngine: preferences.searchEngine)
         dismissAddress()
     }
 
@@ -164,19 +171,26 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate {
 
 struct BrowserCommands: Commands {
     @Bindable var windows: BrowserWindowManager
-    private var controller: BrowserController? { windows.activeController }
+    private var controller: BrowserController? { windows.keyController }
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
-            Button(L10n.string("New Tab"), action: windows.newTab).keyboardShortcut("t")
+            Button(L10n.string("New Tab")) {
+                windows.newTab()
+                windows.showWindow()
+            }.keyboardShortcut("t")
             Button(L10n.string("New Window")) { windows.newWindow() }.keyboardShortcut("n")
             Button(L10n.string("Open Address…")) { controller?.toggleAddress() }.keyboardShortcut("l")
                 .disabled(controller == nil)
             Divider()
-            Button(L10n.string("Close Tab")) { controller?.closeTab() }.keyboardShortcut("w")
-                .disabled(controller == nil)
-            Button(L10n.string("Close Window"), action: windows.closeActiveWindow)
+            Button(L10n.string(controller == nil ? "Close Window" : "Close Tab")) {
+                if let controller { controller.closeTab() }
+                else { NSApp.keyWindow?.performClose(nil) }
+            }.keyboardShortcut("w")
+            Button(L10n.string("Close Window")) {
+                if controller != nil { windows.closeActiveWindow() }
+                else { NSApp.keyWindow?.performClose(nil) }
+            }
                 .keyboardShortcut("w", modifiers: [.command, .shift])
-                .disabled(controller == nil)
             Button(L10n.string("Reopen Closed Tab")) { controller?.model.restoreClosedTab() }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
                 .disabled(controller?.model.canRestoreClosedTab != true)
@@ -202,21 +216,8 @@ struct BrowserCommands: Commands {
             Button(L10n.string("Fill Saved Password…")) { controller?.passwords.presentFill() }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
                 .disabled(controller?.passwords.canFill != true)
-            Button(L10n.string("Import Passwords…")) { controller?.passwords.presentImport() }
-                .disabled(controller == nil)
         }
         CommandGroup(after: .sidebar) {
-            Menu(L10n.string("Appearance")) {
-                Picker(L10n.string("Appearance"), selection: Binding(
-                    get: { windows.appearance.mode },
-                    set: { windows.appearance.select($0) }
-                )) {
-                    ForEach(BrowserAppearanceMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
-                    }
-                }.pickerStyle(.inline)
-            }
-            Divider()
             Button(controller?.model.isSidebarVisible == true ? L10n.string("Hide Sidebar") : L10n.string("Show Sidebar")) {
                 withAnimation(BrowserMotion.spring) { controller?.model.toggleSidebar() }
             }.keyboardShortcut("/", modifiers: .command)

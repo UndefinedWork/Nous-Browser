@@ -12,6 +12,10 @@ struct AddressPalette: View {
             $0.url != nil && ($0.title.localizedCaseInsensitiveContains(text) || ($0.url?.host?.localizedCaseInsensitiveContains(text) ?? false))
         }.prefix(4))
     }
+    private var showsSuggestions: Bool {
+        !controller.addressText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !controller.preferences.quickLinks.isEmpty
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,31 +30,34 @@ struct AddressPalette: View {
             }
             .padding(.horizontal, 22).padding(.vertical, 21)
 
-            Divider().opacity(0.45).padding(.horizontal, 18)
+            if showsSuggestions {
+                Divider().opacity(0.45).padding(.horizontal, 18)
 
-            VStack(spacing: 3) {
-                if controller.addressText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    HStack(spacing: 8) {
-                        quickLink("Apple", symbol: "apple.logo", url: "https://www.apple.com")
-                        quickLink("Google", symbol: "magnifyingglass", url: "https://www.google.com")
-                        quickLink(L10n.string("Wikipedia"), symbol: "book", url: "https://www.wikipedia.org")
-                        quickLink("ChatGPT", symbol: "bubble.left.and.bubble.right", url: "https://chatgpt.com")
-                    }
-                    .padding(.vertical, 9)
-                } else {
-                    paletteRow(symbol: isWebAddress ? "globe" : "magnifyingglass",
-                               title: controller.addressText,
-                               subtitle: isWebAddress ? L10n.string("Open Website") : L10n.string("Search with Google"),
-                               selected: highlighted == 0) { controller.submitAddress() }
-                    ForEach(Array(matchingTabs.enumerated()), id: \.element.id) { index, tab in
-                        paletteRow(symbol: "rectangle.on.rectangle", title: tab.displayTitle, subtitle: L10n.string("Switch to Open Tab"), selected: highlighted == index + 1) {
-                            controller.model.selectTab(tab.id)
-                            controller.dismissAddress()
+                VStack(spacing: 3) {
+                    if controller.addressText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        ScrollView {
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 4) {
+                                ForEach(controller.preferences.quickLinks) { link in quickLink(link) }
+                            }
+                            .padding(.vertical, 9)
+                        }
+                        .scrollIndicators(.hidden)
+                        .frame(height: min(220, CGFloat((controller.preferences.quickLinks.count + 3) / 4) * 78 + 18))
+                    } else {
+                        paletteRow(symbol: isWebAddress ? "globe" : "magnifyingglass",
+                                   title: controller.addressText,
+                                   subtitle: isWebAddress ? L10n.string("Open Website") : L10n.format("Search with %@", controller.preferences.searchEngine.title),
+                                   selected: highlighted == 0) { controller.submitAddress() }
+                        ForEach(Array(matchingTabs.enumerated()), id: \.element.id) { index, tab in
+                            paletteRow(symbol: "rectangle.on.rectangle", title: tab.displayTitle, subtitle: L10n.string("Switch to Open Tab"), selected: highlighted == index + 1) {
+                                controller.model.selectTab(tab.id)
+                                controller.dismissAddress()
+                            }
                         }
                     }
                 }
+                .padding(10)
             }
-            .padding(10)
         }
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.14), radius: 35, y: 14)
@@ -69,20 +76,21 @@ struct AddressPalette: View {
         } else { controller.submitAddress() }
     }
 
-    private func quickLink(_ title: String, symbol: String, url: String) -> some View {
+    private func quickLink(_ link: BrowserQuickLink) -> some View {
         Button {
-            controller.addressText = url
+            controller.addressText = link.url.absoluteString
             controller.submitAddress()
         } label: {
             VStack(spacing: 9) {
-                Image(systemName: symbol).font(.system(size: 19, weight: .regular)).frame(height: 24)
-                Text(title).font(.system(size: 11))
+                QuickLinkIcon(link: link).frame(height: 24)
+                Text(link.title).font(.system(size: 11)).lineLimit(1)
             }
             .foregroundStyle(.primary.opacity(0.8))
             .frame(maxWidth: .infinity).padding(.vertical, 14)
             .contentShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(PaletteButtonStyle())
+        .help(link.url.absoluteString)
     }
 
     private func paletteRow(symbol: String, title: String, subtitle: String, selected: Bool, action: @escaping () -> Void) -> some View {
