@@ -1,0 +1,3 @@
+/* Nous Browser */
+"NSCameraUsageDescription" = "Allow camera access on websites you authorize, such as video meetings.";
+"NSMicrophoneUsageDescription" = "Allow microphone access on websites you authorize, such as voice and video calls.";
