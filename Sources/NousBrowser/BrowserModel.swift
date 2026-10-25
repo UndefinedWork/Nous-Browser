@@ -104,6 +104,8 @@ final class BrowserModel {
     @ObservationIgnored private var isRestoring = true
     @ObservationIgnored private var isShutDown = false
     @ObservationIgnored var onLastTabClosed: (() -> Void)?
+    @ObservationIgnored var onVisit: ((URL, String) -> Void)?
+    @ObservationIgnored var onPageTitleChanged: ((URL, String) -> Void)?
     /// Injectable so tests can age tabs without waiting.
     @ObservationIgnored var now: () -> Date = Date.init
 
@@ -239,19 +241,10 @@ final class BrowserModel {
     nonisolated static func normalizeAddress(_ input: String, searchEngine: BrowserSearchEngine = .google) -> URL? {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
+        if let url = BrowserAddressInput.websiteURL(for: text) { return url }
         let lower = text.lowercased()
-        if lower.hasPrefix("https://") || lower.hasPrefix("http://") {
-            guard let url = URL(string: text), let host = url.host, !host.isEmpty else { return nil }
-            return url
-        }
         if text.contains("://") || lower.hasPrefix("javascript:") || lower.hasPrefix("data:") || lower.hasPrefix("file:") {
             return nil
-        }
-        if !text.contains(where: { $0.isWhitespace }) {
-            let host = text.split(separator: "/", maxSplits: 1).first.map(String.init) ?? text
-            let isLocal = host == "localhost" || host.hasPrefix("localhost:") || host.hasPrefix("127.0.0.1") || host.hasPrefix("[::1]")
-            if isLocal { return URL(string: "http://" + text) }
-            if host.contains("."), let url = URL(string: "https://" + text), url.host != nil { return url }
         }
         return searchEngine.searchURL(query: text)
     }
@@ -329,9 +322,21 @@ final class BrowserModel {
         persistSession()
         isShutDown = true
         onLastTabClosed = nil
+        onVisit = nil
+        onPageTitleChanged = nil
         saveTask?.cancel()
         saveTask = nil
         tabs.forEach { $0.shutdown() }
+    }
+
+    fileprivate func recordVisit(_ url: URL, title: String) {
+        guard !isShutDown else { return }
+        onVisit?(url, title)
+    }
+
+    fileprivate func recordPageTitleChange(_ url: URL, title: String) {
+        guard !isShutDown else { return }
+        onPageTitleChanged?(url, title)
     }
 
     /// Strip embedded basic-auth credentials before storing an address on disk.
@@ -473,16 +478,24 @@ final class BrowserTab: NSObject, Identifiable {
         observations = [
             webView.observe(\.title, options: [.new]) { [weak self] view, _ in
                 MainActor.assumeIsolated {
-                    guard let self else { return }
+                    guard let self, view === self.webView else { return }
                     self.title = view.title.flatMap { $0.isEmpty ? nil : $0 } ?? Self.fallbackTitle(for: self.url) ?? L10n.string("New Tab")
+                    if !view.isLoading, self.errorDescription == nil, let url = view.url {
+                        self.owner?.recordPageTitleChange(url, title: self.title)
+                    }
                     self.owner?.scheduleSave()
                 }
             },
             webView.observe(\.url, options: [.new]) { [weak self] view, _ in
                 MainActor.assumeIsolated {
-                    guard let self else { return }
+                    guard let self, view === self.webView else { return }
                     if let url = view.url {
-                        if url.absoluteString != "about:blank" { self.url = url }
+                        if url.absoluteString != "about:blank" {
+                            self.url = url
+                            if !view.isLoading, self.errorDescription == nil {
+                                self.owner?.recordVisit(url, title: self.title)
+                            }
+                        }
                         if self.faviconPageURL != url { self.refreshFavicon(for: url) }
                     }
                     self.owner?.scheduleSave()
@@ -718,7 +731,9 @@ extension BrowserTab: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard webView === self.webView else { return }
         errorDescription = nil
+        if let url = webView.url { owner?.recordVisit(url, title: webView.title ?? title) }
         discoverFavicon()
         owner?.scheduleSave()
     }

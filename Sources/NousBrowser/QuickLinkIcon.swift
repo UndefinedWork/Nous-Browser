@@ -2,8 +2,11 @@ import AppKit
 import SwiftUI
 
 struct QuickLinkIcon: View {
-    let link: BrowserQuickLink
+    let url: URL
     @State private var image: NSImage?
+
+    init(link: BrowserQuickLink) { url = link.url }
+    init(url: URL) { self.url = url }
 
     var body: some View {
         Group {
@@ -15,16 +18,16 @@ struct QuickLinkIcon: View {
         }
         .frame(width: 24, height: 24)
         .accessibilityHidden(true)
-        .task(id: link.url) {
-            image = FaviconStore.shared.cachedImage(for: link.url)
-            let fetched = await FaviconStore.shared.image(for: link.url)
+        .task(id: url) {
+            image = FaviconStore.shared.cachedImage(for: url)
+            let fetched = await FaviconStore.shared.image(for: url)
             guard !Task.isCancelled else { return }
             image = fetched
         }
     }
 
     private var fallbackSymbol: String {
-        switch link.url.host?.lowercased().replacingOccurrences(of: "www.", with: "") {
+        switch url.host?.lowercased().replacingOccurrences(of: "www.", with: "") {
         case "apple.com": "apple.logo"
         case "google.com": "magnifyingglass"
         case "wikipedia.org": "book"

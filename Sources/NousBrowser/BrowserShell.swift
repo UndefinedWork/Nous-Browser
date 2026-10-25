@@ -96,7 +96,8 @@ struct BrowserShell: View {
                         .contentShape(Rectangle())
                         .onTapGesture { controller.dismissAddress() }
                         .transition(.opacity)
-                    AddressPalette(controller: controller)
+                    AddressPalette(controller: controller, maximumSuggestionsHeight:
+                        max(90, geometry.size.height - min(92, geometry.size.height * 0.13) - 113))
                         .frame(width: min(560, geometry.size.width - 48))
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .padding(.top, min(92, geometry.size.height * 0.13))

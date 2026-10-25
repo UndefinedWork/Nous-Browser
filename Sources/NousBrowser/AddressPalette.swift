@@ -3,15 +3,11 @@ import SwiftUI
 
 struct AddressPalette: View {
     @Bindable var controller: BrowserController
+    var maximumSuggestionsHeight: CGFloat = 340
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var highlighted = 0
-    private var matchingTabs: [BrowserTab] {
-        let text = controller.addressText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard text.count > 1, !text.contains("://") else { return [] }
-        return Array(controller.model.tabs.filter {
-            $0.url != nil && ($0.title.localizedCaseInsensitiveContains(text) || ($0.url?.host?.localizedCaseInsensitiveContains(text) ?? false))
-        }.prefix(4))
-    }
+    private var suggestions: [BrowserAddressSuggestion] { controller.addressSuggestions }
     private var showsSuggestions: Bool {
         !controller.addressText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !controller.preferences.quickLinks.isEmpty
@@ -23,7 +19,7 @@ struct AddressPalette: View {
                 Image(systemName: "magnifyingglass").font(.system(size: 18, weight: .regular)).foregroundStyle(.secondary)
                 AddressInput(text: $controller.addressText, submit: submitSelection,
                              cancel: controller.dismissAddress,
-                             move: { direction in highlighted = min(max(0, highlighted + direction), matchingTabs.count) })
+                             move: { direction in highlighted = min(max(0, highlighted + direction), suggestions.count) })
                     .id(controller.addressFocusToken)
                     .frame(height: 26)
                     .onChange(of: controller.addressText) { highlighted = 0 }
@@ -42,16 +38,28 @@ struct AddressPalette: View {
                             .padding(.vertical, 9)
                         }
                         .scrollIndicators(.hidden)
-                        .frame(height: min(220, CGFloat((controller.preferences.quickLinks.count + 3) / 4) * 78 + 18))
+                        .frame(height: min(maximumSuggestionsHeight, min(220, CGFloat((controller.preferences.quickLinks.count + 3) / 4) * 78 + 18)))
                     } else {
-                        paletteRow(symbol: isWebAddress ? "globe" : "magnifyingglass",
-                                   title: controller.addressText,
-                                   subtitle: isWebAddress ? L10n.string("Open Website") : L10n.format("Search with %@", controller.preferences.searchEngine.title),
-                                   selected: highlighted == 0) { controller.submitAddress() }
-                        ForEach(Array(matchingTabs.enumerated()), id: \.element.id) { index, tab in
-                            paletteRow(symbol: "rectangle.on.rectangle", title: tab.displayTitle, subtitle: L10n.string("Switch to Open Tab"), selected: highlighted == index + 1) {
-                                controller.model.selectTab(tab.id)
-                                controller.dismissAddress()
+                        ScrollViewReader { proxy in
+                            ScrollView {
+                                VStack(spacing: 3) {
+                                    paletteRow(symbol: isWebAddress ? "globe" : "magnifyingglass",
+                                               title: websiteURL?.absoluteString ?? controller.addressText,
+                                               subtitle: isWebAddress ? L10n.string("Open Website") : L10n.format("Search with %@", controller.preferences.searchEngine.title),
+                                               selected: highlighted == 0) { controller.submitAddress() }
+                                        .id(0)
+                                    ForEach(Array(suggestions.enumerated()), id: \.element.id) { index, suggestion in
+                                        suggestionRow(suggestion, selected: highlighted == index + 1)
+                                            .id(index + 1)
+                                    }
+                                }
+                            }
+                            .scrollIndicators(.hidden)
+                            .frame(height: min(maximumSuggestionsHeight, CGFloat(suggestions.count + 1) * 58 + CGFloat(suggestions.count) * 3))
+                            .onChange(of: highlighted) { _, value in
+                                withAnimation(reduceMotion ? nil : BrowserMotion.interaction) {
+                                    proxy.scrollTo(value, anchor: .center)
+                                }
                             }
                         }
                     }
@@ -62,18 +70,24 @@ struct AddressPalette: View {
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.14), radius: 35, y: 14)
         .onExitCommand { controller.dismissAddress() }
+        .onChange(of: suggestions.map(\.id)) { _, _ in highlighted = min(highlighted, suggestions.count) }
     }
 
-    private var isWebAddress: Bool {
-        let text = controller.addressText
-        return !text.contains(" ") && (text.contains(".") || text.contains("://") || text.hasPrefix("localhost"))
-    }
+    private var websiteURL: URL? { BrowserAddressInput.websiteURL(for: controller.addressText) }
+    private var isWebAddress: Bool { websiteURL != nil }
 
     private func submitSelection() {
-        if highlighted > 0, matchingTabs.indices.contains(highlighted - 1) {
-            controller.model.selectTab(matchingTabs[highlighted - 1].id)
-            controller.dismissAddress()
+        if highlighted > 0, suggestions.indices.contains(highlighted - 1) {
+            controller.activateSuggestion(suggestions[highlighted - 1])
         } else { controller.submitAddress() }
+    }
+
+    private func suggestionRow(_ suggestion: BrowserAddressSuggestion, selected: Bool) -> some View {
+        let isOpenTab: Bool = if case .openTab = suggestion { true } else { false }
+        return paletteRow(symbol: "rectangle.on.rectangle", iconURL: isOpenTab ? nil : suggestion.url,
+                          title: suggestion.title,
+                          subtitle: isOpenTab ? L10n.string("Switch to Open Tab") : suggestion.url.absoluteString,
+                          selected: selected) { controller.activateSuggestion(suggestion) }
     }
 
     private func quickLink(_ link: BrowserQuickLink) -> some View {
@@ -93,19 +107,23 @@ struct AddressPalette: View {
         .help(link.url.absoluteString)
     }
 
-    private func paletteRow(symbol: String, title: String, subtitle: String, selected: Bool, action: @escaping () -> Void) -> some View {
+    private func paletteRow(symbol: String, iconURL: URL? = nil, title: String, subtitle: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Image(systemName: symbol).font(.system(size: 15)).frame(width: 26)
+                Group {
+                    if let iconURL { QuickLinkIcon(url: iconURL) }
+                    else { Image(systemName: symbol).font(.system(size: 15)) }
+                }.frame(width: 26)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title).font(.system(size: 13, weight: .medium)).lineLimit(1)
-                    Text(subtitle).font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text(subtitle).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 0)
                 if selected { Image(systemName: "return").font(.system(size: 12)).foregroundStyle(.tertiary) }
             }
             .foregroundStyle(.primary)
             .padding(12)
+            .frame(height: 58)
             .background(.white.opacity(selected ? (colorScheme == .dark ? 0.10 : 0.65) : 0), in: RoundedRectangle(cornerRadius: 14))
             .contentShape(RoundedRectangle(cornerRadius: 14))
         }

@@ -16,6 +16,7 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 - **密码导入与填写**：手动导入 Apple「密码」或 Chrome 导出的 CSV，经设备验证后填写支持的 HTTPS 登录表单。
 - **跟随系统**：界面语言和外观默认跟随 macOS，支持浅色、深色以及 11 种界面语言。
 - **浏览器设置**：选择 Google、Bing、DuckDuckGo 或百度作为默认搜索引擎；配置 ⌘L 快捷访问的网站及顺序。
+- **地址输入与网页推荐**：识别 `x。com`、`x．com` 等中文标点网址；按网页标题、网址关键词匹配已打开和常访问的网页，参考访问频率及最近访问时间排序。
 - **常用网页能力**：前进、后退、下载、网页全屏、本机 HTML/XHTML 文件和用户主动打开的新标签页；拦截脚本自动弹出的窗口。
 
 ## 系统要求
@@ -24,7 +25,7 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 - 当前首个预编译包为 **Apple Silicon** 版本；Intel Mac 可在满足系统与开发环境要求时从源码构建。
 - 从源码构建需要 **Xcode 26 或更新版本、Swift 6.2 或更新版本**。
 
-当前源码版本：**1.0.0（Build 26）**。预编译安装包的构建号见对应 Release。
+当前源码版本：**1.0.0（Build 27）**。预编译安装包的构建号见对应 Release。
 
 ## 下载与安装
 
@@ -99,12 +100,15 @@ Cookie、Local Storage 等网站数据由 WebKit 的持久化存储管理。正�
 | 标签页、排序和侧边栏状态 | `~/Library/Application Support/Nous Browser/session.json` |
 | 多窗口清单与当前窗口 | `~/Library/Application Support/Nous Browser/session.windows.json` |
 | 其他窗口的标签页和布局 | `~/Library/Application Support/Nous Browser/session-windows/` |
+| 本机访问记录与网页推荐 | `~/Library/Application Support/Nous Browser/history.json` |
 | 网站图标缓存 | `~/Library/Caches/Nous Browser/Favicons/` |
 | 外观等应用偏好 | macOS `UserDefaults`，应用标识为 `com.cellier.nous-browser` |
 | 导入的密码库 | 本机登录钥匙串，服务名为 `com.nous.browser.password-vault` |
 | Cookie、网站本地存储等 | 由 WebKit 的持久化网站数据存储管理 |
 
 删除应用文件不会自动清除以上数据。
+
+网页推荐记录只保存在本机。升级后会先纳入现有标签页，之后随实际访问逐步积累频率；中文标点只归一化网址主机，搜索句子和网址路径、查询参数保留原文。
 
 新标签页标题使用 Instrument Serif 字体，随应用打包，许可见 `Resources/Fonts/OFL.txt`。
 

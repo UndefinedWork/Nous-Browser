@@ -22,14 +22,19 @@ final class BrowserController {
     let passwords: BrowserPasswordController
     let appearance: BrowserAppearanceSettings
     let preferences: BrowserPreferences
+    let history: BrowserHistoryStore
     @ObservationIgnored var onNewWindow: (() -> Void)?
     @ObservationIgnored var onCloseWindow: (() -> Void)?
 
     init(model: BrowserModel = BrowserModel(), appearance: BrowserAppearanceSettings = BrowserAppearanceSettings(),
-         preferences: BrowserPreferences = BrowserPreferences()) {
+         preferences: BrowserPreferences = BrowserPreferences(), history: BrowserHistoryStore? = nil) {
         self.model = model
         self.appearance = appearance
         self.preferences = preferences
+        self.history = history ?? BrowserHistoryStore(fileURL: FileManager.default.temporaryDirectory
+            .appendingPathComponent("Nous Browser Standalone", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent("history.json"))
         passwords = BrowserPasswordController(model: model)
     }
     var isAddressPresented = false

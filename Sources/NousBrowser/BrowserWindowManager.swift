@@ -9,6 +9,7 @@ import SwiftUI
 final class BrowserWindowManager {
     let appearance: BrowserAppearanceSettings
     let preferences: BrowserPreferences
+    let history: BrowserHistoryStore
     let passwordImporter = BrowserPasswordController()
     private(set) var windows: [BrowserWindowContext] = []
     private(set) var activeWindowID: UUID?
@@ -31,10 +32,13 @@ final class BrowserWindowManager {
 
     init(workspace: BrowserWorkspaceStore, appearance: BrowserAppearanceSettings = BrowserAppearanceSettings(),
          preferences: BrowserPreferences = BrowserPreferences(),
+         history: BrowserHistoryStore? = nil,
          showsWindows: Bool = true, startsHibernationMonitors: Bool = true) {
         self.workspace = workspace
         self.appearance = appearance
         self.preferences = preferences
+        self.history = history ?? BrowserHistoryStore(fileURL: workspace.legacySessionURL
+            .deletingLastPathComponent().appendingPathComponent("history.json"))
         self.showsWindows = showsWindows
         self.startsHibernationMonitors = startsHibernationMonitors
     }
@@ -154,12 +158,20 @@ final class BrowserWindowManager {
         isTerminating = true
         passwordImporter.dismiss()
         windows.forEach { $0.shutdown() }
+        history.flush()
     }
 
     private func makeWindow(session: BrowserWindowSession, restoring: Bool) -> BrowserWindowContext {
         let model = BrowserModel(sessionURL: workspace.sessionURL(for: session), restoreSession: restoring,
                                  startWithBlankTab: !restoring || !session.usesLegacySession)
-        let controller = BrowserController(model: model, appearance: appearance, preferences: preferences)
+        model.onVisit = { [weak self] url, title in self?.history.recordVisit(url: url, title: title) }
+        model.onPageTitleChanged = { [weak self] url, title in self?.history.updateTitle(url: url, title: title) }
+        if restoring {
+            for tab in model.tabs {
+                if let url = tab.url { history.rememberExistingPage(url: url, title: tab.title) }
+            }
+        }
+        let controller = BrowserController(model: model, appearance: appearance, preferences: preferences, history: history)
         let context = BrowserWindowContext(session: session, controller: controller,
                                            cascadeFrom: activeWindow,
                                            startsHibernationMonitor: startsHibernationMonitors)
