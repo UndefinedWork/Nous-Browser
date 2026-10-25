@@ -279,7 +279,9 @@ private struct BrowserSidebar: View {
                         GlassSymbolButton("sidebar.left", label: L10n.string("Hide Sidebar"), help: L10n.string("Hide Sidebar") + "  ⌘/") {
                             withAnimation(BrowserMotion.spring) { model.toggleSidebar() }
                         }
-                        Spacer()
+                        WindowDragArea()
+                            .frame(maxWidth: .infinity)
+                            .frame(height: BrowserDesign.buttonSize)
                         GlassSymbolButton("plus", label: L10n.string("New Tab"), help: L10n.string("New Tab") + "  ⌘T", action: controller.newTab)
                     }
                     Spacer(minLength: 0)
@@ -300,7 +302,7 @@ private struct BrowserSidebar: View {
                 // Keep a clear drag target without blocking rows or the wheel
                 // in the transparent gaps between the floating controls.
                 WindowDragArea()
-                    .frame(height: 8)
+                    .frame(height: BrowserDesign.inset)
                     .frame(maxHeight: .infinity, alignment: .top)
             }
             .coordinateSpace(name: SidebarTabDragGeometry.coordinateSpace)

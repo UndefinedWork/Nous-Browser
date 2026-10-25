@@ -315,4 +315,40 @@ struct BrowserWindowManagerTests {
             #expect(saved.tabs.map(\.id) == expectedTabs[index])
         }
     }
+
+    @Test func standardZoomUsesTheWindowsCurrentScreensVisibleFrameWithoutChangingItsFrame() throws {
+        let fixture = try fixture()
+        defer { fixture.cleanUp() }
+        fixture.manager.restoreWindows()
+        let context = try #require(fixture.manager.activeContext)
+        let window = context.window
+        let originalFrame = window.frame
+        let proposedFrame = NSRect(x: 31, y: 47, width: 611, height: 433)
+        let expected = window.screen?.visibleFrame ?? proposedFrame
+
+        let standard = context.windowWillUseStandardFrame(window, defaultFrame: proposedFrame)
+
+        #expect(standard == expected)
+        #expect(window.frame == originalFrame)
+        #expect(!window.styleMask.contains(.fullScreen))
+    }
+
+    @Test func standardZoomFallsBackForASenderWithoutAScreen() throws {
+        let fixture = try fixture()
+        defer { fixture.cleanUp() }
+        fixture.manager.restoreWindows()
+        let context = try #require(fixture.manager.activeContext)
+        let sender = ScreenlessWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
+                                      styleMask: [.titled], backing: .buffered, defer: false)
+        sender.isReleasedWhenClosed = false
+        defer { sender.close() }
+        let proposedFrame = NSRect(x: -320, y: 80, width: 1_200, height: 800)
+
+        #expect(sender.screen == nil)
+        #expect(context.windowWillUseStandardFrame(sender, defaultFrame: proposedFrame) == proposedFrame)
+    }
+
+    private final class ScreenlessWindow: NSWindow {
+        override var screen: NSScreen? { nil }
+    }
 }

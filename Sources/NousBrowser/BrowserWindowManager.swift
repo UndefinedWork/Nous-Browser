@@ -277,6 +277,10 @@ final class BrowserWindowContext: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) { onClose?() }
 
+    func windowWillUseStandardFrame(_ sender: NSWindow, defaultFrame newFrame: NSRect) -> NSRect {
+        sender.screen?.visibleFrame ?? newFrame
+    }
+
     func shutdown() {
         guard !isShutDown else { return }
         isShutDown = true
