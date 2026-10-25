@@ -1,0 +1,70 @@
+Resources/Localization/en.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_dfabcf22d8c94a 96-97
+Resources/Localization/ko.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_dfabcf22d8c94a 96-97
+README.md
+  s_3d6e78ea1e9f59::t_35a910d2de7229 13,46-49,56-57,59
+  s_3d6e78ea1e9f59::t_fa9f322ceb0a40 26,98-99
+Resources/Localization/es.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_dfabcf22d8c94a 95-96
+Resources/Localization/fr.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_dfabcf22d8c94a 95-96
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_49b315819f8916 24
+Resources/Localization/it.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_dfabcf22d8c94a 95-96
+Resources/Localization/ja.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_dfabcf22d8c94a 96-97
+Resources/Localization/zh-Hans.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_dfabcf22d8c94a 96-97
+Tests/NousBrowserTests/BrowserWorkspaceStoreTests.swift
+  s_3d6e78ea1e9f59::t_879f7a87883ec3 86
+  s_3d6e78ea1e9f59::t_b4e255d7af25df 1-85,87-135
+Tests/NousBrowserTests/BrowserWindowManagerTests.swift
+  s_3d6e78ea1e9f59::t_42774d9c19e44a 85-86,88
+  s_3d6e78ea1e9f59::t_b7421eef9aed53 1-8,10-84,87,89-191
+  s_3d6e78ea1e9f59::t_de4e7e7a300a8a 9
+Sources/NousBrowser/BrowserWindowManager.swift
+  s_3d6e78ea1e9f59::t_892400a5b20550 1-85,97-131,133-158,160-178,188-265
+  s_3d6e78ea1e9f59::t_42774d9c19e44a 132,159,179-187
+  s_3d6e78ea1e9f59::t_b7421eef9aed53 86-96
+Sources/NousBrowser/BrowserWorkspaceStore.swift
+  s_3d6e78ea1e9f59::t_b4c4d6a8621444 1-39,41-47,51-86
+  s_3d6e78ea1e9f59::t_b4e255d7af25df 40,48-50
+Resources/Localization/zh-Hant.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_dfabcf22d8c94a 96-97
+Resources/Localization/source.json
+  s_3d6e78ea1e9f59::t_dfabcf22d8c94a 53-98
+Sources/NousBrowser/NousBrowserApp.swift
+  s_3d6e78ea1e9f59::t_9d7645d3225104 10,19-21,23,25,34-36,39-45,69-87,114-115,121,130,133,138-139,142-144,148,151-152,154,159,164-165,168-171,173-178,180,183-190,192-193,195,197,200,202-204,209-210,218-219,221,223,225-226,228,231-234
+  s_3d6e78ea1e9f59::t_b7421eef9aed53 105,107-108
+Sources/NousBrowser/BrowserModel.swift
+  s_3d6e78ea1e9f59::t_49b315819f8916 342,353
+  s_3d6e78ea1e9f59::t_b4c4d6a8621444 105,113,127-129,291,310,319-329,590-601
+  s_3d6e78ea1e9f59::t_536b2f871e229a 602
+Sources/NousBrowser/BrowserShell.swift
+  s_3d6e78ea1e9f59::t_5c36e2139993a0 14-15,17,229
+  s_3d6e78ea1e9f59::t_27a74025c23f9c 328,332
+Resources/Localization/de.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_dfabcf22d8c94a 95-96
+Resources/Localization/pt-BR.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_dfabcf22d8c94a 95-96
+Resources/Localization/ru.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_dfabcf22d8c94a 95-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "ec10d331899abbd2180d064c50fe8d9862f3f219",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
