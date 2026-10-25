@@ -125,7 +125,14 @@ struct BrowserShell: View {
         }
         .ignoresSafeArea()
         .scrollIndicators(.hidden)
-        .onExitCommand { if controller.isAddressPresented { controller.dismissAddress() } }
+        .onExitCommand {
+            if controller.isAddressPresented { controller.dismissAddress() }
+            else if controller.find.isPresented { controller.find.dismiss() }
+            else if model.selectedTab?.isLoading == true { model.stopLoading() }
+        }
+        .onChange(of: model.selectedTabID) { controller.find.pageDidChange() }
+        .onChange(of: model.selectedTab?.url) { controller.find.pageDidChange() }
+        .onChange(of: model.selectedTab?.isLoading) { controller.find.pageDidChange() }
         .sheet(isPresented: Binding(get: { controller.passwords.isPresented },
                                     set: { controller.passwords.isPresented = $0 })) {
             BrowserPasswordsSheet(controller: controller.passwords)
@@ -165,6 +172,14 @@ struct BrowserShell: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if controller.find.isPresented {
+                BrowserPageFindBar(find: controller.find)
+                    .padding(16)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(reduceMotion ? nil : BrowserMotion.spring, value: controller.find.isPresented)
         .animation(reduceMotion ? nil : BrowserMotion.spring, value: controller.passwords.canFill)
     }
 }

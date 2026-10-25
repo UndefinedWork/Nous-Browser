@@ -122,3 +122,15 @@
 "Baidu" = "Baidu";
 "Choose how Nous Browser looks." = "選擇 Nous Browser 的顯示模式。";
 "Password Import" = "密碼匯入";
+"Reload Without Cache" = "忽略快取重新載入";
+"Find on Page…" = "在網頁中尋找…";
+"Find Next" = "尋找下一個";
+"Find Previous" = "尋找上一個";
+"Search this page" = "搜尋此頁面";
+"No matches" = "沒有符合項目";
+"Close Find" = "關閉尋找";
+"Zoom In" = "放大";
+"Zoom Out" = "縮小";
+"Actual Size" = "實際大小";
+"Select Tab %d" = "選取第 %d 個分頁";
+"Select Last Tab" = "選取最後一個分頁";

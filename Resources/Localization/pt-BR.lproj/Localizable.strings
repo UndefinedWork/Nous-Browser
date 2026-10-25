@@ -121,3 +121,15 @@
 "Baidu" = "Baidu";
 "Choose how Nous Browser looks." = "Escolha a aparência do Nous Browser.";
 "Password Import" = "Importação de Senhas";
+"Reload Without Cache" = "Recarregar sem Cache";
+"Find on Page…" = "Buscar na Página…";
+"Find Next" = "Buscar Seguinte";
+"Find Previous" = "Buscar Anterior";
+"Search this page" = "Buscar nesta página";
+"No matches" = "Nenhuma correspondência";
+"Close Find" = "Fechar Busca";
+"Zoom In" = "Ampliar";
+"Zoom Out" = "Reduzir";
+"Actual Size" = "Tamanho Real";
+"Select Tab %d" = "Selecionar Aba %d";
+"Select Last Tab" = "Selecionar Última Aba";

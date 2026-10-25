@@ -121,3 +121,15 @@
 "Baidu" = "Baidu";
 "Choose how Nous Browser looks." = "Выберите оформление Nous Browser.";
 "Password Import" = "Импорт паролей";
+"Reload Without Cache" = "Обновить без кеша";
+"Find on Page…" = "Найти на странице…";
+"Find Next" = "Найти далее";
+"Find Previous" = "Найти предыдущее";
+"Search this page" = "Поиск на этой странице";
+"No matches" = "Совпадений нет";
+"Close Find" = "Закрыть поиск";
+"Zoom In" = "Увеличить";
+"Zoom Out" = "Уменьшить";
+"Actual Size" = "Реальный размер";
+"Select Tab %d" = "Выбрать вкладку %d";
+"Select Last Tab" = "Выбрать последнюю вкладку";

@@ -23,12 +23,14 @@ final class BrowserController {
     let appearance: BrowserAppearanceSettings
     let preferences: BrowserPreferences
     let history: BrowserHistoryStore
+    let find: BrowserPageFindController
     @ObservationIgnored var onNewWindow: (() -> Void)?
     @ObservationIgnored var onCloseWindow: (() -> Void)?
 
     init(model: BrowserModel = BrowserModel(), appearance: BrowserAppearanceSettings = BrowserAppearanceSettings(),
          preferences: BrowserPreferences = BrowserPreferences(), history: BrowserHistoryStore? = nil) {
         self.model = model
+        find = BrowserPageFindController(model: model)
         self.appearance = appearance
         self.preferences = preferences
         self.history = history ?? BrowserHistoryStore(fileURL: FileManager.default.temporaryDirectory
@@ -46,6 +48,7 @@ final class BrowserController {
     func showAddress() { showAddress(animated: true) }
 
     func showAddress(animated: Bool) {
+        find.dismiss()
         addressText = model.selectedTab?.url?.absoluteString ?? ""
         addressFocusToken = UUID()
         if animated {
@@ -89,7 +92,23 @@ final class BrowserController {
     func newWindow() { onNewWindow?() }
     func closeWindow() { onCloseWindow?() }
 
+    func selectNextTab(backward: Bool = false) {
+        if isAddressPresented { dismissAddress() }
+        model.selectNextTab(backward: backward)
+    }
+
+    func selectTab(number: Int) {
+        if isAddressPresented { dismissAddress() }
+        model.selectTab(number: number)
+    }
+
+    func showFind() {
+        if isAddressPresented { dismissAddress() }
+        find.present()
+    }
+
     func shutdown() {
+        find.shutdown()
         toastTask?.cancel()
         toastTask = nil
         toast = nil
@@ -210,6 +229,9 @@ struct BrowserCommands: Commands {
                 .disabled(controller?.model.selectedTab?.canGoForward != true)
             Button(L10n.string("Reload")) { controller?.model.reload() }.keyboardShortcut("r")
                 .disabled(controller == nil)
+            Button(L10n.string("Reload Without Cache")) { controller?.model.reload(bypassingCache: true) }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+                .disabled(controller?.model.selectedTab?.hasWebContent != true)
             Button(L10n.string("Stop Loading")) { controller?.model.stopLoading() }.keyboardShortcut(".")
                 .disabled(controller == nil)
             Divider()
@@ -231,12 +253,37 @@ struct BrowserCommands: Commands {
             }.keyboardShortcut("/", modifiers: .command)
                 .disabled(controller == nil)
             Divider()
-            Button(L10n.string("Next Tab")) { controller?.model.selectNextTab() }
+            Button(L10n.string("Next Tab")) { controller?.selectNextTab() }
                 .keyboardShortcut("]", modifiers: [.command, .shift])
                 .disabled(controller == nil)
-            Button(L10n.string("Previous Tab")) { controller?.model.selectNextTab(backward: true) }
+            Button(L10n.string("Previous Tab")) { controller?.selectNextTab(backward: true) }
                 .keyboardShortcut("[", modifiers: [.command, .shift])
                 .disabled(controller == nil)
+            ForEach(1..<9, id: \.self) { number in
+                Button(L10n.format("Select Tab %d", number)) { controller?.selectTab(number: number) }
+                    .keyboardShortcut(KeyEquivalent(Character(String(number))))
+                    .disabled((controller?.model.tabs.count ?? 0) < number)
+            }
+            Button(L10n.string("Select Last Tab")) { controller?.selectTab(number: 9) }
+                .keyboardShortcut("9")
+                .disabled(controller == nil)
+            Divider()
+            Button(L10n.string("Zoom In")) { controller?.model.zoomIn() }.keyboardShortcut("=")
+                .disabled(controller?.model.selectedTab?.hasWebContent != true)
+            Button(L10n.string("Zoom Out")) { controller?.model.zoomOut() }.keyboardShortcut("-")
+                .disabled(controller?.model.selectedTab?.hasWebContent != true)
+            Button(L10n.string("Actual Size")) { controller?.model.resetZoom() }.keyboardShortcut("0")
+                .disabled(controller?.model.selectedTab?.hasWebContent != true)
+        }
+        CommandGroup(after: .textEditing) {
+            Divider()
+            Button(L10n.string("Find on Page…")) { controller?.showFind() }.keyboardShortcut("f")
+                .disabled(controller?.model.selectedTab?.hasWebContent != true)
+            Button(L10n.string("Find Next")) { controller?.find.findNext() }.keyboardShortcut("g")
+                .disabled(controller?.model.selectedTab?.hasWebContent != true)
+            Button(L10n.string("Find Previous")) { controller?.find.findNext(backward: true) }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+                .disabled(controller?.model.selectedTab?.hasWebContent != true)
         }
         CommandGroup(after: .windowArrangement) {
             Button(L10n.string("Minimize Window")) { windows.activeWindow?.miniaturize(nil) }.keyboardShortcut("m")

@@ -122,3 +122,15 @@
 "Baidu" = "Baidu";
 "Choose how Nous Browser looks." = "Nous Browser의 외관을 선택하세요.";
 "Password Import" = "암호 가져오기";
+"Reload Without Cache" = "캐시를 무시하고 새로 고침";
+"Find on Page…" = "페이지에서 찾기…";
+"Find Next" = "다음 찾기";
+"Find Previous" = "이전 찾기";
+"Search this page" = "이 페이지 검색";
+"No matches" = "일치하는 항목 없음";
+"Close Find" = "찾기 닫기";
+"Zoom In" = "확대";
+"Zoom Out" = "축소";
+"Actual Size" = "실제 크기";
+"Select Tab %d" = "%d번 탭 선택";
+"Select Last Tab" = "마지막 탭 선택";

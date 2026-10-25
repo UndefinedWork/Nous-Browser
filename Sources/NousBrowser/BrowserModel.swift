@@ -251,15 +251,37 @@ final class BrowserModel {
 
     func goBack() { selectedTab?.webView.goBack() }
     func goForward() { selectedTab?.webView.goForward() }
-    func reload() {
+    func reload(bypassingCache: Bool = false) {
         guard let tab = selectedTab else { return }
         let failed = tab.errorDescription != nil
         tab.errorDescription = nil
-        if failed || tab.webView.url == nil { tab.loadIfNeeded(force: true) }
-        else { tab.webView.reload() }
+        if failed || tab.webView.url == nil {
+            guard let url = tab.url else { return }
+            tab.load(url, cachePolicy: bypassingCache ? .reloadIgnoringLocalCacheData : .useProtocolCachePolicy)
+        } else if bypassingCache {
+            // Revalidate with the origin without clearing cookies or website data.
+            tab.webView.reloadFromOrigin()
+        } else { tab.webView.reload() }
     }
     func stopLoading() { selectedTab?.webView.stopLoading() }
     func toggleSidebar() { isSidebarVisible.toggle() }
+
+    private static let zoomLevels: [CGFloat] = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5]
+
+    func zoomIn() {
+        guard let tab = selectedTab, tab.hasWebContent else { return }
+        tab.webView.pageZoom = Self.zoomLevels.first { $0 > tab.webView.pageZoom + 0.001 } ?? Self.zoomLevels.last!
+    }
+
+    func zoomOut() {
+        guard let tab = selectedTab, tab.hasWebContent else { return }
+        tab.webView.pageZoom = Self.zoomLevels.last { $0 < tab.webView.pageZoom - 0.001 } ?? Self.zoomLevels.first!
+    }
+
+    func resetZoom() {
+        guard let tab = selectedTab, tab.hasWebContent else { return }
+        tab.webView.pageZoom = 1
+    }
 
     func resizeSidebar(to width: Double) {
         let width = SidebarSizing.clampedWidth(width)
@@ -284,6 +306,14 @@ final class BrowserModel {
         let current = tabs.firstIndex { $0.id == selectedTabID } ?? 0
         let next = (current + (backward ? -1 : 1) + tabs.count) % tabs.count
         selectTab(tabs[next].id)
+    }
+
+    /// Browser convention: 1–8 select a position; 9 always selects the last tab.
+    func selectTab(number: Int) {
+        guard (1...9).contains(number) else { return }
+        let index = number == 9 ? tabs.count - 1 : number - 1
+        guard tabs.indices.contains(index) else { return }
+        selectTab(tabs[index].id)
     }
 
     func persistSession() {
@@ -570,6 +600,7 @@ final class BrowserTab: NSObject, Identifiable {
         oldWebView.pauseAllMediaPlayback(completionHandler: nil)
         oldWebView.removeFromSuperview()
         webView = Self.makeWebView(configuration: nil)
+        webView.pageZoom = oldWebView.pageZoom
         attach(webView)
         pendingInteractionState = state
         needsReloadAfterTermination = false
@@ -600,7 +631,7 @@ final class BrowserTab: NSObject, Identifiable {
 
     static let terminationReloadWindow: TimeInterval = 10
 
-    func load(_ url: URL) {
+    func load(_ url: URL, cachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy) {
         let wasBlankTab = !hasWebContent && self.url == nil
         let hadPlaceholderTitle = ["New Tab", "新标签页", "新標籤頁", L10n.string("New Tab")].contains(title)
         hasLoaded = true
@@ -614,7 +645,7 @@ final class BrowserTab: NSObject, Identifiable {
         if url.isFileURL {
             webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
         } else {
-            webView.load(URLRequest(url: url))
+            webView.load(URLRequest(url: url, cachePolicy: cachePolicy))
         }
         owner?.scheduleSave()
     }

@@ -122,3 +122,15 @@
 "Baidu" = "百度";
 "Choose how Nous Browser looks." = "选择 Nous Browser 的显示模式。";
 "Password Import" = "密码导入";
+"Reload Without Cache" = "忽略缓存重新加载";
+"Find on Page…" = "在页面中查找…";
+"Find Next" = "查找下一个";
+"Find Previous" = "查找上一个";
+"Search this page" = "搜索此页面";
+"No matches" = "无匹配结果";
+"Close Find" = "关闭查找";
+"Zoom In" = "放大";
+"Zoom Out" = "缩小";
+"Actual Size" = "实际大小";
+"Select Tab %d" = "选择第 %d 个标签页";
+"Select Last Tab" = "选择最后一个标签页";

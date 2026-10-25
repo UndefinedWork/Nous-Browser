@@ -122,3 +122,15 @@
 "Baidu" = "Baidu";
 "Choose how Nous Browser looks." = "Nous Browser の外観を選択します。";
 "Password Import" = "パスワードのインポート";
+"Reload Without Cache" = "キャッシュを無視して再読み込み";
+"Find on Page…" = "ページ内を検索…";
+"Find Next" = "次を検索";
+"Find Previous" = "前を検索";
+"Search this page" = "このページを検索";
+"No matches" = "一致する項目がありません";
+"Close Find" = "検索を閉じる";
+"Zoom In" = "拡大";
+"Zoom Out" = "縮小";
+"Actual Size" = "実際のサイズ";
+"Select Tab %d" = "タブ%dを選択";
+"Select Last Tab" = "最後のタブを選択";

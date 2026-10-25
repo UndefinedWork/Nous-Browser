@@ -122,7 +122,19 @@
     "DuckDuckGo",
     "Baidu",
     "Choose how Nous Browser looks.",
-    "Password Import"
+    "Password Import",
+    "Reload Without Cache",
+    "Find on Page…",
+    "Find Next",
+    "Find Previous",
+    "Search this page",
+    "No matches",
+    "Close Find",
+    "Zoom In",
+    "Zoom Out",
+    "Actual Size",
+    "Select Tab %d",
+    "Select Last Tab"
   ],
   "infoPlist": {
     "NSCameraUsageDescription": "Allow camera access on websites you authorize, such as video meetings.",
