@@ -517,7 +517,7 @@ private struct BrowserTabRow: View {
                     if tab.url != nil { miniButton("link", label: L10n.string("Copy Link"), action: copy) }
                     miniButton("xmark", label: L10n.string("Close Tab"), action: close)
                 }
-                .padding(.trailing, 7)
+                .padding(.trailing, 12)
                 .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .trailing)))
             }
         }
@@ -564,15 +564,15 @@ private struct BrowserTabRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .frame(height: 16)
                 if tab.isPinned {
-                    Image(systemName: "pin.fill")
-                        .font(.system(size: 9, weight: .medium))
+                    Image(systemName: "pin")
+                        .font(.system(size: 10, weight: .regular))
                         .foregroundStyle(.secondary)
                         .frame(width: 10, height: 12)
                         .accessibilityHidden(true)
                 }
             }
             .padding(.leading, 12)
-            .padding(.trailing, hovered ? 0 : 12)
+            .padding(.trailing, hovered ? 8 : 12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: BrowserDesign.rowHeight)
             .contentShape(Rectangle())
