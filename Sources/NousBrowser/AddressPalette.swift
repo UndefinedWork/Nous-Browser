@@ -44,6 +44,7 @@ struct AddressPalette: View {
                             ScrollView {
                                 VStack(spacing: 3) {
                                     paletteRow(symbol: isWebAddress ? "globe" : "magnifyingglass",
+                                               iconURL: websiteURL,
                                                title: websiteURL?.absoluteString ?? controller.addressText,
                                                subtitle: isWebAddress ? L10n.string("Open Website") : L10n.format("Search with %@", controller.preferences.searchEngine.title),
                                                selected: highlighted == 0) { controller.submitAddress() }
@@ -84,7 +85,8 @@ struct AddressPalette: View {
 
     private func suggestionRow(_ suggestion: BrowserAddressSuggestion, selected: Bool) -> some View {
         let isOpenTab: Bool = if case .openTab = suggestion { true } else { false }
-        return paletteRow(symbol: "rectangle.on.rectangle", iconURL: isOpenTab ? nil : suggestion.url,
+        let preferredIcon: NSImage? = if case .openTab(let tab) = suggestion { tab.favicon } else { nil }
+        return paletteRow(symbol: "globe", iconURL: suggestion.url, preferredIcon: preferredIcon,
                           title: suggestion.title,
                           subtitle: isOpenTab ? L10n.string("Switch to Open Tab") : suggestion.url.absoluteString,
                           selected: selected) { controller.activateSuggestion(suggestion) }
@@ -107,13 +109,13 @@ struct AddressPalette: View {
         .help(link.url.absoluteString)
     }
 
-    private func paletteRow(symbol: String, iconURL: URL? = nil, title: String, subtitle: String, selected: Bool, action: @escaping () -> Void) -> some View {
+    private func paletteRow(symbol: String, iconURL: URL? = nil, preferredIcon: NSImage? = nil, title: String, subtitle: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Group {
-                    if let iconURL { QuickLinkIcon(url: iconURL) }
+                    if let iconURL { QuickLinkIcon(url: iconURL, preferredImage: preferredIcon) }
                     else { Image(systemName: symbol).font(.system(size: 15)) }
-                }.frame(width: 26)
+                }.frame(width: 26, height: 24)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title).font(.system(size: 13, weight: .medium)).lineLimit(1)
                     Text(subtitle).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)

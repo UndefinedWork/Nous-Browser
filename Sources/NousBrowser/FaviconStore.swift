@@ -9,7 +9,7 @@ import ImageIO
 final class FaviconStore {
     static let shared = FaviconStore()
 
-    private struct Record: Codable {
+    private struct Record: Codable, Equatable {
         let sourceURL: URL
         let storedAt: Date
     }
@@ -39,7 +39,26 @@ final class FaviconStore {
     }
 
     func cachedImage(for pageURL: URL) -> NSImage? {
-        guard let key = pageKey(pageURL) else { return nil }
+        cachedEntry(for: pageURL)?.image
+    }
+
+    private func cachedEntry(for pageURL: URL) -> (image: NSImage, record: Record?)? {
+        guard let key = pageKey(pageURL), let origin = originKey(pageURL) else { return nil }
+        if let image = cachedImage(forKey: key) {
+            let record = cachedRecord(key)
+            // Old releases wrote exact-page files only. Backfill their origin
+            // on a hit, without scanning disk or renewing the seven-day age.
+            if let record,
+               cachedImage(forKey: origin) == nil || (cachedRecord(origin).map({ $0.storedAt < record.storedAt }) ?? true) {
+                cache(image, key: origin, record: record)
+            }
+            return (image, record)
+        }
+        guard let image = cachedImage(forKey: origin) else { return nil }
+        return (image, cachedRecord(origin))
+    }
+
+    private func cachedImage(forKey key: String) -> NSImage? {
         if let image = images.object(forKey: key as NSString) { return image }
         guard let data = try? Data(contentsOf: directory.appendingPathComponent(key + ".png")),
               let image = NSImage(data: data) else { return nil }
@@ -48,9 +67,10 @@ final class FaviconStore {
     }
 
     func image(for pageURL: URL, candidates: [URL] = []) async -> NSImage? {
-        guard let key = pageKey(pageURL) else { return nil }
-        let cached = cachedImage(for: pageURL)
-        let record = cachedRecord(key)
+        guard let key = pageKey(pageURL), let origin = originKey(pageURL) else { return nil }
+        let entry = cachedEntry(for: pageURL)
+        let cached = entry?.image
+        let record = entry?.record
         let fresh = record.map { Date().timeIntervalSince($0.storedAt) < lifetime } ?? false
         if candidates.isEmpty, fresh, let cached { return cached }
 
@@ -71,7 +91,7 @@ final class FaviconStore {
             let sourceKey = Self.digest(url.absoluteString)
             if let date = sourceDates[sourceKey], Date().timeIntervalSince(date) < lifetime,
                let image = images.object(forKey: sourceKey as NSString) {
-                store(image, pageKey: key, sourceURL: url)
+                store(image, pageKey: key, originKey: origin, sourceURL: url, storedAt: date)
                 return image
             }
             if let failed = failures[sourceKey], Date().timeIntervalSince(failed) < 300 { continue }
@@ -87,6 +107,13 @@ final class FaviconStore {
             downloads[sourceKey] = nil
             // A canceled fallback request must not overwrite a newer declared icon.
             guard !Task.isCancelled else { return cached }
+            // A suggestion's uncancelled root request can finish after the live
+            // page has supplied its declared icon. Keep that newer success.
+            if candidates.isEmpty, let latest = cachedEntry(for: pageURL),
+               let latestRecord = latest.record, latestRecord != record,
+               Date().timeIntervalSince(latestRecord.storedAt) < lifetime {
+                return latest.image
+            }
             guard let data, let image = Self.thumbnail(data) else {
                 failures[sourceKey] = Date()
                 if failures.count > 256 { failures.removeAll(keepingCapacity: true) }
@@ -94,7 +121,7 @@ final class FaviconStore {
             }
             images.setObject(image, forKey: sourceKey as NSString)
             sourceDates[sourceKey] = Date()
-            store(image, pageKey: key, sourceURL: url)
+            store(image, pageKey: key, originKey: origin, sourceURL: url)
             return image
         }
         return cached
@@ -108,9 +135,14 @@ final class FaviconStore {
         return record
     }
 
-    private func store(_ image: NSImage, pageKey key: String, sourceURL: URL) {
+    private func store(_ image: NSImage, pageKey key: String, originKey: String, sourceURL: URL, storedAt: Date = Date()) {
+        let record = Record(sourceURL: sourceURL, storedAt: storedAt)
+        cache(image, key: key, record: record)
+        cache(image, key: originKey, record: record)
+    }
+
+    private func cache(_ image: NSImage, key: String, record: Record) {
         images.setObject(image, forKey: key as NSString)
-        let record = Record(sourceURL: sourceURL, storedAt: Date())
         records[key] = record
         guard let tiff = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiff),
@@ -132,6 +164,14 @@ final class FaviconStore {
         components.password = nil
         guard let value = components.url?.absoluteString else { return nil }
         return Self.digest(value)
+    }
+
+    private func originKey(_ url: URL) -> String? {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = components.host?.lowercased(), !host.isEmpty else { return nil }
+        let port = components.port ?? (scheme == "https" ? 443 : 80)
+        return Self.digest("origin:\(scheme)://\(host):\(port)")
     }
 
     private func rootIconURL(for url: URL) -> URL? {
