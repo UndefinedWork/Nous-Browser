@@ -92,11 +92,13 @@ final class BrowserController {
         withAnimation(BrowserMotion.spring) { model.closeTab(id) }
     }
 
-    func copyURL(_ tab: BrowserTab? = nil) {
-        guard let url = (tab ?? model.selectedTab)?.url else { return }
+    @discardableResult
+    func copyURL(_ tab: BrowserTab? = nil, showsToast: Bool = true) -> Bool {
+        guard let url = (tab ?? model.selectedTab)?.url else { return false }
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(url.absoluteString, forType: .string)
-        showToast(L10n.string("Link Copied"))
+        let copied = NSPasteboard.general.setString(url.absoluteString, forType: .string)
+        if copied && showsToast { showToast(L10n.string("Link Copied")) }
+        return copied
     }
 
     func showToast(_ text: String) {

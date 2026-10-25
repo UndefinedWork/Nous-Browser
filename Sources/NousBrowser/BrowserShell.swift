@@ -199,7 +199,7 @@ private struct BrowserSidebar: View {
                             BrowserTabRow(tab: tab, selected: model.selectedTabID == tab.id,
                                           select: { withAnimation(reduceMotion ? nil : BrowserMotion.tabSwitch) { model.selectTab(tab.id) } },
                                           close: { withAnimation(reduceMotion ? nil : BrowserMotion.spring) { model.closeTab(tab.id) } },
-                                          copy: { controller.copyURL(tab) },
+                                          copy: { controller.copyURL(tab, showsToast: false) },
                                           newTab: controller.newTab,
                                           duplicate: {
                                               withAnimation(reduceMotion ? nil : BrowserMotion.spring) { model.duplicateTab(tab.id) }
@@ -493,7 +493,7 @@ private struct BrowserTabRow: View {
     let selected: Bool
     let select: () -> Void
     let close: () -> Void
-    let copy: () -> Void
+    let copy: () -> Bool
     let newTab: () -> Void
     let duplicate: () -> Void
     let togglePin: () -> Void
@@ -508,13 +508,16 @@ private struct BrowserTabRow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @State private var hovered = false
+    @State private var isLinkCopied = false
+    @State private var copyFeedbackToken: UUID?
+    private var showsActions: Bool { hovered || isLinkCopied }
 
     var body: some View {
         HStack(spacing: 1) {
             selectionButton
-            if hovered {
+            if showsActions {
                 HStack(spacing: 2) {
-                    if tab.url != nil { miniButton("link", label: L10n.string("Copy Link"), action: copy) }
+                    if tab.url != nil { copyLinkButton }
                     miniButton("xmark", label: L10n.string("Close Tab"), action: close)
                 }
                 .padding(.trailing, 12)
@@ -526,6 +529,20 @@ private struct BrowserTabRow: View {
         .background(Color.white.opacity(colorScheme == .dark ? (hovered ? 0.08 : selected ? 0.14 : 0) : (hovered ? 0.5 : selected ? 1 : 0)), in: Capsule())
         .contentShape(Capsule())
         .onHover { value in withAnimation(reduceMotion ? nil : BrowserMotion.interaction) { hovered = value } }
+        .task(id: copyFeedbackToken) {
+            guard let token = copyFeedbackToken else { return }
+            do { try await Task.sleep(for: .seconds(1.2)) }
+            catch { return }
+            guard !Task.isCancelled, copyFeedbackToken == token else { return }
+            withAnimation(reduceMotion ? nil : BrowserMotion.interaction) {
+                isLinkCopied = false
+                copyFeedbackToken = nil
+            }
+        }
+        .onDisappear {
+            isLinkCopied = false
+            copyFeedbackToken = nil
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(tab.displayTitle)
         .accessibilityValue(tab.isPinned ? L10n.string("Pinned") : "")
@@ -538,12 +555,12 @@ private struct BrowserTabRow: View {
             Button(L10n.string("Move Tab Up"), action: moveUp).disabled(!canMoveUp)
             Button(L10n.string("Move Tab Down"), action: moveDown).disabled(!canMoveDown)
             Button(L10n.string("Close Tab"), action: close)
-            if tab.url != nil { Button(L10n.string("Copy Link"), action: copy) }
+            if tab.url != nil { Button(L10n.string("Copy Link"), action: copyLink) }
         }
         .help(tab.url?.absoluteString ?? L10n.string("New Tab"))
         .contextMenu {
             Button(L10n.string("Open Address…"), systemImage: "magnifyingglass") { select(); editAddress() }
-            Button(L10n.string("Copy Link"), systemImage: "link", action: copy).disabled(tab.url == nil)
+            Button(L10n.string("Copy Link"), systemImage: "link", action: copyLink).disabled(tab.url == nil)
             Divider()
             Button(L10n.string("New Tab"), systemImage: "plus", action: newTab)
             Button(L10n.string("Duplicate Tab"), systemImage: "plus.square.on.square", action: duplicate)
@@ -572,7 +589,7 @@ private struct BrowserTabRow: View {
                 }
             }
             .padding(.leading, 12)
-            .padding(.trailing, hovered ? 8 : 12)
+            .padding(.trailing, showsActions ? 8 : 12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: BrowserDesign.rowHeight)
             .contentShape(Rectangle())
@@ -581,6 +598,33 @@ private struct BrowserTabRow: View {
         .modifier(SidebarTabDragGesture(onChanged: dragChanged, onEnded: dragEnded, onCancelled: dragCancelled))
         .simultaneousGesture(TapGesture(count: 2).onEnded { select(); editAddress() })
         .accessibilityLabel(tab.displayTitle)
+    }
+
+    private func copyLink() {
+        guard copy() else { return }
+        copyFeedbackToken = UUID()
+        withAnimation(reduceMotion ? nil : BrowserMotion.interaction) { isLinkCopied = true }
+    }
+
+    private var copyLinkButton: some View {
+        Button(action: copyLink) {
+            ZStack {
+                Image(systemName: "link")
+                    .scaleEffect(isLinkCopied ? 0.01 : 1)
+                    .opacity(isLinkCopied ? 0 : 1)
+                Image(systemName: "checkmark")
+                    .scaleEffect(isLinkCopied ? 1 : 0.01)
+                    .opacity(isLinkCopied ? 1 : 0)
+            }
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(colorScheme == .dark ? Color.primary : Color.black)
+            .frame(width: 20, height: 20)
+            .contentShape(Circle())
+        }
+        .buttonStyle(RowActionStyle())
+        .accessibilityLabel(L10n.string("Copy Link"))
+        .accessibilityValue(isLinkCopied ? L10n.string("Link Copied") : "")
+        .help(L10n.string(isLinkCopied ? "Link Copied" : "Copy Link"))
     }
 
     private func miniButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
