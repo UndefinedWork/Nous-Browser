@@ -191,6 +191,7 @@ final class BrowserModel {
         closedTabs.append(.init(id: tab.id, title: tab.title, url: tab.url, isPinned: tab.isPinned))
         if closedTabs.count > 20 { closedTabs.removeFirst() }
         tab.cancelFaviconLoading()
+        tab.detachPageNavigationShortcuts()
         let closingWebView = tab.webView
         closingWebView.stopLoading()
         closingWebView.pauseAllMediaPlayback(completionHandler: nil)
@@ -401,6 +402,7 @@ final class BrowserTab: NSObject, Identifiable {
     @ObservationIgnored private var faviconOrigin: String?
     @ObservationIgnored private var faviconRequestID = UUID()
     @ObservationIgnored private var passwordAutofill: BrowserPasswordAutofill.Attachment?
+    @ObservationIgnored private var pageNavigationShortcuts: BrowserPageNavigationShortcuts.Attachment?
 
     var displayTitle: String {
         !hasWebContent && url == nil ? L10n.string("New Tab") : title
@@ -434,10 +436,26 @@ final class BrowserTab: NSObject, Identifiable {
         BrowserScrollbars.install(in: config)
         BrowserUserAgent.configure(config)
         BrowserPasswordAutofill.install(configuration: config)
+        BrowserPageNavigationShortcuts.install(in: config)
         return WKWebView(frame: .zero, configuration: config)
     }
 
     private func attach(_ webView: WKWebView) {
+        pageNavigationShortcuts = BrowserPageNavigationShortcuts.attach(to: webView) { [weak self, weak webView] direction in
+            guard let self, let webView, self.webView === webView,
+                  let owner = self.owner, owner.selectedTab === self,
+                  let window = webView.window, window.isKeyWindow, window.attachedSheet == nil,
+                  let responder = window.firstResponder as? NSView,
+                  responder === webView || responder.isDescendant(of: webView),
+                  webView.inputContext == nil else { return }
+            if let controller = (window as? BrowserWindow)?.browserController {
+                guard controller.model === owner, !controller.isAddressPresented, !controller.passwords.isPresented else { return }
+            }
+            switch direction {
+            case .back: if self.canGoBack { owner.goBack() }
+            case .forward: if self.canGoForward { owner.goForward() }
+            }
+        }
         passwordAutofill = BrowserPasswordAutofill.attach(to: webView) { [weak self] candidate in
             self?.passwordCandidate = candidate
         }
@@ -480,6 +498,7 @@ final class BrowserTab: NSObject, Identifiable {
     }
 
     private func detachWebView() {
+        detachPageNavigationShortcuts()
         observations.forEach { $0.invalidate() }
         observations = []
         passwordAutofill?.invalidate()
@@ -487,6 +506,11 @@ final class BrowserTab: NSObject, Identifiable {
         passwordCandidate = nil
         webView.navigationDelegate = nil
         webView.uiDelegate = nil
+    }
+
+    fileprivate func detachPageNavigationShortcuts() {
+        pageNavigationShortcuts?.invalidate()
+        pageNavigationShortcuts = nil
     }
 
     func loadIfNeeded(force: Bool = false) {

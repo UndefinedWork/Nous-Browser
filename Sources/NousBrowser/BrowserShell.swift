@@ -283,9 +283,9 @@ private struct BrowserSidebar: View {
                     }
                     Spacer(minLength: 0)
                     HStack(spacing: 8) {
-                        GlassSymbolButton("chevron.left", label: L10n.string("Back"), help: L10n.string("Back") + "  ⌘[") { model.goBack() }
+                        GlassSymbolButton("chevron.left", label: L10n.string("Back"), help: L10n.string("Back") + "  ⌘← / ⌘[") { model.goBack() }
                             .disabled(model.selectedTab?.canGoBack != true)
-                        GlassSymbolButton("chevron.right", label: L10n.string("Forward"), help: L10n.string("Forward") + "  ⌘]") { model.goForward() }
+                        GlassSymbolButton("chevron.right", label: L10n.string("Forward"), help: L10n.string("Forward") + "  ⌘→ / ⌘]") { model.goForward() }
                             .disabled(model.selectedTab?.canGoForward != true)
                         Spacer(minLength: 0)
                         GlassSymbolButton(model.selectedTab?.isLoading == true ? "xmark" : "arrow.trianglehead.clockwise.rotate.90",
