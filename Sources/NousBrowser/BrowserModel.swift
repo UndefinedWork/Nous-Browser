@@ -103,6 +103,7 @@ final class BrowserModel {
     @ObservationIgnored private var closedTabs: [BrowserSession.Tab] = []
     @ObservationIgnored private var isRestoring = true
     @ObservationIgnored private var isShutDown = false
+    @ObservationIgnored var onLastTabClosed: (() -> Void)?
     /// Injectable so tests can age tabs without waiting.
     @ObservationIgnored var now: () -> Date = Date.init
 
@@ -186,7 +187,13 @@ final class BrowserModel {
     private var firstNormalTabIndex: Int { tabs.firstIndex { !$0.isPinned } ?? tabs.count }
 
     func closeTab(_ id: UUID) {
-        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        guard !isShutDown, let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        if tabs.count == 1, let onLastTabClosed {
+            // The window owns the final tab's lifetime and saves its intact
+            // session during shutdown. Standalone models retain the fallback.
+            onLastTabClosed()
+            return
+        }
         let tab = tabs[index]
         closedTabs.append(.init(id: tab.id, title: tab.title, url: tab.url, isPinned: tab.isPinned))
         if closedTabs.count > 20 { closedTabs.removeFirst() }
@@ -321,6 +328,7 @@ final class BrowserModel {
         guard !isShutDown else { return }
         persistSession()
         isShutDown = true
+        onLastTabClosed = nil
         saveTask?.cancel()
         saveTask = nil
         tabs.forEach { $0.shutdown() }

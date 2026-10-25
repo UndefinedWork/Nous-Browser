@@ -181,7 +181,10 @@ struct BrowserCommands: Commands {
             Button(L10n.string("New Window")) { windows.newWindow() }.keyboardShortcut("n")
             Button(L10n.string("Open Address…")) { controller?.toggleAddress() }.keyboardShortcut("l")
                 .disabled(controller == nil)
-            Divider()
+        }
+        // Replace the native Close group so its ⌘W does not compete with
+        // Close Tab while a browser window is active.
+        CommandGroup(replacing: .saveItem) {
             Button(L10n.string(controller == nil ? "Close Window" : "Close Tab")) {
                 if let controller { controller.closeTab() }
                 else { NSApp.keyWindow?.performClose(nil) }

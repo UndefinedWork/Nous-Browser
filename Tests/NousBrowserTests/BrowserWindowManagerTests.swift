@@ -137,6 +137,75 @@ struct BrowserWindowManagerTests {
         #expect(reloaded.restoredWindows == [first.session])
     }
 
+    @Test func closingTabsClosesOnlyTheirOwnWindowWhenItsFinalTabIsReached() throws {
+        let fixture = try fixture()
+        defer { fixture.cleanUp() }
+        let manager = fixture.manager
+        manager.restoreWindows()
+        let first = try #require(manager.activeContext)
+        let remainingTab = try #require(first.controller.model.selectedTab)
+        first.controller.newTab()
+        let second = try #require(manager.newWindow())
+        let otherTab = try #require(second.controller.model.selectedTab)
+        let otherPage = otherTab.webView
+
+        first.controller.closeTab()
+        #expect(manager.windows.count == 2)
+        #expect(first.controller.model.tabs.count == 1)
+        #expect(first.controller.model.selectedTab === remainingTab)
+        #expect(remainingTab.webView.navigationDelegate != nil)
+        #expect(second.controller.model.selectedTab === otherTab)
+        #expect(second.controller.model.selectedTab?.webView === otherPage)
+
+        // The manager's active window is the second one. The callback must
+        // still close the first tab's owning window, never the active peer.
+        first.controller.closeTab()
+        #expect(manager.windows.count == 1)
+        #expect(manager.activeContext === second)
+        #expect(first.controller.model.tabs.count == 1)
+        #expect(first.controller.model.selectedTab === remainingTab)
+        #expect(first.controller.model.onLastTabClosed == nil)
+        #expect(remainingTab.webView.navigationDelegate == nil)
+        #expect(second.controller.model.selectedTab?.webView === otherPage)
+        #expect(otherPage.navigationDelegate != nil)
+        let store = BrowserWorkspaceStore(sessionURL: fixture.sessionURL)
+        #expect(store.restoredWindows == [second.session])
+        let saved = try JSONDecoder().decode(BrowserSession.self, from: Data(contentsOf: store.sessionURL(for: first.session)))
+        #expect(saved.tabs.map(\.id) == [remainingTab.id])
+
+        // Late webpage close notifications from the old view cannot act on
+        // another window or replace its preserved final tab with a new one.
+        first.controller.model.closeTab(remainingTab.id)
+        #expect(manager.windows.count == 1)
+        #expect(first.controller.model.tabs.map(\.id) == [remainingTab.id])
+    }
+
+    @Test func closingTheFinalWindowsLastTabPersistsNoWindowsAndNewTabStartsOneBlankTab() throws {
+        let fixture = try fixture()
+        defer { fixture.cleanUp() }
+        let manager = fixture.manager
+        manager.restoreWindows()
+        let closed = try #require(manager.activeContext)
+        let lastID = try #require(closed.controller.model.selectedTabID)
+        closed.controller.closeTab()
+
+        #expect(manager.windows.isEmpty)
+        #expect(manager.activeController == nil)
+        #expect(closed.controller.model.tabs.map(\.id) == [lastID])
+        #expect(closed.controller.model.onLastTabClosed == nil)
+        #expect(BrowserWorkspaceStore(sessionURL: fixture.sessionURL).restoredWindows.isEmpty)
+
+        manager.newTab()
+        let fresh = try #require(manager.activeContext)
+        #expect(manager.windows.count == 1)
+        #expect(fresh !== closed)
+        #expect(fresh.controller.model.tabs.count == 1)
+        #expect(fresh.controller.model.selectedTabID != lastID)
+        #expect(fresh.controller.model.selectedTab?.url == nil)
+        #expect(fresh.controller.isAddressPresented)
+        #expect(BrowserWorkspaceStore(sessionURL: fixture.sessionURL).restoredWindows == [fresh.session])
+    }
+
     @Test func keyBrowserControllerClearsForSettingsAndReturnsWithoutLosingTheActiveWindow() throws {
         let fixture = try fixture()
         defer { fixture.cleanUp() }

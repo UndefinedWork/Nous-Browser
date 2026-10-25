@@ -179,6 +179,7 @@ final class BrowserWindowManager {
         }
         controller.onNewWindow = { [weak self] in _ = self?.newWindow() }
         controller.onCloseWindow = { [weak self] in self?.closeWindow(session.id) }
+        model.onLastTabClosed = { [weak self] in self?.closeWindow(session.id) }
         windows.append(context)
         model.persistSession()
         return context
