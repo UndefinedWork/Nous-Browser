@@ -1,0 +1,82 @@
+Tests/Fixtures/shortcut_test_server.py
+  s_3d6e78ea1e9f59::t_726ebf30f1eb31 1-233
+Sources/NousBrowser/BrowserNavigationShortcuts.swift
+  s_3d6e78ea1e9f59::t_1560b11aa6b4af 30-52,60-68,70-78
+  s_3d6e78ea1e9f59::t_29d8a8041f63b1 69
+README.md
+  s_3d6e78ea1e9f59::t_89eba32fd18db6 29,133
+  s_3d6e78ea1e9f59::t_d0a65b94e2212e 65-66,69-71
+Sources/NousBrowser/BrowserShell.swift
+  s_3d6e78ea1e9f59::t_dc4f674e4afbd9 135
+  s_3d6e78ea1e9f59::t_9b87fc77669585 128-134,175-182
+Sources/NousBrowser/NousBrowserApp.swift
+  s_3d6e78ea1e9f59::t_c5b1da0b2c79d7 26,33,51,95-109,111,232-234,256,259,262-286
+Sources/NousBrowser/BrowserModel.swift
+  s_3d6e78ea1e9f59::t_4cddfc1e12aff5 254,258-264,269-285,311-317,634,648
+  s_3d6e78ea1e9f59::t_161a4fc4b05b92 603
+  s_21528640f701eb::t_35d2d105bfd4e3 318
+Tests/NousBrowserTests/BrowserPageFindTests.swift
+  s_3d6e78ea1e9f59::t_8aee153f95d943 1-174,176-232
+  s_3d6e78ea1e9f59::t_314d44eb38a862 175
+Docs/KeyboardShortcuts.md
+  s_3d6e78ea1e9f59::t_709e8a8576ac5e 1-19
+Sources/NousBrowser/BrowserPageFind.swift
+  s_3d6e78ea1e9f59::t_a6e43dcf9ebb87 48,82,98
+  s_3d6e78ea1e9f59::t_3b361d39afe940 72
+  s_3d6e78ea1e9f59::t_fb753aa11dc219 1-47,49-71,73-81,83-97,99-253
+Tests/NousBrowserTests/BrowserReloadZoomShortcutTests.swift
+  s_3d6e78ea1e9f59::t_8ab77dc9e8c972 1-58,60-66,68-158,223-224
+  s_3d6e78ea1e9f59::t_a2fa2464d4dc82 59,67,159-222
+Docs/QA-1.0.2.md
+  s_3d6e78ea1e9f59::t_2c54083715f7f9 1-14
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_e5fac9a61b3c14 22,24
+Resources/Localization/de.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_decc23994a4e9b 124-135
+Resources/Localization/en.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_55dbb8098407fc 125-136
+Resources/Localization/es.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_d94fb21b620788 124-135
+Resources/Localization/fr.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_7947863f03fce3 124-135
+Resources/Localization/it.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_6db06fada328fc 124-135
+Resources/Localization/ja.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_2357115514ad6e 125-136
+Resources/Localization/ko.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_6d3e94c1e4330e 125-136
+Resources/Localization/pt-BR.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_be982be99eccc2 124-135
+Resources/Localization/ru.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_af74e33d379be1 124-135
+Resources/Localization/source.json
+  s_3d6e78ea1e9f59::t_e411791c971cf8 125-137
+Resources/Localization/zh-Hans.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_9235a2a2bd3ce2 125-136
+Resources/Localization/zh-Hant.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_70d3a297549f56 125-136
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "86893da6da70a462c1b9a92a100b13a066c48c2a",
+  "prompts": {},
+  "sessions": {
+    "s_21528640f701eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea77bad6-92fe-4ff4-ab98-d894e3fcfefd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    },
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
