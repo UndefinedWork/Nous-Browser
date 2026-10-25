@@ -1,0 +1,3 @@
+/* Nous Browser */
+"NSCameraUsageDescription" = "許可したWebサイトでカメラを使用します。ビデオ会議などに利用できます。";
+"NSMicrophoneUsageDescription" = "許可したWebサイトでマイクを使用します。音声通話やビデオ通話などに利用できます。";
