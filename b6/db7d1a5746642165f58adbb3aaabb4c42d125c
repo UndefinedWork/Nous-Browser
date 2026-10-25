@@ -1,0 +1,27 @@
+Sources/NousBrowser/BrowserWindowManager.swift
+  s_3d6e78ea1e9f59::t_5c6973a94404d8 280-283
+Tests/NousBrowserTests/BrowserWindowManagerTests.swift
+  s_3d6e78ea1e9f59::t_5c6973a94404d8 318-353
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_333b97eaa5c2f5 24
+README.md
+  s_3d6e78ea1e9f59::t_333b97eaa5c2f5 14,29
+Sources/NousBrowser/BrowserShell.swift
+  s_3d6e78ea1e9f59::t_333b97eaa5c2f5 282-284,305
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "b6db7d1a5746642165f58adbb3aaabb4c42d125c",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
