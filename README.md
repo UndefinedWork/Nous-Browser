@@ -100,7 +100,7 @@ Cookie、Local Storage 等网站数据由 WebKit 的持久化存储管理。正�
 安装 Xcode 并完成首次启动配置，在仓库根目录运行：
 
 ```sh
-./Scripts/build.sh
+zsh Scripts/build.sh
 open "build/Nous Browser.app"
 ```
 
@@ -110,7 +110,7 @@ open "build/Nous Browser.app"
 
 ```sh
 swift test
-./Scripts/run-password-autofill-tests.sh
+zsh Scripts/run-password-autofill-tests.sh
 ```
 
 `swift test` 运行自动化测试。部分需要可见网页和完整应用事件循环的填写场景会在命令行环境中跳过；第二个脚本使用独立的原生测试窗口补充这些场景，需要当前 Mac 的图形桌面会话。
@@ -124,3 +124,13 @@ python3 Tests/Fixtures/browser_test_server.py
 ```
 
 在应用中访问 `http://127.0.0.1:8765/`，使用页面提供的虚构账号登录、保存测试备注，然后正常退出并重新打开应用，检查会话和备注是否保留。`/browser-profile` 提供浏览器身份检查，`/web-compatibility` 提供网页全屏与弹窗行为检查。
+
+## 打包安装文件
+
+完成 Release 构建后运行：
+
+```sh
+zsh Scripts/package-release.sh
+```
+
+安装镜像、ZIP 和 SHA256 校验文件生成在 `dist/`。脚本会核对版本、实际 CPU 架构和应用签名，并验证 DMG 与 ZIP 的内容。
