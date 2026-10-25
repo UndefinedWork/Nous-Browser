@@ -120,30 +120,79 @@ private struct PaletteButtonStyle: ButtonStyle {
 
 struct NewTabView: View {
     let controller: BrowserController
+    private static let logo = Bundle.main.url(forResource: "NewTabLogo", withExtension: "png")
+        .flatMap { NSImage(contentsOf: $0) }
+        ?? NSImage(systemSymbolName: "safari", accessibilityDescription: nil)!
+
     var body: some View {
-        VStack(spacing: 24) {
-            Image(systemName: "safari").font(.system(size: 48, weight: .ultraLight)).foregroundStyle(.primary.opacity(0.45))
-            VStack(spacing: 8) {
-                Text("Nous Browser").font(.system(size: 27, weight: .medium)).tracking(-0.7)
-                Text(L10n.string("More room for the web.")).font(.system(size: 13)).foregroundStyle(.secondary)
-            }
-            Button(action: controller.showAddress) {
-                HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass")
-                    Text(L10n.string("Search or enter address"))
-                    Spacer()
-                    Text("⌘L").font(.system(size: 11)).foregroundStyle(.tertiary)
+        VStack(spacing: 0) {
+            Image(nsImage: Self.logo)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFill()
+                .frame(width: 48, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(.primary.opacity(0.08), lineWidth: 0.5)
                 }
-                .font(.system(size: 13))
+                .shadow(color: .black.opacity(0.08), radius: 2.5, y: 2)
+                .accessibilityHidden(true)
+
+            Text(verbatim: "Nous Browser")
+                .font(.custom("InstrumentSerif-Regular", size: 24))
+                .foregroundStyle(.primary)
+                .frame(height: 24)
+                .padding(.top, 12)
+
+            Button(action: controller.showAddress) {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 10, weight: .medium))
+                        .frame(width: 16, height: 18)
+                    Text(L10n.string("Search or enter URL"))
+                        .font(.system(size: 12))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                    Spacer(minLength: 6)
+                    Text(verbatim: "⌘L")
+                        .font(.system(size: 12, weight: .medium))
+                }
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 16).padding(.vertical, 14)
-                .frame(maxWidth: 340)
-                .glassEffect(.regular.interactive(), in: Capsule())
-            }.buttonStyle(.plain)
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(NewTabSearchButtonStyle())
+            .frame(maxWidth: 280)
+            .accessibilityLabel(L10n.string("Search or enter URL"))
+            .help(L10n.string("Search or enter URL") + "  ⌘L")
+            .padding(.top, 24)
         }
+        // At the reference 600pt window height, the 148pt brand/search group
+        // starts at y=192. Keep that balanced placement as the window resizes.
+        .padding(.horizontal, 24)
+        .padding(.bottom, 68)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .windowDragBackground()
         .background(Color(nsColor: .textBackgroundColor))
+    }
+}
+
+private struct NewTabSearchButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var hovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .glassEffect(.regular.interactive(), in: Capsule())
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.16 : 0.06), radius: 12, y: 4)
+            .scaleEffect(configuration.isPressed ? 0.965 : hovered ? 1.025 : 1)
+            .onHover { hovered = $0 }
+            .animation(reduceMotion ? nil : BrowserMotion.interaction, value: hovered)
+            .animation(reduceMotion ? nil : BrowserMotion.interaction, value: configuration.isPressed)
     }
 }
 
@@ -189,7 +238,7 @@ private struct AddressInput: NSViewRepresentable {
     func makeNSView(context: Context) -> Field {
         let field = Field()
         field.stringValue = text
-        field.placeholderString = L10n.string("Search or enter address")
+        field.placeholderString = L10n.string("Search or enter URL")
         field.font = .systemFont(ofSize: 18)
         field.textColor = .labelColor
         field.isBezeled = false
@@ -197,7 +246,7 @@ private struct AddressInput: NSViewRepresentable {
         field.focusRingType = .none
         field.lineBreakMode = .byTruncatingTail
         field.delegate = context.coordinator
-        field.setAccessibilityLabel(L10n.string("Search or enter address"))
+        field.setAccessibilityLabel(L10n.string("Search or enter URL"))
         field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return field
     }

@@ -20,6 +20,8 @@ cp "$PROJECT_DIR/Resources/Info.plist" "$STAGED_APP_DIR/Contents/Info.plist"
 for LOCALIZATION_DIR in "$PROJECT_DIR"/Resources/Localization/*.lproj(N/); do
     cp -R "$LOCALIZATION_DIR" "$STAGED_APP_DIR/Contents/Resources/"
 done
+cp "$PROJECT_DIR/Resources/AppIcon.png" "$STAGED_APP_DIR/Contents/Resources/NewTabLogo.png"
+cp -R "$PROJECT_DIR/Resources/Fonts" "$STAGED_APP_DIR/Contents/Resources/Fonts"
 xcrun swift "$PROJECT_DIR/Scripts/make-icon.swift" "$ICON_WORK_DIR"
 iconutil -c icns "$ICON_WORK_DIR/AppIcon.iconset" -o "$STAGED_APP_DIR/Contents/Resources/AppIcon.icns"
 codesign --force --sign - "$STAGED_APP_DIR"
