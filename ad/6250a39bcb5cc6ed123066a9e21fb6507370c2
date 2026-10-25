@@ -1,0 +1,27 @@
+README.md
+  s_3d6e78ea1e9f59::t_a4bcee66799106 26
+Sources/NousBrowser/NousBrowserApp.swift
+  s_3d6e78ea1e9f59::t_a4bcee66799106 95-97,99-101
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_a4bcee66799106 24
+Sources/NousBrowser/BrowserShell.swift
+  s_3d6e78ea1e9f59::t_a4bcee66799106 202,496,511-513,518,520,532,534-535,537-545,558,563,592,603-628
+  s_3d6e78ea1e9f59::t_a8611be2dbb6f1 533,536
+  s_3d6e78ea1e9f59::t_d5a3a15f57f7f5 629
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "ad6250a39bcb5cc6ed123066a9e21fb6507370c2",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
