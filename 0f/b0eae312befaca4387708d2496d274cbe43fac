@@ -1,0 +1,72 @@
+Resources/Localization/fr.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_f86738fa35a14c 97-123
+Resources/Localization/zh-Hans.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_f86738fa35a14c 98-124
+README.md
+  s_3d6e78ea1e9f59::t_5942e17812cb21 18,27,43,57,79
+Resources/Localization/ja.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_f86738fa35a14c 98-124
+Sources/NousBrowser/BrowserPasswordsUI.swift
+  s_3d6e78ea1e9f59::t_c88cd61eac4883 11,25,28-29,41,86,328
+Resources/Localization/zh-Hant.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_2cabcc9f3ea57e 124
+  s_3d6e78ea1e9f59::t_f86738fa35a14c 98-123
+Resources/Localization/en.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_f86738fa35a14c 98-124
+Sources/NousBrowser/BrowserWindowManager.swift
+  s_3d6e78ea1e9f59::t_1f1f3afb08ec5b 11-12,33,37,155,162
+  s_3d6e78ea1e9f59::t_289601996940bd 15,28-30,169,172-175,191,218,263-264,276
+Resources/Localization/es.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_f86738fa35a14c 97-123
+Resources/Localization/it.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_f86738fa35a14c 97-123
+Resources/Localization/ko.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_f86738fa35a14c 98-124
+Resources/Localization/ru.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_f86738fa35a14c 97-123
+Resources/Localization/de.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_f86738fa35a14c 97-123
+Resources/Localization/source.json
+  s_3d6e78ea1e9f59::t_f86738fa35a14c 98-125
+Sources/NousBrowser/BrowserSettings.swift
+  s_3d6e78ea1e9f59::t_3063f7f1f85340 41,44,68,89
+  s_3d6e78ea1e9f59::t_6a54a6d61a9e36 1-40,42-43,45-67,69-88,90-236
+Sources/NousBrowser/AddressPalette.swift
+  s_3d6e78ea1e9f59::t_5ddd5c65285163 15-18,33-34,36-55,59,79,81,85-86,93
+Sources/NousBrowser/QuickLinkIcon.swift
+  s_3d6e78ea1e9f59::t_5ddd5c65285163 1-35
+Sources/NousBrowser/NousBrowserApp.swift
+  s_3d6e78ea1e9f59::t_1f1f3afb08ec5b 9-13,24,28-29,32,67,71
+  s_3d6e78ea1e9f59::t_b7a5aedeff722d 174,177-180,185-192
+Tests/NousBrowserTests/BrowserWindowManagerTests.swift
+  s_3d6e78ea1e9f59::t_289601996940bd 88,140-179
+  s_3d6e78ea1e9f59::t_1d207783d4d681 38,57-60,77-87
+  s_3d6e78ea1e9f59::t_83d59670d9dfc6 89
+Tests/NousBrowserTests/BrowserPreferencesTests.swift
+  s_3d6e78ea1e9f59::t_f982ea951dfdee 1-168
+Resources/Localization/pt-BR.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_f86738fa35a14c 97-123
+Sources/NousBrowser/BrowserPreferences.swift
+  s_3d6e78ea1e9f59::t_f0c485c595902a 1-9,11-14,17-196
+  s_3d6e78ea1e9f59::t_def2b678036db4 10,15-16
+Sources/NousBrowser/BrowserModel.swift
+  s_3d6e78ea1e9f59::t_f0c485c595902a 213-214,232,249
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_5942e17812cb21 24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "0fb0eae312befaca4387708d2496d274cbe43fac",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
