@@ -1,0 +1,46 @@
+Tests/NousBrowserTests/BrowserPageNavigationShortcutTests.swift
+  s_3d6e78ea1e9f59::t_6e0de3ff0cc842 132-137,139-141
+  s_3d6e78ea1e9f59::t_06b564e98d516e 53
+  s_3d6e78ea1e9f59::t_4115e032a2affb 1-52,55-116,118-121,123-124,126-131,142-151
+  s_3d6e78ea1e9f59::t_6f3457d0944e5f 54
+  s_3d6e78ea1e9f59::t_bfff1bad0d22bc 117,122,125,138
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_8df4906a7dbbd6 24
+Sources/NousBrowser/BrowserWindowManager.swift
+  s_3d6e78ea1e9f59::t_8df4906a7dbbd6 212,216
+Sources/NousBrowser/BrowserShell.swift
+  s_3d6e78ea1e9f59::t_8df4906a7dbbd6 286,288
+Sources/NousBrowser/BrowserModel.swift
+  s_3d6e78ea1e9f59::t_8257339c54d508 194,405,439,444-458,501,511-513
+  s_3d6e78ea1e9f59::t_e68d36c3be360b 514-515
+Tests/NousBrowserTests/BrowserNavigationShortcutTests.swift
+  s_3d6e78ea1e9f59::t_bfd81e0229bb4a 1-43,45-68,70-71,73-76,79-89,92-116,119-129,132-142
+  s_3d6e78ea1e9f59::t_ba76581b827720 44,69,72,77-78,90-91,117-118,130-131
+Sources/NousBrowser/BrowserNavigationShortcuts.swift
+  s_3d6e78ea1e9f59::t_8df4906a7dbbd6 1-23,25-29,32-36,38,40-41,49-59
+  s_3d6e78ea1e9f59::t_8257339c54d508 30-31,39,42-48
+  s_3d6e78ea1e9f59::t_549fd37d372aaa 37
+  s_3d6e78ea1e9f59::t_a33d92624ca02d 24
+README.md
+  s_3d6e78ea1e9f59::t_8df4906a7dbbd6 26
+  s_3d6e78ea1e9f59::t_68ba58d51718e3 62
+Sources/NousBrowser/BrowserPageNavigationShortcuts.swift
+  s_3d6e78ea1e9f59::t_bd31cc61bfbfd6 1,44,74,79,109,119-123
+  s_3d6e78ea1e9f59::t_8257339c54d508 2-43,45-73,75-78,80-108,110-118,124-127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "795f0f88dacc052f1a4c41d2e80df331a8d5cd48",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
