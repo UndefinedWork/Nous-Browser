@@ -1,0 +1,32 @@
+Tests/NousBrowserTests/BrowserUserAgentTests.swift
+  s_3d6e78ea1e9f59::t_2e7d3e43b373f0 33,46-48,51-89,92-146,148-150,152-165,167-201,203-205,207-246,248
+  s_3d6e78ea1e9f59::t_b251f2d9607dbc 90-91,147,151,166,202,206,247
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_0b6504f07da6e6 22,24
+README.md
+  s_3d6e78ea1e9f59::t_0b6504f07da6e6 29,137
+Sources/NousBrowser/BrowserUserAgent.swift
+  s_3d6e78ea1e9f59::t_4e0aa4dc2a7196 29-32
+  s_3d6e78ea1e9f59::t_47a0ba6e30a884 7-13,21-28,33-130
+Sources/NousBrowser/BrowserModel.swift
+  s_3d6e78ea1e9f59::t_358f80a1aec822 512,551,627-628,722-724,884,905-917,921,928-931
+Docs/QA-1.0.7.md
+  s_3d6e78ea1e9f59::t_4bf432239a8d76 13,17-30
+  s_3d6e78ea1e9f59::t_0b6504f07da6e6 1-12,14-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c9c87b1113c1eafb1bb4aac687327f662f902115",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
