@@ -1,0 +1,26 @@
+Docs/QA-1.0.5.md
+  s_3d6e78ea1e9f59::t_4fb53bf6bdafee 9
+  s_3d6e78ea1e9f59::t_10734a7ce2c623 1-8,10-11
+Sources/NousBrowser/BrowserShell.swift
+  s_3d6e78ea1e9f59::t_0250bae20f4eea 677-683
+README.md
+  s_3d6e78ea1e9f59::t_c7b3b208f69fdb 29,137
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_5601281ec49a74 22,24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "599e054c4f5acaff16fe4d051c8be1c90e9edfbf",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
