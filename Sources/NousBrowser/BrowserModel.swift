@@ -185,6 +185,26 @@ final class BrowserModel {
         return tab
     }
 
+    func canAdoptTransferredTab(withID id: UUID) -> Bool {
+        !isShutDown && !tabs.contains(where: { $0.id == id })
+    }
+
+    /// `index` is an insertion slot in the destination before the transfer.
+    /// Keep the incoming pin status and the existing tabs' relative order.
+    @discardableResult
+    func adoptTransferredTab(_ tab: BrowserTab, at index: Int) -> Bool {
+        guard tab.owner == nil, canAdoptTransferredTab(withID: tab.id) else { return false }
+        let boundary = firstNormalTabIndex
+        let destination = tab.isPinned
+            ? min(boundary, max(0, index))
+            : min(tabs.count, max(boundary, index))
+        tab.owner = self
+        tabs.insert(tab, at: destination)
+        selectedTabID = tab.id
+        persistSession()
+        return true
+    }
+
     func selectTab(_ id: UUID) {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
         selectedTabID = id

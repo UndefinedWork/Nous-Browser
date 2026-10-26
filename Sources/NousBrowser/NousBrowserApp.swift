@@ -27,6 +27,8 @@ final class BrowserController {
     @ObservationIgnored var onNewWindow: (() -> Void)?
     @ObservationIgnored var onCloseWindow: (() -> Void)?
     @ObservationIgnored var onMoveTabToNewWindow: ((UUID, NSPoint) -> Bool)?
+    @ObservationIgnored var onMoveTabToWindow: ((UUID, BrowserController, Int) -> Bool)?
+    @ObservationIgnored var tabDragCoordinator: BrowserTabDragCoordinator?
 
     init(model: BrowserModel = BrowserModel(), appearance: BrowserAppearanceSettings = BrowserAppearanceSettings(),
          preferences: BrowserPreferences = BrowserPreferences(), history: BrowserHistoryStore? = nil) {
@@ -97,6 +99,10 @@ final class BrowserController {
         onMoveTabToNewWindow?(id, point) ?? false
     }
 
+    func moveTab(_ id: UUID, to target: BrowserController, at index: Int) -> Bool {
+        onMoveTabToWindow?(id, target, index) ?? false
+    }
+
     func selectNextTab(backward: Bool = false) {
         if isAddressPresented { dismissAddress() }
         model.selectNextTab(backward: backward)
@@ -121,6 +127,9 @@ final class BrowserController {
         onNewWindow = nil
         onCloseWindow = nil
         onMoveTabToNewWindow = nil
+        onMoveTabToWindow = nil
+        tabDragCoordinator?.unregister(self)
+        tabDragCoordinator = nil
         model.shutdown()
     }
 
@@ -243,10 +252,6 @@ struct BrowserCommands: Commands {
             Divider()
             Button(L10n.string("Copy Current Link")) { controller?.copyURL() }.keyboardShortcut("c", modifiers: [.command, .shift])
                 .disabled(controller?.model.selectedTab?.url == nil)
-            Button(L10n.string("Open in Safari")) {
-                guard let url = controller?.model.selectedTab?.url else { return }
-                NSWorkspace.shared.open([url], withApplicationAt: URL(fileURLWithPath: "/Applications/Safari.app"), configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
-            }.disabled(controller?.model.selectedTab?.url == nil)
         }
         CommandMenu(L10n.string("Passwords")) {
             Button(L10n.string("Fill Saved Password…")) { controller?.passwords.presentFill() }

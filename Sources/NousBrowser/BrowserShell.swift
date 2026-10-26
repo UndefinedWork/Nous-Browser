@@ -197,6 +197,20 @@ private struct BrowserSidebar: View {
     @State private var lastEdgeScrollUptime: TimeInterval = 0
     @State private var dragWindow = SidebarDragWindowReference()
 
+    private var incomingIndex: Int? { controller.tabDragCoordinator?.insertionIndex(in: controller) }
+
+    private var insertionGap: some View {
+        Capsule()
+            .fill(Color.primary.opacity(0.045))
+            .overlay { Capsule().strokeBorder(Color.primary.opacity(0.10), lineWidth: 1) }
+            .frame(height: BrowserDesign.rowHeight)
+            .accessibilityHidden(true)
+    }
+
+    private func registerDragEndpoint(_ viewport: CGSize) {
+        controller.tabDragCoordinator?.register(controller, reference: dragWindow, viewport: viewport, metrics: scrollMetrics)
+    }
+
     private var pinnedIDs: Set<UUID> { Set(model.tabs.filter(\.isPinned).map(\.id)) }
     private var orderedTabs: [BrowserTab] {
         guard dragSession != nil, draftOrder.count == model.tabs.count else { return model.tabs }
@@ -212,7 +226,8 @@ private struct BrowserSidebar: View {
                 // behind both floating button groups instead of hitting a shelf.
                 ScrollView {
                     VStack(spacing: SidebarTabDragGeometry.rowSpacing) {
-                        ForEach(orderedTabs) { tab in
+                        ForEach(Array(orderedTabs.enumerated()), id: \.element.id) { index, tab in
+                            if incomingIndex == index { insertionGap }
                             BrowserTabRow(tab: tab, selected: model.selectedTabID == tab.id,
                                           select: { withAnimation(reduceMotion ? nil : BrowserMotion.tabSwitch) { model.selectTab(tab.id) } },
                                           close: { withAnimation(reduceMotion ? nil : BrowserMotion.spring) { model.closeTab(tab.id) } },
@@ -242,9 +257,10 @@ private struct BrowserSidebar: View {
                                                            value: [tab.id: rowGeometry.frame(in: .named(SidebarTabDragGeometry.coordinateSpace))])
                                 }
                             }
-                            .opacity(dragSession?.id == tab.id ? 0 : 1)
+                            .opacity((controller.tabDragCoordinator?.hides(tab.id) ?? (dragSession?.id == tab.id)) ? 0 : 1)
                             .transition(.asymmetric(insertion: .identity, removal: .scale(scale: 0.92).combined(with: .opacity)))
                         }
+                        if incomingIndex == orderedTabs.count { insertionGap }
                     }
                     .padding(.horizontal, BrowserDesign.inset)
                     .padding(.vertical, SidebarTabDragGeometry.contentInset)
@@ -260,6 +276,7 @@ private struct BrowserSidebar: View {
                         SidebarDragDiagnostics.log("scroll.geometry offset=\(metrics.offsetY) max=\(metrics.maximumOffsetY)")
                     }
                     scrollMetrics = metrics
+                    registerDragEndpoint(geometry.size)
                     updateDraftDestination()
                 }
                 .onPreferenceChange(SidebarTabFramePreference.self) { rowFrames = $0 }
@@ -267,6 +284,7 @@ private struct BrowserSidebar: View {
                 .clipped()
                 .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.tabs.map(\.id))
                 .animation(reduceMotion ? nil : BrowserMotion.spring, value: draftOrder)
+                .animation(reduceMotion ? nil : BrowserMotion.spring, value: incomingIndex)
 
                 VStack(spacing: 0) {
                     SidebarEdgeGlass(edge: .top,
@@ -281,7 +299,7 @@ private struct BrowserSidebar: View {
                 .frame(width: geometry.size.width, alignment: .leading)
                 .allowsHitTesting(false)
 
-                if let session = dragSession, let tab = model.tabs.first(where: { $0.id == session.id }) {
+                if controller.tabDragCoordinator == nil, let session = dragSession, let tab = model.tabs.first(where: { $0.id == session.id }) {
                     SidebarFloatingTab(tab: tab, isSettling: session.isSettling)
                         .frame(width: max(0, geometry.size.width - BrowserDesign.inset * 2))
                         .position(session.center)
@@ -334,8 +352,11 @@ private struct BrowserSidebar: View {
                                                        blockedGestureID = nil
                                                    })
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    SidebarEdgeAutoScrollDriver(isActive: dragSession?.isSettling == false,
-                                                onTick: { dragTick(viewportHeight: geometry.size.height, tick: $0) })
+                    SidebarEdgeAutoScrollDriver(isActive: dragSession?.isSettling == false || incomingIndex != nil,
+                                                onTick: {
+                                                    dragTick(viewportHeight: geometry.size.height, tick: $0)
+                                                    incomingAutoScrollTick(viewportHeight: geometry.size.height)
+                                                })
                         .frame(width: 0, height: 0)
                 }
                 .allowsHitTesting(false)
@@ -344,8 +365,9 @@ private struct BrowserSidebar: View {
             .onChange(of: pinnedIDs) { _, _ in cancelIfModelChanged() }
             .onChange(of: model.isSidebarVisible) { _, visible in if !visible { cancelDrag() } }
             .onChange(of: controller.isAddressPresented) { _, presented in if presented { cancelDrag() } }
-            .onChange(of: geometry.size) { _, _ in cancelDrag() }
-            .onDisappear { clearDrag() }
+            .onChange(of: geometry.size) { _, size in cancelDrag(); registerDragEndpoint(size) }
+            .onAppear { registerDragEndpoint(geometry.size) }
+            .onDisappear { clearDrag(); controller.tabDragCoordinator?.unregister(controller) }
         }
         .contextMenu {
             Button(L10n.string("Open Address…"), systemImage: "magnifyingglass", action: controller.showAddress)
@@ -371,6 +393,11 @@ private struct BrowserSidebar: View {
                                                 initialPointer: value.startLocation, pointer: value.location,
                                                 center: CGPoint(x: rect.midX, y: rect.midY))
             SidebarDragDiagnostics.log("drag.begin rows=\(order.count) startY=\(value.startLocation.y) rowY=\(rect.minY) offset=\(scrollMetrics.offsetY) max=\(scrollMetrics.maximumOffsetY)")
+            if let tab = model.tabs.first(where: { $0.id == id }),
+               let point = dragWindow.screenPoint(forSidebarPoint: value.location) {
+                controller.tabDragCoordinator?.begin(tab: tab, source: controller, at: point, rowSize: rect.size,
+                    grabOffset: CGPoint(x: value.startLocation.x - rect.minX, y: value.startLocation.y - rect.minY))
+            }
             NSCursor.closedHand.set()
         }
         guard var session = dragSession, session.id == id, !session.isSettling else { return }
@@ -381,9 +408,12 @@ private struct BrowserSidebar: View {
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) { dragSession = session }
+        if let point = dragWindow.screenPoint(forSidebarPoint: value.location) { controller.tabDragCoordinator?.update(at: point) }
         // A batch of drag events can finish before SwiftUI updates the timer
         // representable. Give edge entry an immediate, time-limited response.
-        autoScrollTick(viewportHeight: viewportHeight, tick: 0)
+        if let point = dragWindow.screenPoint(forSidebarPoint: value.location), !isOutsideSourceWindow(point) {
+            autoScrollTick(viewportHeight: viewportHeight, tick: 0)
+        }
         updateDraftDestination()
     }
 
@@ -405,7 +435,7 @@ private struct BrowserSidebar: View {
         guard let session = dragSession, session.id == id, !session.isSettling else { return }
         // The final gesture event is authoritative. Global mouse state may lag
         // native tracking events (including accessibility-driven input).
-        if let point = dragWindow.screenPoint(forSidebarPoint: value.location), finishExternalDrop(at: point) { return }
+        if let point = dragWindow.screenPoint(forSidebarPoint: value.location), finishWindowDrop(at: point) { return }
         let bounds = CGRect(origin: .zero, size: viewport).insetBy(dx: -24, dy: -40)
         guard bounds.contains(value.location), model.tabs.map(\.id) == session.originalOrder,
               pinnedIDs == session.pinnedIDs else {
@@ -439,6 +469,7 @@ private struct BrowserSidebar: View {
                                  y: SidebarTabDragGeometry.contentInset + CGFloat(destination) * SidebarTabDragGeometry.stride
                                     + BrowserDesign.rowHeight / 2 - scrollMetrics.offsetY)
         NSCursor.arrow.set()
+        controller.tabDragCoordinator?.completeTransfer(to: controller, index: destination)
         withAnimation(reduceMotion ? nil : BrowserMotion.spring, completionCriteria: .logicallyComplete) {
             dragSession = session
             if commit { model.moveTab(session.id, to: destination) }
@@ -449,7 +480,9 @@ private struct BrowserSidebar: View {
         }
     }
 
-    private func clearDrag(keepBlockedGesture: Bool = false) {
+    private func clearDrag(keepBlockedGesture: Bool = false, keepingFloatingImage: Bool = false) {
+        if !keepingFloatingImage, let coordinator = controller.tabDragCoordinator,
+           coordinator.sourceID == ObjectIdentifier(controller), !coordinator.isSettling { coordinator.cancel() }
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
@@ -465,7 +498,7 @@ private struct BrowserSidebar: View {
         if dragSession?.id == id, dragSession?.isSettling == false {
             let point = dragWindow.lastDragScreenPoint ?? NSEvent.mouseLocation
             if NSEvent.pressedMouseButtons & 1 == 0 {
-                if finishExternalDrop(at: point) { return }
+                if finishWindowDrop(at: point) { return }
                 cancelDrag()
             } else if !isOutsideSourceWindow(point) {
                 cancelDrag()
@@ -485,20 +518,30 @@ private struct BrowserSidebar: View {
     }
 
     @discardableResult
-    private func finishExternalDrop(at point: NSPoint) -> Bool {
+    private func finishWindowDrop(at point: NSPoint) -> Bool {
         guard let session = dragSession, !session.isSettling,
-              blockedGestureID != session.id, isOutsideSourceWindow(point),
+              blockedGestureID != session.id,
               model.tabs.map(\.id) == session.originalOrder, pinnedIDs == session.pinnedIDs else { return false }
+        let coordinator = controller.tabDragCoordinator
+        let destination = coordinator?.destination(at: point)
+        guard destination != nil || isOutsideSourceWindow(point) else { return false }
         let id = session.id
         // Consume the session before activating or closing windows. Late up,
         // gesture cancellation and resign-key callbacks cannot transfer twice.
-        clearDrag()
-        _ = controller.moveTabToNewWindow(id, at: point)
+        coordinator?.prepareForDrop()
+        clearDrag(keepingFloatingImage: true)
+        let moved: Bool
+        if let destination {
+            moved = controller.moveTab(id, to: destination.controller, at: destination.index)
+        } else {
+            moved = controller.moveTabToNewWindow(id, at: point)
+        }
+        if !moved { coordinator?.cancel() }
         return true
     }
 
     private func pointerReleased(_ point: NSPoint) {
-        if finishExternalDrop(at: point) { return }
+        if finishWindowDrop(at: point) { return }
         guard let session = dragSession else { return }
         let token = session.token
         Task { @MainActor in
@@ -510,12 +553,31 @@ private struct BrowserSidebar: View {
     }
 
     private func dragTick(viewportHeight: CGFloat, tick: Int) {
+        guard dragSession?.isSettling == false else { return }
         let point = dragSession.flatMap { dragWindow.screenPoint(forSidebarPoint: $0.pointer) }
             ?? NSEvent.mouseLocation
         if dragSession?.awaitsExternalRelease == true, NSEvent.pressedMouseButtons & 1 == 0,
-           finishExternalDrop(at: NSEvent.mouseLocation) { return }
+           finishWindowDrop(at: NSEvent.mouseLocation) { return }
         guard !isOutsideSourceWindow(point) else { lastEdgeScrollUptime = 0; return }
         autoScrollTick(viewportHeight: viewportHeight, tick: tick)
+    }
+
+    private func incomingAutoScrollTick(viewportHeight: CGFloat) {
+        guard let pointer = controller.tabDragCoordinator?.incomingPointer(in: controller) else { return }
+        let band: CGFloat = 84
+        let velocity: CGFloat
+        if pointer.y < band { velocity = -600 * min(1, max(0, (band - pointer.y) / band)) }
+        else if pointer.y > viewportHeight - band { velocity = 600 * min(1, max(0, (pointer.y - viewportHeight + band) / band)) }
+        else { lastEdgeScrollUptime = 0; return }
+        let now = ProcessInfo.processInfo.systemUptime
+        let dt = lastEdgeScrollUptime == 0 ? 1.0 / 60.0 : min(0.05, max(0, now - lastEdgeScrollUptime))
+        lastEdgeScrollUptime = now
+        let base = scrollPosition.isPositionedByUser ? scrollMetrics.offsetY : scrollPosition.y ?? scrollMetrics.offsetY
+        let offset = min(scrollMetrics.maximumOffsetY, max(0, base + velocity * CGFloat(dt)))
+        guard abs(offset - base) > 0.1 else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { scrollPosition.scrollTo(y: offset) }
     }
 
     private func cancelIfModelChanged() {

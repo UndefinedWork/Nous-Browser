@@ -12,6 +12,7 @@ final class BrowserWindowManager {
     let preferences: BrowserPreferences
     let history: BrowserHistoryStore
     let passwordImporter = BrowserPasswordController()
+    let tabDragCoordinator = BrowserTabDragCoordinator()
     private(set) var windows: [BrowserWindowContext] = []
     private(set) var activeWindowID: UUID?
     private(set) var keyWindowID: UUID?
@@ -112,7 +113,48 @@ final class BrowserWindowManager {
         activate(destination)
         transferred.prepareAfterTransfer()
         if showsWindows, transferred.hasWebContent { destination.window.makeFirstResponder(transferred.webView) }
+        tabDragCoordinator.completeTransfer(to: destination.controller, index: 0)
         return destination
+    }
+
+    /// Insert the existing tab into another window, preserving its WebKit
+    /// instance, history and pin status. The slot precedes destination tabs.
+    @discardableResult
+    func moveTab(_ id: UUID, from sourceID: UUID, to destinationID: UUID, at index: Int) -> Bool {
+        guard !isTerminating, sourceID != destinationID,
+              let source = windows.first(where: { $0.session.id == sourceID }),
+              let destination = windows.first(where: { $0.session.id == destinationID }),
+              let sourceIndex = source.controller.model.tabs.firstIndex(where: { $0.id == id }),
+              destination.controller.model.canAdoptTransferredTab(withID: id) else { return false }
+        let sourceModel = source.controller.model
+        let destinationModel = destination.controller.model
+        let previousSelection = sourceModel.selectedTabID
+        let tab = sourceModel.tabs[sourceIndex]
+        guard tab.isOwned(by: sourceModel), tab.webView.fullscreenState == .notInFullscreen else { return false }
+
+        if previousSelection == id {
+            source.controller.find.dismiss()
+            source.controller.passwords.dismiss()
+        }
+        guard let transferred = sourceModel.takeTabForTransfer(id) else { return false }
+        guard destinationModel.adoptTransferredTab(transferred, at: index) else {
+            // Defensive rollback; there is no suspension between the preflight
+            // and adoption, so a healthy destination cannot change underneath us.
+            _ = sourceModel.adoptTransferredTab(transferred, at: sourceIndex)
+            if let previousSelection { sourceModel.selectTab(previousSelection) }
+            return false
+        }
+        destination.controller.find.dismiss()
+        destination.controller.passwords.dismiss()
+        destination.controller.dismissAddress()
+        sourceModel.persistSession()
+        if sourceModel.tabs.isEmpty { closeWindow(sourceID) }
+        activate(destination)
+        transferred.prepareAfterTransfer()
+        if showsWindows, transferred.hasWebContent { destination.window.makeFirstResponder(transferred.webView) }
+        tabDragCoordinator.completeTransfer(to: destination.controller,
+            index: destinationModel.tabs.firstIndex(where: { $0.id == id }) ?? 0)
+        return true
     }
 
     private func positionTransferredWindow(_ window: NSWindow, from source: NSWindow, at point: NSPoint?) {
@@ -228,6 +270,7 @@ final class BrowserWindowManager {
             }
         }
         let controller = BrowserController(model: model, appearance: appearance, preferences: preferences, history: history)
+        controller.tabDragCoordinator = tabDragCoordinator
         let context = BrowserWindowContext(session: session, controller: controller,
                                            cascadeFrom: activeWindow,
                                            startsHibernationMonitor: startsHibernationMonitors)
@@ -251,6 +294,10 @@ final class BrowserWindowManager {
         model.onOpenLinkInNewWindow = { [weak self] url in _ = self?.openLinkInNewWindow(url, from: session.id) }
         controller.onMoveTabToNewWindow = { [weak self] id, point in
             self?.moveTabToNewWindow(id, from: session.id, at: point) != nil
+        }
+        controller.onMoveTabToWindow = { [weak self] id, target, index in
+            guard let self, let destination = self.windows.first(where: { $0.controller === target }) else { return false }
+            return self.moveTab(id, from: session.id, to: destination.session.id, at: index)
         }
         windows.append(context)
         model.persistSession()
@@ -325,6 +372,7 @@ final class BrowserWindowContext: NSObject, NSWindowDelegate {
             } else { window.center() }
         }
         hideWindowButtons()
+        observeWindowTitle()
         if startsHibernationMonitor { hibernationMonitor.start() }
     }
 
@@ -352,6 +400,17 @@ final class BrowserWindowContext: NSObject, NSWindowDelegate {
         onBecomeKey = nil
         onResignKey = nil
         onClose = nil
+    }
+
+    private func observeWindowTitle() {
+        guard !isShutDown else { return }
+        withObservationTracking {
+            window.title = controller.model.selectedTab?.displayTitle ?? "Nous Browser"
+        } onChange: { [weak self] in
+            // Observation notifies before a setter completes. Resume on the
+            // main actor to read the final selected tab/title and subscribe again.
+            Task { @MainActor [weak self] in self?.observeWindowTitle() }
+        }
     }
 
     private func hideWindowButtons() {

@@ -41,6 +41,13 @@ final class SidebarDragWindowReference {
                             y: view.isFlipped ? view.bounds.minY + point.y : view.bounds.maxY - point.y)
         return window.convertPoint(toScreen: view.convert(local, to: nil))
     }
+
+    func sidebarPoint(forScreenPoint point: NSPoint) -> CGPoint? {
+        guard let view, let window = view.window else { return nil }
+        let local = view.convert(window.convertPoint(fromScreen: point), from: nil)
+        return CGPoint(x: local.x - view.bounds.minX,
+                       y: view.isFlipped ? local.y - view.bounds.minY : view.bounds.maxY - local.y)
+    }
 }
 
 struct SidebarTabFramePreference: PreferenceKey {
@@ -158,6 +165,7 @@ struct SidebarFloatingTab: View {
         .shadow(color: .black.opacity(isSettling || !lifted ? (colorScheme == .dark ? 0.08 : 0.04) : (colorScheme == .dark ? 0.22 : 0.13)), radius: isSettling || !lifted ? 2 : 10, y: isSettling || !lifted ? 1 : 4)
         .scaleEffect(reduceMotion || isSettling || !lifted ? 1 : 1.025)
         .animation(reduceMotion ? nil : BrowserMotion.interaction, value: lifted)
+        .animation(reduceMotion ? nil : BrowserMotion.interaction, value: isSettling)
         .onAppear { lifted = true }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
