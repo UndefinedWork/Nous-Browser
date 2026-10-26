@@ -1,0 +1,96 @@
+Resources/Localization/fr.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_2e67826c3d3027 137
+  s_3d6e78ea1e9f59::t_841f905da7f96c 136
+Sources/NousBrowser/NousBrowserApp.swift
+  s_3d6e78ea1e9f59::t_7a4ec21d86e01c 29,96-99,123
+Sources/NousBrowser/BrowserWebView.swift
+  s_3d6e78ea1e9f59::t_169a80f9c5865d 156
+  s_3d6e78ea1e9f59::t_bf343aac1edd3d 155,157-159,161,196,198-201
+  s_3d6e78ea1e9f59::t_7738b886d963c3 195,205,210
+  s_3d6e78ea1e9f59::t_3243135706f364 67-70,88-94,98-101,105,175,178-185,192,244-245
+  s_3d6e78ea1e9f59::t_49e0b4e7c4fefe 1-66,71-87,95-97,102-104,106-154,160,162-174,176-177,186-191,193-194,197,202-204,206-209,211-243,246-254
+README.md
+  s_3d6e78ea1e9f59::t_dd66ef06535d45 13,29,53-56,137
+Resources/Localization/ja.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_841f905da7f96c 137
+  s_3d6e78ea1e9f59::t_2e67826c3d3027 138
+Sources/NousBrowser/BrowserWindowManager.swift
+  s_3d6e78ea1e9f59::t_c99abd941cd1ad 81-135,220,222,251-254
+  s_3d6e78ea1e9f59::t_bb1d920f38162d 4
+Resources/Localization/ru.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_2e67826c3d3027 137
+  s_3d6e78ea1e9f59::t_841f905da7f96c 136
+Tests/NousBrowserTests/BrowserTabTransferTests.swift
+  s_3d6e78ea1e9f59::t_d0bd95432acdb6 234-235,240,243-248,250,271-304
+  s_3d6e78ea1e9f59::t_12c788d506610b 306-355
+  s_3d6e78ea1e9f59::t_bb324ef13a478c 1-233,236-239,241-242,249,251-270,305,356
+Sources/NousBrowser/BrowserShell.swift
+  s_3d6e78ea1e9f59::t_87114399b9b4a5 482-483,502-503,506-508,513-514,516
+  s_3d6e78ea1e9f59::t_2b27359f0429e7 336,339,368,406-408,466,472-473,515
+  s_3d6e78ea1e9f59::t_fd8e25623377b5 198,330-335,338,465,467-471,474-477,481,484-501,504-505,509-512,517-520,528-531
+  s_3d6e78ea1e9f59::t_61483179383676 145
+Docs/QA-1.0.3.md
+  s_3d6e78ea1e9f59::t_66797c39a764a8 13
+  s_3d6e78ea1e9f59::t_16a70c9c15e821 1-11,14-15
+  s_3d6e78ea1e9f59::t_2c258a26e8e99c 12
+Resources/Localization/source.json
+  s_3d6e78ea1e9f59::t_2e67826c3d3027 137,139
+  s_3d6e78ea1e9f59::t_841f905da7f96c 138
+Tests/NousBrowserTests/BrowserLinkOpeningTests.swift
+  s_3d6e78ea1e9f59::t_82ad49f4eab4c2 1-157,159-182,184-229
+  s_3d6e78ea1e9f59::t_9f2cb82c3cdf57 158,183
+Resources/Localization/ko.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_841f905da7f96c 137
+  s_3d6e78ea1e9f59::t_2e67826c3d3027 138
+Resources/Localization/zh-Hant.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_2e67826c3d3027 138
+  s_3d6e78ea1e9f59::t_841f905da7f96c 137
+Resources/Localization/en.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_2e67826c3d3027 138
+  s_3d6e78ea1e9f59::t_841f905da7f96c 137
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_dd66ef06535d45 22,24
+Resources/Localization/pt-BR.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_2e67826c3d3027 137
+  s_3d6e78ea1e9f59::t_841f905da7f96c 136
+Resources/Localization/zh-Hans.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_2e67826c3d3027 138
+  s_3d6e78ea1e9f59::t_841f905da7f96c 137
+Tests/NousBrowserTests/BrowserWebViewTests.swift
+  s_3d6e78ea1e9f59::t_3f0e87b5e6e567 1-106,130-211
+  s_3d6e78ea1e9f59::t_ad68635b528530 107-129
+Sources/NousBrowser/BrowserModel.swift
+  s_3d6e78ea1e9f59::t_af0c2f16d6846d 167-169,244,537
+  s_3d6e78ea1e9f59::t_38c7ac3ce96a6f 109,117-118,122-126,143,154-166,170-187,398,445,447-449,480,526,530-536,538-539,605,621-627,873,925
+Resources/Localization/de.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_841f905da7f96c 136
+  s_3d6e78ea1e9f59::t_2e67826c3d3027 137
+Sources/NousBrowser/WebViewDeck.swift
+  s_3d6e78ea1e9f59::t_e0607ac70e5ece 11,14,26-29,52-54
+Sources/NousBrowser/SidebarTabDragging.swift
+  s_3d6e78ea1e9f59::t_204aee5ef55c3b 26-34,232-234,242-243,245,254-256,262-264,266,286,289-291
+  s_3d6e78ea1e9f59::t_2b27359f0429e7 35-43,79,244,265,277,284-285,287-288
+  s_3d6e78ea1e9f59::t_2b6b2be60fdb5b 267
+Resources/Localization/it.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_841f905da7f96c 136
+  s_3d6e78ea1e9f59::t_2e67826c3d3027 137
+Resources/Localization/es.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_2e67826c3d3027 137
+  s_3d6e78ea1e9f59::t_841f905da7f96c 136
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "2e119129d67544a4e3e63403be63d6272a129820",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
