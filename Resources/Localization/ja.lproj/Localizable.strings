@@ -137,3 +137,16 @@
 "Open Link in New Window" = "リンクを新規ウインドウで開く";
 
 "Keyboard Shortcuts" = "キーボードショートカット";
+"AI Agents (MCP)" = "AI エージェント（MCP）";
+"Connect trusted agents on this Mac using MCP." = "MCP を使って、この Mac 上の信頼できる AI エージェントに接続します。";
+"Allow AI agents to use Nous Browser" = "AI エージェントによる Nous Browser の使用を許可";
+"Agents can read and interact with your open webpages, including signed-in sites. Turn this off at any time to stop access." = "AI エージェントは、ログイン済みのサイトを含む開いているウェブページを読み取り、操作できます。いつでもオフにしてアクセスを停止できます。";
+"Access is off" = "アクセスはオフです";
+"Could not start. Turn access off and try again." = "開始できませんでした。アクセスをオフにして、もう一度お試しください。";
+"Ready for local agents" = "この Mac の AI エージェントが接続できます";
+"Starting…" = "開始中…";
+"Copy Connection Configuration" = "接続設定をコピー";
+"Configuration Copied" = "設定をコピーしました";
+"Connection Configuration" = "接続設定";
+"Recent Activity" = "最近のアクティビティ";
+"No agent activity yet." = "AI エージェントのアクティビティはまだありません。";

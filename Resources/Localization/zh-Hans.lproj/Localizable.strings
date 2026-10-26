@@ -137,3 +137,16 @@
 "Open Link in New Window" = "在新窗口中打开链接";
 
 "Keyboard Shortcuts" = "键盘快捷键";
+"AI Agents (MCP)" = "AI 助手（MCP）";
+"Connect trusted agents on this Mac using MCP." = "通过 MCP 连接这台 Mac 上受信任的 AI 助手。";
+"Allow AI agents to use Nous Browser" = "允许 AI 助手使用 Nous Browser";
+"Agents can read and interact with your open webpages, including signed-in sites. Turn this off at any time to stop access." = "AI 助手可以读取并操作已打开的网页，包括已登录的网站。你可以随时关闭此功能以停止访问。";
+"Access is off" = "访问已关闭";
+"Could not start. Turn access off and try again." = "无法启动。请关闭访问后重试。";
+"Ready for local agents" = "已就绪，可供本机 AI 助手使用";
+"Starting…" = "正在启动…";
+"Copy Connection Configuration" = "复制连接配置";
+"Configuration Copied" = "配置已复制";
+"Connection Configuration" = "连接配置";
+"Recent Activity" = "最近活动";
+"No agent activity yet." = "暂无 AI 助手活动。";

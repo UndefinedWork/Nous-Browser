@@ -20,6 +20,7 @@ BUILD_NUMBER="$(plist_value "$INFO_PATH" CFBundleVersion)"
 EXECUTABLE_NAME="$(plist_value "$INFO_PATH" CFBundleExecutable)"
 MINIMUM_MACOS="$(plist_value "$INFO_PATH" LSMinimumSystemVersion)"
 EXECUTABLE_PATH="$APP_DIR/Contents/MacOS/$EXECUTABLE_NAME"
+MCP_EXECUTABLE_PATH="$APP_DIR/Contents/MacOS/NousBrowserMCP"
 
 # Match the current source metadata so a stale build cannot become a new release.
 # The payload is copied exclusively from the app bundle, never from user folders.
@@ -50,6 +51,9 @@ if executable != 'NousBrowser':
 binary = app / 'Contents/MacOS' / executable
 if not binary.is_file() or not os.access(binary, os.X_OK) or binary.stat().st_mode & stat.S_IWOTH:
     raise SystemExit('The app executable is missing, not executable, or world-writable.')
+helper = app / 'Contents/MacOS/NousBrowserMCP'
+if not helper.is_file() or not os.access(helper, os.X_OK) or helper.stat().st_mode & stat.S_IWOTH:
+    raise SystemExit('The MCP helper is missing, not executable, or world-writable.')
 for path in app.rglob('*'):
     relative = path.relative_to(app)
     if path.is_symlink() and not path.resolve().is_relative_to(app.resolve()):
@@ -85,6 +89,9 @@ print -- "Actual architectures: $ARCHITECTURES"
 
 ASSET_BASENAME="Nous-Browser-$VERSION-macOS-$ARCHITECTURE_LABEL"
 EXECUTABLE_SHA="$(/usr/bin/shasum -a 256 "$EXECUTABLE_PATH" | /usr/bin/awk '{print $1}')"
+MCP_EXECUTABLE_SHA="$(/usr/bin/shasum -a 256 "$MCP_EXECUTABLE_PATH" | /usr/bin/awk '{print $1}')"
+[[ "$(/usr/bin/lipo -archs "$MCP_EXECUTABLE_PATH" | /usr/bin/tr ' ' '\n' | /usr/bin/sort | /usr/bin/xargs)" == "$ARCHITECTURES" ]] || fail "MCP helper architectures do not match the app."
+/usr/bin/codesign --verify --strict "$MCP_EXECUTABLE_PATH"
 INFO_SHA="$(/usr/bin/shasum -a 256 "$INFO_PATH" | /usr/bin/awk '{print $1}')"
 mkdir -p "$PROJECT_DIR/.build" "$DIST_DIR"
 WORK_DIR="$(/usr/bin/mktemp -d "$PROJECT_DIR/.build/release-package.XXXXXX")"
@@ -110,6 +117,8 @@ verify_packaged_app() {
     /usr/bin/codesign --verify --deep --strict --verbose=2 "$candidate"
     [[ "$(/usr/bin/lipo -archs "$candidate/Contents/MacOS/$EXECUTABLE_NAME" | /usr/bin/tr ' ' '\n' | /usr/bin/sort | /usr/bin/xargs)" == "$ARCHITECTURES" ]] || fail "Packaged architectures changed."
     [[ "$(/usr/bin/shasum -a 256 "$candidate/Contents/MacOS/$EXECUTABLE_NAME" | /usr/bin/awk '{print $1}')" == "$EXECUTABLE_SHA" ]] || fail "Packaged executable changed."
+    [[ "$(/usr/bin/shasum -a 256 "$candidate/Contents/MacOS/NousBrowserMCP" | /usr/bin/awk '{print $1}')" == "$MCP_EXECUTABLE_SHA" ]] || fail "Packaged MCP helper changed."
+    /usr/bin/codesign --verify --strict "$candidate/Contents/MacOS/NousBrowserMCP"
     [[ "$(/usr/bin/shasum -a 256 "$candidate/Contents/Info.plist" | /usr/bin/awk '{print $1}')" == "$INFO_SHA" ]] || fail "Packaged metadata changed."
 }
 

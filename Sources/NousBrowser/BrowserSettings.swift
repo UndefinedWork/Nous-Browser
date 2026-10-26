@@ -4,6 +4,7 @@ struct BrowserSettingsView: View {
     let preferences: BrowserPreferences
     let appearance: BrowserAppearanceSettings
     let passwordImporter: BrowserPasswordController
+    let automation: BrowserAutomationService
 
     var body: some View {
         TabView {
@@ -15,6 +16,8 @@ struct BrowserSettingsView: View {
                 .tabItem { Label(L10n.string("Passwords"), systemImage: "key") }
             AppearanceSettingsView(appearance: appearance)
                 .tabItem { Label(L10n.string("Appearance"), systemImage: "circle.lefthalf.filled") }
+            BrowserAutomationSettingsView(service: automation)
+                .tabItem { Label(L10n.string("AI Agents (MCP)"), systemImage: "point.3.connected.trianglepath.dotted") }
         }
         .padding(20)
         .frame(width: 580, height: 430)

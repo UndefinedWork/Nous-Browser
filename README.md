@@ -19,6 +19,13 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 - **浏览器设置**：选择 Google、Bing、DuckDuckGo 或百度作为默认搜索引擎；配置 ⌘L 快捷访问的网站及顺序。
 - **地址输入与网页推荐**：识别 `x。com`、`x．com` 等中文标点网址；按网页标题、网址关键词匹配已打开和常访问的网页，参考访问频率及最近访问时间排序。
 - **常用网页能力**：前进、后退、下载、网页全屏、本机 HTML/XHTML 文件和用户主动打开的新标签页；拦截脚本自动弹出的窗口。
+- **AI 助手连接**：通过标准 MCP stdio 接口，让支持本机 MCP 的 AI agent 查看标签和操作网页；在设置中开启或停止访问。
+
+## 连接 AI agent（MCP）
+
+在 **设置 → AI Agents (MCP)／AI 助手（MCP）** 开启访问，复制连接配置，添加到支持 **MCP stdio** 的本机 AI 客户端。只连接你信任的客户端：agent 可以读取和操作包括已登录网站在内的网页。功能默认关闭，可随时在设置中停止。
+
+安装包内置连接程序，无需额外安装 Node.js 或 Python。此版本面向本机客户端，不提供公网 HTTP 接口。具体配置、能力与限制见 [MCP 使用说明](Docs/MCP.md)。
 
 ## 系统要求
 
@@ -26,7 +33,7 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 - 当前首个预编译包为 **Apple Silicon** 版本；Intel Mac 可在满足系统与开发环境要求时从源码构建。
 - 从源码构建需要 **Xcode 26 或更新版本、Swift 6.2 或更新版本**。
 
-当前源码版本：**1.0.10（Build 39）**。预编译安装包的构建号见对应 Release。
+当前源码版本：**1.1.0（Build 40）**。预编译安装包的构建号见对应 Release。
 
 ## 下载与安装
 
@@ -136,7 +143,7 @@ open "build/Nous Browser.app"
 
 ## 测试
 
-本次发布验证记录：[1.0.10（Build 39）](Docs/QA-1.0.10.md)。[快捷键核对与待补功能](Docs/KeyboardShortcuts.md)。
+本次发布验证记录：[1.1.0（Build 40）](Docs/QA-1.1.0.md)。[快捷键核对与待补功能](Docs/KeyboardShortcuts.md)。
 
 ```sh
 swift test

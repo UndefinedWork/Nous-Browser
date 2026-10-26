@@ -16,14 +16,17 @@ ICON_WORK_DIR="$STAGING_DIR/app-icon"
 
 mkdir -p "$STAGED_APP_DIR/Contents/MacOS" "$STAGED_APP_DIR/Contents/Resources" "$ICON_WORK_DIR" "$PROJECT_DIR/build"
 cp "$BIN_DIR/NousBrowser" "$STAGED_APP_DIR/Contents/MacOS/NousBrowser"
+cp "$BIN_DIR/NousBrowserMCP" "$STAGED_APP_DIR/Contents/MacOS/NousBrowserMCP"
 cp "$PROJECT_DIR/Resources/Info.plist" "$STAGED_APP_DIR/Contents/Info.plist"
 for LOCALIZATION_DIR in "$PROJECT_DIR"/Resources/Localization/*.lproj(N/); do
     cp -R "$LOCALIZATION_DIR" "$STAGED_APP_DIR/Contents/Resources/"
 done
 cp "$PROJECT_DIR/Resources/AppIcon.png" "$STAGED_APP_DIR/Contents/Resources/NewTabLogo.png"
 cp -R "$PROJECT_DIR/Resources/Fonts" "$STAGED_APP_DIR/Contents/Resources/Fonts"
+cp "$PROJECT_DIR/Resources/ThirdPartyNotices.txt" "$STAGED_APP_DIR/Contents/Resources/ThirdPartyNotices.txt"
 xcrun swift "$PROJECT_DIR/Scripts/make-icon.swift" "$ICON_WORK_DIR"
 iconutil -c icns "$ICON_WORK_DIR/AppIcon.iconset" -o "$STAGED_APP_DIR/Contents/Resources/AppIcon.icns"
+codesign --force --sign - "$STAGED_APP_DIR/Contents/MacOS/NousBrowserMCP"
 codesign --force --sign - "$STAGED_APP_DIR"
 codesign --verify --deep --strict "$STAGED_APP_DIR"
 

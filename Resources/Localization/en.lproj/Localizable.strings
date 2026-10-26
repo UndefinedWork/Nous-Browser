@@ -137,3 +137,16 @@
 "Open Link in New Window" = "Open Link in New Window";
 
 "Keyboard Shortcuts" = "Keyboard Shortcuts";
+"AI Agents (MCP)" = "AI Agents (MCP)";
+"Connect trusted agents on this Mac using MCP." = "Connect trusted agents on this Mac using MCP.";
+"Allow AI agents to use Nous Browser" = "Allow AI agents to use Nous Browser";
+"Agents can read and interact with your open webpages, including signed-in sites. Turn this off at any time to stop access." = "Agents can read and interact with your open webpages, including signed-in sites. Turn this off at any time to stop access.";
+"Access is off" = "Access is off";
+"Could not start. Turn access off and try again." = "Could not start. Turn access off and try again.";
+"Ready for local agents" = "Ready for local agents";
+"Starting…" = "Starting…";
+"Copy Connection Configuration" = "Copy Connection Configuration";
+"Configuration Copied" = "Configuration Copied";
+"Connection Configuration" = "Connection Configuration";
+"Recent Activity" = "Recent Activity";
+"No agent activity yet." = "No agent activity yet.";

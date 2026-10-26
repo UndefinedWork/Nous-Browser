@@ -9,7 +9,8 @@ struct NousBrowserApp: App {
         Settings {
             BrowserSettingsView(preferences: delegate.windowManager.preferences,
                                 appearance: delegate.windowManager.appearance,
-                                passwordImporter: delegate.windowManager.passwordImporter)
+                                passwordImporter: delegate.windowManager.passwordImporter,
+                                automation: delegate.automation)
         }
             .commands { BrowserCommands(windows: delegate.windowManager) }
     }
@@ -161,6 +162,17 @@ final class BrowserController {
 
 @MainActor
 final class BrowserAppDelegate: NSObject, NSApplicationDelegate {
+    lazy var automation: BrowserAutomationService = {
+        #if DEBUG
+        if let identifier = Bundle.main.bundleIdentifier, identifier.hasPrefix("com.cellier.nous-browser.") {
+            let socket = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".local/share/NousBrowser/previews/" + identifier.components(separatedBy: ".").last! + "/bridge.sock").path
+            return BrowserAutomationService(windows: windowManager, socketPath: socket)
+        }
+        #endif
+        return BrowserAutomationService(windows: windowManager)
+    }()
+
     let windowManager: BrowserWindowManager = {
         #if DEBUG
         // UI previews use a temporary session, preserving the live browser's tabs.
@@ -186,14 +198,17 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         windowManager.appearance.apply()
         windowManager.restoreWindows()
+        automation.startIfEnabled()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        automation.stop()
         windowManager.prepareForTermination()
         return .terminateNow
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        automation.stop()
         windowManager.prepareForTermination()
     }
 
