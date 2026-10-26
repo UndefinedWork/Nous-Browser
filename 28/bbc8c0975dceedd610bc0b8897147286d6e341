@@ -1,0 +1,50 @@
+Sources/NousBrowser/BrowserWindowManager.swift
+  s_3d6e78ea1e9f59::t_d45005f52e5ef6 116,155-156
+  s_3d6e78ea1e9f59::t_79aeb2d07e3860 15,120-154,157-159,273,298-301,375,405-414
+  s_3d6e78ea1e9f59::t_7f71f86b47a12e 415
+Sources/NousBrowser/BrowserTabDragCoordinator.swift
+  s_3d6e78ea1e9f59::t_835709d3f1893d 23,29,91-93,140-141,158,172-177,232-233,238-241
+  s_3d6e78ea1e9f59::t_e827f9b9d0f733 82-83
+  s_3d6e78ea1e9f59::t_91b6daed3428c3 243-245
+  s_3d6e78ea1e9f59::t_cf66cd4c16518f 1-22,24-28,30-62,65-81,84-90,94-139,142-157,159-171,178-190,193-210,216-231,234-237,242,246-254
+  s_3d6e78ea1e9f59::t_3427ec6f58976c 63-64,191-192,211-215
+README.md
+  s_3d6e78ea1e9f59::t_e5b335fca73b71 13,29,55,137
+Sources/NousBrowser/BrowserShell.swift
+  s_3d6e78ea1e9f59::t_453f9f52b2cb86 200-213,229-230,260,263,279,287,302,355-359,368-370,396-400,411,438,472,483-485,501,521,523,525-527,531-539,544,560,581
+  s_3d6e78ea1e9f59::t_e827f9b9d0f733 414-416,556,565-580
+  s_3d6e78ea1e9f59::t_fd997228599f3c 582
+Sources/NousBrowser/BrowserModel.swift
+  s_3d6e78ea1e9f59::t_563e8c18d57ee9 188-207
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_e5b335fca73b71 22,24
+Docs/QA-1.0.4.md
+  s_3d6e78ea1e9f59::t_53eeb4f7efd928 1-4,6-10,12,14-15,18-19
+  s_3d6e78ea1e9f59::t_6ab3488712c494 5,11,13,16-17
+Sources/NousBrowser/SidebarTabDragging.swift
+  s_3d6e78ea1e9f59::t_fa1b0380de34a9 44-50
+  s_3d6e78ea1e9f59::t_835709d3f1893d 168
+Sources/NousBrowser/NousBrowserApp.swift
+  s_3d6e78ea1e9f59::t_fa1b0380de34a9 30-31,102-105,130-132
+Tests/NousBrowserTests/BrowserTabTransferTests.swift
+  s_3d6e78ea1e9f59::t_c6db60fd976381 151
+  s_3d6e78ea1e9f59::t_c1f549dc3406b6 90-150,152-168,170-183,185-253,257-261,263-325,328-340,345-429
+  s_3d6e78ea1e9f59::t_fc59e1f5423c46 169,184,254-256,262,326-327,341-344
+  s_3d6e78ea1e9f59::t_e3f552f1a08ead 688-690,694
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "28bbc8c0975dceedd610bc0b8897147286d6e341",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
