@@ -674,6 +674,13 @@ private struct BrowserTabRow: View {
         .foregroundStyle(colorScheme == .dark ? Color.primary : Color(white: 0.176))
         .frame(height: BrowserDesign.rowHeight)
         .background(Color.white.opacity(colorScheme == .dark ? (hovered ? 0.08 : selected ? 0.14 : 0) : (hovered ? 0.5 : selected ? 1 : 0)), in: Capsule())
+        .overlay {
+            Capsule()
+                .strokeBorder((colorScheme == .dark ? Color.white : Color.black).opacity(selected ? 0.06 : 0), lineWidth: 0.5)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .animation(reduceMotion ? nil : BrowserMotion.tabSwitch, value: selected)
+        }
         .contentShape(Capsule())
         .onHover { value in withAnimation(reduceMotion ? nil : BrowserMotion.interaction) { hovered = value } }
         .task(id: copyFeedbackToken) {
