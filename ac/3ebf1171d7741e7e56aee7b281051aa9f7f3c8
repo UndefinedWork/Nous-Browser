@@ -1,0 +1,49 @@
+README.md
+  s_3d6e78ea1e9f59::t_69a1f4047971c5 29,137
+Sources/NousBrowser/NousBrowserApp.swift
+  s_3d6e78ea1e9f59::t_84af0ca1f05ec5 44
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_69a1f4047971c5 22,24
+Tests/NousBrowserTests/BrowserWebViewTests.swift
+  s_3d6e78ea1e9f59::t_d0463abf20ee53 262-263,353
+  s_3d6e78ea1e9f59::t_1e3fd9240bba85 249-261
+  s_3d6e78ea1e9f59::t_325d91be4ccc99 136,139-140
+  s_3d6e78ea1e9f59::t_491d8e0477fbb2 7,130-135,137-138,141-248,308-309,333,348-352
+Tests/NousBrowserTests/BrowserModelTests.swift
+  s_3d6e78ea1e9f59::t_102a7846feb046 230-241
+  s_3d6e78ea1e9f59::t_d0463abf20ee53 3,6-71
+  s_3d6e78ea1e9f59::t_d89af9df22f315 72
+Docs/QA-1.0.9.md
+  s_3d6e78ea1e9f59::t_200801594b68db 3,5,7,9-15,17,19,21,23-48
+  s_3d6e78ea1e9f59::t_3ca622b7ad29b3 1-2,4,6,8,16,18,20,22
+Sources/NousBrowser/BrowserWebView.swift
+  s_3d6e78ea1e9f59::t_5a189f26c9f7ee 142
+  s_3d6e78ea1e9f59::t_d6eb9356a33dc1 143-144
+  s_3d6e78ea1e9f59::t_3d8ee69411b341 80,83
+  s_3d6e78ea1e9f59::t_8da58c3ca0d96b 79,84,179,236,241,244-245,255
+  s_3d6e78ea1e9f59::t_b32fa82b562f3e 178,237,246,350
+  s_3d6e78ea1e9f59::t_1e3fd9240bba85 77,92-97,103-105,107-111,180
+  s_3d6e78ea1e9f59::t_12d47c484858a4 355
+  s_3d6e78ea1e9f59::t_01772342bd1621 20,40-41,98-102,106,112-141
+  s_3d6e78ea1e9f59::t_4bac2b5a7d014a 4-5,10-11,19,62-63,81-82,147,155-156,161,164-171,189-190,197-210,216,222,224,232-235,238-240,242-243,247-254,256-273,316-328,346-349,351-354,356-361,400,402
+Sources/NousBrowser/BrowserModel.swift
+  s_3d6e78ea1e9f59::t_af447deccfd96f 574-575,577
+  s_3d6e78ea1e9f59::t_84af0ca1f05ec5 110,573,576
+  s_3d6e78ea1e9f59::t_55096530b1f818 301-311,904-911
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "ac3ebf1171d7741e7e56aee7b281051aa9f7f3c8",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
