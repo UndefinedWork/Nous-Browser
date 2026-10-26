@@ -4,8 +4,8 @@ import WebKit
 @MainActor
 enum BrowserUserAgent {
     static func configure(_ configuration: WKWebViewConfiguration) {
-        // A WKWebView is an embedded WebKit browser. Safari tokens make Google
-        // Sheets choose a reduced-resolution canvas path, despite Retina DPR.
+        // Keep the system's native embedded-browser identity by default.
+        // Only the Google endpoints below receive a compatibility identity.
         // Replace inherited popup suffixes instead of appending to them.
         configuration.applicationNameForUserAgent = applicationToken
     }
@@ -30,6 +30,34 @@ enum BrowserUserAgent {
         // than broadening the compatibility profile to /search/ or subpaths.
         guard let path = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedPath else { return false }
         return ["", "/", "/webhp", "/search"].contains(path)
+    }
+
+    static var supportsModernSheetsCompatibility: Bool {
+        if #available(macOS 26.4, *) { return true }
+        return false
+    }
+
+    static var compatibilityVersion: String {
+        supportsModernSheetsCompatibility ? "26.4" : "26.0"
+    }
+
+    static func needsGoogleSheetsCompatibility(_ url: URL?, supportsModernSheets: Bool = supportsModernSheetsCompatibility) -> Bool {
+        guard supportsModernSheets, let url,
+              ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              url.user == nil, url.password == nil,
+              url.port == nil || url.port == (url.scheme?.lowercased() == "https" ? 443 : 80),
+              let path = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedPath,
+              let decodedPath = path.removingPercentEncoding,
+              !decodedPath.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) else { return false }
+        switch url.host?.lowercased() {
+        case "docs.google.com": return path == "/spreadsheets" || path.hasPrefix("/spreadsheets/")
+        case "sheets.google.com": return true
+        default: return false
+        }
+    }
+
+    static func needsGoogleCompatibility(_ url: URL?) -> Bool {
+        needsGoogleSearchCompatibility(url) || needsGoogleSheetsCompatibility(url)
     }
 
     private(set) static var cachedCompatibilityUserAgent: String?
@@ -57,15 +85,18 @@ enum BrowserUserAgent {
     }
 
     /// The OS/platform and engine version stay those of the native probe.
-    /// Version/26.0 is the existing conservative Google Search compatibility
-    /// floor, scoped to Search rather than applied to all websites.
+    /// Google Sheets applies a legacy outerWidth/innerWidth zoom correction
+    /// below Safari 26.4. Cocoa WKWebView can report outerWidth=0, reducing a
+    /// Retina canvas to 0.5x. On macOS 26.4+ DPR already includes page zoom;
+    /// advertise that capability floor, without claiming newer Safari APIs.
+    /// Older systems retain the Search-only profile and native Sheets identity.
     static func googleSearchUserAgent(from native: String) -> String? {
         guard let engine = native.split(separator: " ").first(where: { $0.hasPrefix("AppleWebKit/") })?
             .dropFirst("AppleWebKit/".count), !engine.isEmpty,
               engine.allSatisfy({ $0.isNumber || $0 == "." }) else { return nil }
         let suffix = " " + applicationToken
         let prefix = native.hasSuffix(suffix) ? String(native.dropLast(suffix.count)) : native
-        return prefix + " Version/26.0 Safari/\(engine) " + applicationToken
+        return prefix + " Version/\(compatibilityVersion) Safari/\(engine) " + applicationToken
     }
 
     /// Per-view decisions are cancellable independently of the shared probe.
@@ -88,13 +119,13 @@ enum BrowserUserAgent {
 
         func applyKnownIdentity(for url: URL?) {
             invalidate()
-            webView?.customUserAgent = BrowserUserAgent.needsGoogleSearchCompatibility(url) ? compatibilityAgent : nil
+            webView?.customUserAgent = BrowserUserAgent.needsGoogleCompatibility(url) ? compatibilityAgent : nil
         }
 
         func prepare(for url: URL, completion: @escaping @MainActor (Bool) -> Void) {
             invalidate()
             guard let webView else { completion(false); return }
-            guard BrowserUserAgent.needsGoogleSearchCompatibility(url) else {
+            guard BrowserUserAgent.needsGoogleCompatibility(url) else {
                 webView.customUserAgent = nil
                 completion(true)
                 return

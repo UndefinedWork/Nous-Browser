@@ -73,13 +73,71 @@ struct BrowserUserAgentTests {
         #expect(!BrowserUserAgent.needsGoogleSearchCompatibility(nil))
     }
 
+    @Test @MainActor func sheetsCompatibilityIsRestrictedToExactGoogleSheetsHostsAndPaths() throws {
+        let eligible = [
+            "https://docs.google.com/spreadsheets", "https://docs.google.com/spreadsheets/",
+            "https://DOCS.GOOGLE.COM/spreadsheets/d/fixture/edit?gid=0#gid=0",
+            "http://docs.google.com/spreadsheets/u/0/", "https://docs.google.com:443/spreadsheets/d/fixture",
+            "http://docs.google.com:80/spreadsheets/d/fixture", "https://sheets.google.com",
+            "https://sheets.google.com/", "https://sheets.google.com:443/u/0/",
+            "http://SHEETS.GOOGLE.COM:80/"
+        ]
+        for address in eligible {
+            let url = try #require(URL(string: address))
+            #expect(BrowserUserAgent.needsGoogleSheetsCompatibility(url, supportsModernSheets: true))
+            #expect(!BrowserUserAgent.needsGoogleSearchCompatibility(url))
+        }
+        let native = [
+            "https://docs.google.com/", "https://docs.google.com/document/d/fixture",
+            "https://docs.google.com/presentation/d/fixture", "https://docs.google.com/spreadsheet",
+            "https://docs.google.com/spreadsheets-other", "https://docs.google.com/Spreadsheets/d/fixture",
+            "https://docs.google.com/spreadsheets%2Fd/fixture", "https://docs.google.com/%73preadsheets/d/fixture",
+            "https://docs.google.com.evil.test/spreadsheets/d/fixture", "https://sub.docs.google.com/spreadsheets/",
+            "https://sheets.google.com.evil.test/", "https://www.sheets.google.com/",
+            "https://accounts.google.com/", "https://drive.google.com/", "https://google.com/search",
+            "https://fixture:fixture@docs.google.com/spreadsheets/d/fixture", "https://fixture@sheets.google.com/",
+            "https://docs.google.com:8443/spreadsheets/", "https://docs.google.com:80/spreadsheets/",
+            "http://docs.google.com:443/spreadsheets/", "https://sheets.google.com:8443/",
+            "ftp://sheets.google.com/", "file://docs.google.com/spreadsheets/", "about:blank",
+            "//docs.google.com/spreadsheets/d/fixture", "/spreadsheets/d/fixture"
+        ]
+        for address in native {
+            #expect(!BrowserUserAgent.needsGoogleSheetsCompatibility(try #require(URL(string: address)), supportsModernSheets: true))
+        }
+        for malformed in ["https://", "https://docs.google.com:invalid/spreadsheets/", ""] {
+            #expect(!BrowserUserAgent.needsGoogleSheetsCompatibility(URL(string: malformed), supportsModernSheets: true))
+        }
+        #expect(!BrowserUserAgent.needsGoogleSheetsCompatibility(nil, supportsModernSheets: true))
+    }
+
+    @Test @MainActor func sheetsCompatibilityRequiresTheModernSystemCapabilityWhileSearchRemainsAvailable() throws {
+        let expectedSheetsCompatibility: Bool
+        if #available(macOS 26.4, *) { expectedSheetsCompatibility = true }
+        else { expectedSheetsCompatibility = false }
+        #expect(BrowserUserAgent.supportsModernSheetsCompatibility == expectedSheetsCompatibility)
+        for address in ["https://docs.google.com/spreadsheets/d/fixture", "https://sheets.google.com/"] {
+            let url = try #require(URL(string: address))
+            #expect(!BrowserUserAgent.needsGoogleSheetsCompatibility(url, supportsModernSheets: false))
+            #expect(BrowserUserAgent.needsGoogleSheetsCompatibility(url) == expectedSheetsCompatibility)
+            #expect(BrowserUserAgent.needsGoogleCompatibility(url) == expectedSheetsCompatibility)
+        }
+        let search = try #require(URL(string: "https://google.com/search?q=fixture"))
+        #expect(BrowserUserAgent.needsGoogleSearchCompatibility(search))
+        #expect(BrowserUserAgent.needsGoogleCompatibility(search))
+        let document = try #require(URL(string: "https://docs.google.com/document/d/fixture"))
+        #expect(!BrowserUserAgent.needsGoogleCompatibility(document))
+    }
+
     @Test @MainActor func compatibilityIdentityKeepsTheNativePlatformAndEngine() throws {
         let configuration = WKWebViewConfiguration()
         BrowserUserAgent.configure(configuration)
         let token = try #require(configuration.applicationNameForUserAgent)
         let prefix = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/620.1.23 (KHTML, like Gecko)"
         let result = try #require(BrowserUserAgent.googleSearchUserAgent(from: prefix + " " + token))
-        #expect(result == prefix + " Version/26.0 Safari/620.1.23 " + token)
+        let expectedVersion: String
+        if #available(macOS 26.4, *) { expectedVersion = "26.4" }
+        else { expectedVersion = "26.0" }
+        #expect(result == prefix + " Version/\(expectedVersion) Safari/620.1.23 " + token)
         #expect(result.components(separatedBy: "NousBrowser/").count == 2)
         #expect(BrowserUserAgent.googleSearchUserAgent(from: prefix) == result)
         for invalid in ["Mozilla/5.0", "AppleWebKit/", "AppleWebKit/620.1beta", "AppleWebKit/620/1"] {
@@ -131,7 +189,7 @@ struct BrowserUserAgentTests {
         }
     }
 
-    @Test @MainActor func cachedSearchIdentityAppliesSynchronouslyAndNativePagesClearIt() {
+    @Test @MainActor func cachedIdentityAppliesToSearchAndSupportedSheetsSynchronouslyAndNativePagesClearIt() {
         let webView = makeWebView()
         var resolverCalls = 0
         let policy = BrowserUserAgent.NavigationPolicy(webView: webView, cachedCompatibilityUserAgent: "Fixture Search UA") {
@@ -144,9 +202,16 @@ struct BrowserUserAgentTests {
         #expect(webView.customUserAgent == "Fixture Search UA")
         policy.prepare(for: URL(string: "https://docs.google.com/spreadsheets/d/fixture")!) { decisions.append($0) }
         #expect(decisions == [true, true])
+        if #available(macOS 26.4, *) { #expect(webView.customUserAgent == "Fixture Search UA") }
+        else { #expect((webView.customUserAgent ?? "").isEmpty) }
+        policy.prepare(for: URL(string: "https://docs.google.com/document/d/fixture")!) { decisions.append($0) }
+        #expect(decisions == [true, true, true])
         #expect((webView.customUserAgent ?? "").isEmpty)
         policy.applyKnownIdentity(for: URL(string: "https://google.com/webhp")!)
         #expect(webView.customUserAgent == "Fixture Search UA")
+        policy.applyKnownIdentity(for: URL(string: "https://sheets.google.com/")!)
+        if #available(macOS 26.4, *) { #expect(webView.customUserAgent == "Fixture Search UA") }
+        else { #expect((webView.customUserAgent ?? "").isEmpty) }
         policy.applyKnownIdentity(for: URL(string: "https://accounts.google.com/")!)
         #expect((webView.customUserAgent ?? "").isEmpty)
         #expect(resolverCalls == 0)
@@ -161,7 +226,7 @@ struct BrowserUserAgentTests {
             return "Unexpected UA"
         }
         var decisions: [Bool] = []
-        policy.prepare(for: URL(string: "https://docs.google.com/spreadsheets/d/fixture")!) { decisions.append($0) }
+        policy.prepare(for: URL(string: "https://docs.google.com/document/d/fixture")!) { decisions.append($0) }
         #expect(decisions == [true])
         #expect((webView.customUserAgent ?? "").isEmpty)
         #expect(resolverCalls == 0)
@@ -197,7 +262,7 @@ struct BrowserUserAgentTests {
         var decisions: [Bool] = []
         policy.prepare(for: URL(string: "https://google.com/search?q=fixture")!) { decisions.append($0) }
         await deferred.waitUntilStarted()
-        policy.applyKnownIdentity(for: URL(string: "https://docs.google.com/spreadsheets/d/fixture")!)
+        policy.applyKnownIdentity(for: URL(string: "https://docs.google.com/document/d/fixture")!)
         #expect(decisions == [false])
         #expect((webView.customUserAgent ?? "").isEmpty)
         deferred.finish("Stale Safari UA")
@@ -230,6 +295,25 @@ struct BrowserUserAgentTests {
         await old.waitUntilReturned()
         #expect(first == [false] && second == [true])
         #expect(webView.customUserAgent == "Current Search UA")
+    }
+
+    @Test @MainActor func aPendingSheetsIdentityCannotRestoreCompatibilityAfterLeavingTheSheet() async {
+        guard #available(macOS 26.4, *) else { return }
+        let webView = makeWebView()
+        let deferred = DeferredAgent()
+        let policy = BrowserUserAgent.NavigationPolicy(webView: webView, cachedCompatibilityUserAgent: nil) {
+            await deferred.resolve()
+        }
+        var decisions: [Bool] = []
+        policy.prepare(for: URL(string: "https://docs.google.com/spreadsheets/d/fixture")!) { decisions.append($0) }
+        await deferred.waitUntilStarted()
+        policy.prepare(for: URL(string: "https://docs.google.com/document/d/fixture")!) { decisions.append($0) }
+        #expect(decisions == [false, true])
+        #expect((webView.customUserAgent ?? "").isEmpty)
+        deferred.finish("Stale Sheets UA")
+        await deferred.waitUntilReturned()
+        #expect(decisions == [false, true])
+        #expect((webView.customUserAgent ?? "").isEmpty)
     }
 
     @Test @MainActor func anUnavailableCompatibilityIdentityAllowsNavigationWithNativeIdentity() async {
