@@ -1,0 +1,57 @@
+Sources/NousBrowser/BrowserWebView.swift
+  s_3d6e78ea1e9f59::t_d6766f9d67729b 97-98,104,107-109,114-115,120,124,132-134,144-146
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_f1b190a185f859 22,24
+Tests/NousBrowserTests/BrowserWebViewTests.swift
+  s_3d6e78ea1e9f59::t_bb11c2244f53d4 255,264-281
+  s_3d6e78ea1e9f59::t_46314926a9d111 282-283
+Sources/NousBrowser/NousBrowserApp.swift
+  s_3d6e78ea1e9f59::t_15d626a65a110a 247,252,300-303
+README.md
+  s_3d6e78ea1e9f59::t_6c251253906c7a 29,59-60,139
+Docs/QA-1.0.10.md
+  s_3d6e78ea1e9f59::t_6c251253906c7a 1-42
+Sources/NousBrowser/BrowserHelpWindow.swift
+  s_3d6e78ea1e9f59::t_15d626a65a110a 1-10,12-62
+  s_3d6e78ea1e9f59::t_d6766f9d67729b 11
+Resources/Localization/de.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_19971d6ad9c6e1 137-138
+Resources/Localization/en.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_51e81aa7bcfcf4 138-139
+Resources/Localization/es.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_f31010025f8614 137-138
+Resources/Localization/fr.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_f2229cf36ac66f 137-138
+Resources/Localization/it.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_fc17d13a9fffd0 137-138
+Resources/Localization/ja.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_b495b394efbdc8 138-139
+Resources/Localization/ko.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_ccfeb17909dd8f 138-139
+Resources/Localization/pt-BR.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_83173aaeffd46a 137-138
+Resources/Localization/ru.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_5bbb530be7a5cf 137-138
+Resources/Localization/source.json
+  s_3d6e78ea1e9f59::t_d45792b67719da 138-139
+Resources/Localization/zh-Hans.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_dfe3337e999982 138-139
+Resources/Localization/zh-Hant.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_1a3e898ef396b7 138-139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "438680c9e75dac52d841e2a1fc0e1d681cbb7463",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
