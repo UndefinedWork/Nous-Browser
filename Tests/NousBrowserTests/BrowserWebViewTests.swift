@@ -252,13 +252,33 @@ struct BrowserWebViewTests {
             services.addItem(withTitle: title, action: nil, keyEquivalent: "")
         }
         BrowserWebView.removeExternalBrowserItems(in: services)
-        #expect(services.items.map(\.title) == ["Open", "Open man Page in Terminal", "Ask Claude"])
+        #expect(services.items.map(\.title) == ["Open man Page in Terminal", "Ask Claude"])
         let webpage = NSMenu()
         webpage.addItem(withTitle: "Search with Google", action: nil, keyEquivalent: "")
         webpage.addItem(withTitle: "Open with Safari", action: nil, keyEquivalent: "")
         webpage.addItem(withTitle: "Open with Preview", action: nil, keyEquivalent: "")
         BrowserWebView.removeExternalBrowserItems(in: webpage)
         #expect(webpage.items.map(\.title) == ["Search with Google", "Open with Preview"])
+    }
+
+    @Test func topLevelServicesCannotOpenAWebsiteThroughFinder() {
+        let mainMenu = NSMenu(title: "Main")
+        let appMenu = NSMenu(title: "Nous Browser")
+        let app = mainMenu.addItem(withTitle: "Nous Browser", action: nil, keyEquivalent: "")
+        app.submenu = appMenu
+        let services = NSMenu(title: "Services")
+        appMenu.addItem(withTitle: "Services", action: nil, keyEquivalent: "").submenu = services
+        for title in ["打开", "打开 URL", "添加到阅读列表", "在 Finder 中显示", "词典查询"] {
+            services.addItem(withTitle: title, action: nil, keyEquivalent: "")
+        }
+        let fileMenu = NSMenu(title: "File")
+        mainMenu.addItem(withTitle: "File", action: nil, keyEquivalent: "").submenu = fileMenu
+        fileMenu.addItem(withTitle: "打开", action: nil, keyEquivalent: "")
+
+        BrowserWebView.removeExternalBrowserItems(in: mainMenu, nativeOpenURLTitle: "打开 URL",
+                                                  nativeReadingListTitle: "添加到阅读列表", nativeOpenTitle: "打开")
+        #expect(services.items.map(\.title) == ["在 Finder 中显示", "词典查询"])
+        #expect(fileMenu.items.map(\.title) == ["打开"])
     }
 
     @Test func inheritedPopupConfigurationKeepsItsStoreAndOneAllFrameListener() throws {

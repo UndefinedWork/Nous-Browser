@@ -94,28 +94,34 @@ final class BrowserWebView: WKWebView {
     /// commands instead of letting a system service choose a different app.
     static func removeExternalBrowserItems(in menu: NSMenu, nativeSearchFormat: String? = nil,
                                            nativeOpenURLTitle: String? = nil,
-                                           nativeReadingListTitle: String? = nil) {
+                                           nativeReadingListTitle: String? = nil,
+                                           nativeOpenTitle: String? = nil) {
         let titles = nativeServiceTitles
         let isServices = menu.title == titles.services || menu.title == "Services"
         let searchFormat = nativeSearchFormat ?? titles.search
         let openURLTitle = nativeOpenURLTitle ?? titles.openURL
         let readingListTitle = nativeReadingListTitle ?? titles.readingList
+        let openTitle = nativeOpenTitle ?? titles.open
         for item in menu.items {
             let duplicateSearch = matchesSearchTitle(item.title, format: searchFormat) || matchesSearchTitle(item.title, format: "Search with %@")
-            let browserService = isServices && (duplicateSearch || [openURLTitle, "Open URL", readingListTitle, "Add to Reading List"].contains(item.title))
+            // Finder's generic Open service accepts NSURL and text as well as
+            // filenames, so it can also hand a website to another browser.
+            let browserService = isServices && (duplicateSearch || [openTitle, "Open", openURLTitle, "Open URL", readingListTitle, "Add to Reading List"].contains(item.title))
             if browserService || item.title.caseInsensitiveCompare(titles.safariViewer) == .orderedSame || item.title == "Open in Safari" {
                 menu.removeItem(item)
             } else if let submenu = item.submenu {
                 removeExternalBrowserItems(in: submenu, nativeSearchFormat: searchFormat,
-                                           nativeOpenURLTitle: openURLTitle, nativeReadingListTitle: readingListTitle)
+                                           nativeOpenURLTitle: openURLTitle, nativeReadingListTitle: readingListTitle,
+                                           nativeOpenTitle: openTitle)
             }
         }
     }
 
-    private static let nativeServiceTitles: (services: String, search: String, openURL: String, readingList: String, safariViewer: String) = {
+    private static let nativeServiceTitles: (services: String, search: String, openURL: String, readingList: String, safariViewer: String, open: String) = {
         let webCore = Bundle(identifier: "com.apple.WebCore")
         let appKit = Bundle(identifier: "com.apple.AppKit")
         let systemUI = Bundle(path: "/System/Library/CoreServices/SystemUIServer.app")
+        let finder = Bundle(path: "/System/Library/CoreServices/Finder.app")
         let safari = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Safari").flatMap { Bundle(url: $0) }
         let openWith = webCore?.localizedString(forKey: "Open with %@", value: "Open with %@", table: nil) ?? "Open with %@"
         return (
@@ -123,7 +129,9 @@ final class BrowserWebView: WKWebView {
             webCore?.localizedString(forKey: "Search with %@", value: "Search with %@", table: nil) ?? "Search with %@",
             systemUI?.localizedString(forKey: "Open URL", value: "Open URL", table: "ServicesMenu") ?? "Open URL",
             safari?.localizedString(forKey: "Add to Reading List", value: "Add to Reading List", table: "ServicesMenu") ?? "Add to Reading List",
-            openWith.replacingOccurrences(of: "%[tt]@", with: "%@").replacingOccurrences(of: "%@", with: "Safari")
+            openWith.replacingOccurrences(of: "%[tt]@", with: "%@").replacingOccurrences(of: "%@", with: "Safari"),
+            (finder?.localizedString(forKey: "Finder/Open", value: "Finder/Open", table: "ServicesMenu") ?? "Finder/Open")
+                .components(separatedBy: "/").last ?? "Open"
         )
     }()
 
@@ -133,6 +141,9 @@ final class BrowserWebView: WKWebView {
             super.init()
             NotificationCenter.default.addObserver(self, selector: #selector(menuDidUpdate(_:)),
                                                    name: NSMenu.didAddItemNotification, object: nil)
+            // The application menu can exist before the first WKWebView.
+            if let menu = NSApp?.mainMenu { BrowserWebView.removeExternalBrowserItems(in: menu) }
+            if let menu = NSApp?.servicesMenu { BrowserWebView.removeExternalBrowserItems(in: menu) }
         }
         @objc private func menuDidUpdate(_ notification: Notification) {
             guard !isFiltering, let menu = notification.object as? NSMenu else { return }

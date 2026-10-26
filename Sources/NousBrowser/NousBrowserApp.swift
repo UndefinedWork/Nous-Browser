@@ -244,12 +244,12 @@ struct BrowserCommands: Commands {
             Button(L10n.string("Forward")) { controller?.model.goForward() }.keyboardShortcut("]", modifiers: .command)
                 .disabled(controller?.model.selectedTab?.canGoForward != true)
             Button(L10n.string("Reload")) { controller?.model.reload() }.keyboardShortcut("r")
-                .disabled(controller == nil)
+                .disabled(controller?.model.selectedTab?.hasWebContent != true)
             Button(L10n.string("Reload Without Cache")) { controller?.model.reload(bypassingCache: true) }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
                 .disabled(controller?.model.selectedTab?.hasWebContent != true)
             Button(L10n.string("Stop Loading")) { controller?.model.stopLoading() }.keyboardShortcut(".")
-                .disabled(controller == nil)
+                .disabled(controller?.model.selectedTab?.isLoading != true)
             Divider()
             Button(L10n.string("Copy Current Link")) { controller?.copyURL() }.keyboardShortcut("c", modifiers: [.command, .shift])
                 .disabled(controller?.model.selectedTab?.url == nil)
@@ -297,11 +297,10 @@ struct BrowserCommands: Commands {
                 .keyboardShortcut("g", modifiers: [.command, .shift])
                 .disabled(controller?.model.selectedTab?.hasWebContent != true)
         }
-        CommandGroup(after: .windowArrangement) {
-            Button(L10n.string("Minimize Window")) { windows.activeWindow?.miniaturize(nil) }.keyboardShortcut("m")
-                .disabled(controller == nil)
-            Button(L10n.string("Zoom Window")) { windows.activeWindow?.zoom(nil) }
-                .disabled(controller == nil)
+        // AppKit already supplies Minimize, Zoom, tiling and their shortcuts.
+        // Let its responder chain target browser, Settings and help windows.
+        CommandGroup(replacing: .help) {
+            Button(L10n.string("Keyboard Shortcuts")) { BrowserHelpWindow.show() }
         }
     }
 }

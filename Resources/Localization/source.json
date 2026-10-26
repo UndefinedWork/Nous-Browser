@@ -135,7 +135,8 @@
     "Select Tab %d",
     "Select Last Tab",
     "Open in New Tab",
-    "Open Link in New Window"
+    "Open Link in New Window",
+    "Keyboard Shortcuts"
   ],
   "infoPlist": {
     "NSCameraUsageDescription": "Allow camera access on websites you authorize, such as video meetings.",
