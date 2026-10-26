@@ -134,3 +134,5 @@
 "Actual Size" = "실제 크기";
 "Select Tab %d" = "%d번 탭 선택";
 "Select Last Tab" = "마지막 탭 선택";
+"Open in New Tab" = "새로운 탭에서 열기";
+"Open Link in New Window" = "새로운 윈도우에서 링크 열기";

@@ -1,6 +1,7 @@
 import AppKit
 import Observation
 import SwiftUI
+import WebKit
 
 /// Owns browser windows independently of SwiftUI's Settings scene. Keeping the
 /// active identity here also gives menu commands the same target as AppKit.
@@ -75,6 +76,61 @@ final class BrowserWindowManager {
         activate(context)
         saveWorkspace()
         return context
+    }
+
+    @discardableResult
+    func openLinkInNewWindow(_ url: URL, from sourceID: UUID) -> BrowserWindowContext? {
+        guard !isTerminating, BrowserModel.canOpenExternalURL(url),
+              windows.contains(where: { $0.session.id == sourceID }) else { return nil }
+        let context = makeWindow(session: workspace.makeWindowSession(), restoring: false)
+        context.controller.model.selectedTab?.load(url)
+        context.controller.model.persistSession()
+        activate(context)
+        return context
+    }
+
+    /// Move the existing page, including its DOM, navigation history and media,
+    /// before shutting down an emptied source window.
+    @discardableResult
+    func moveTabToNewWindow(_ id: UUID, from sourceID: UUID, at screenPoint: NSPoint? = nil) -> BrowserWindowContext? {
+        guard !isTerminating,
+              let source = windows.first(where: { $0.session.id == sourceID }),
+              let tab = source.controller.model.tabs.first(where: { $0.id == id }),
+              tab.webView.fullscreenState == .notInFullscreen else { return nil }
+        let sourceModel = source.controller.model
+        source.controller.find.dismiss()
+        source.controller.passwords.dismiss()
+        guard let transferred = sourceModel.takeTabForTransfer(id) else { return nil }
+        let destination = makeWindow(session: workspace.makeWindowSession(), restoring: false, initialTab: transferred)
+        destination.controller.model.isSidebarVisible = sourceModel.isSidebarVisible
+        destination.controller.model.resizeSidebar(to: sourceModel.sidebarWidth)
+        destination.controller.model.persistSession()
+        sourceModel.persistSession()
+
+        positionTransferredWindow(destination.window, from: source.window, at: screenPoint)
+        if sourceModel.tabs.isEmpty { closeWindow(sourceID) }
+        activate(destination)
+        transferred.prepareAfterTransfer()
+        if showsWindows, transferred.hasWebContent { destination.window.makeFirstResponder(transferred.webView) }
+        return destination
+    }
+
+    private func positionTransferredWindow(_ window: NSWindow, from source: NSWindow, at point: NSPoint?) {
+        var frame = source.styleMask.contains(.fullScreen) ? window.frame : source.frame
+        guard let point, point.x.isFinite, point.y.isFinite else {
+            frame.origin.x += 24
+            frame.origin.y -= 24
+            window.setFrame(frame, display: false)
+            return
+        }
+        let screen = NSScreen.screens.first { $0.frame.contains(point) } ?? source.screen ?? NSScreen.main
+        if let visible = screen?.visibleFrame {
+            frame.size.width = min(frame.width, visible.width)
+            frame.size.height = min(frame.height, visible.height)
+            frame.origin.x = min(max(visible.minX, point.x - 120), visible.maxX - frame.width)
+            frame.origin.y = min(max(visible.minY, point.y + 90 - frame.height), visible.maxY - frame.height)
+        }
+        window.setFrame(frame, display: false)
     }
 
     /// With no open windows, Cmd-T is equivalent to Cmd-N, rather than making
@@ -161,9 +217,9 @@ final class BrowserWindowManager {
         history.flush()
     }
 
-    private func makeWindow(session: BrowserWindowSession, restoring: Bool) -> BrowserWindowContext {
+    private func makeWindow(session: BrowserWindowSession, restoring: Bool, initialTab: BrowserTab? = nil) -> BrowserWindowContext {
         let model = BrowserModel(sessionURL: workspace.sessionURL(for: session), restoreSession: restoring,
-                                 startWithBlankTab: !restoring || !session.usesLegacySession)
+                                 startWithBlankTab: !restoring || !session.usesLegacySession, initialTab: initialTab)
         model.onVisit = { [weak self] url, title in self?.history.recordVisit(url: url, title: title) }
         model.onPageTitleChanged = { [weak self] url, title in self?.history.updateTitle(url: url, title: title) }
         if restoring {
@@ -192,6 +248,10 @@ final class BrowserWindowManager {
         controller.onNewWindow = { [weak self] in _ = self?.newWindow() }
         controller.onCloseWindow = { [weak self] in self?.closeWindow(session.id) }
         model.onLastTabClosed = { [weak self] in self?.closeWindow(session.id) }
+        model.onOpenLinkInNewWindow = { [weak self] url in _ = self?.openLinkInNewWindow(url, from: session.id) }
+        controller.onMoveTabToNewWindow = { [weak self] id, point in
+            self?.moveTabToNewWindow(id, from: session.id, at: point) != nil
+        }
         windows.append(context)
         model.persistSession()
         return context

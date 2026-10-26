@@ -26,6 +26,7 @@ final class BrowserController {
     let find: BrowserPageFindController
     @ObservationIgnored var onNewWindow: (() -> Void)?
     @ObservationIgnored var onCloseWindow: (() -> Void)?
+    @ObservationIgnored var onMoveTabToNewWindow: ((UUID, NSPoint) -> Bool)?
 
     init(model: BrowserModel = BrowserModel(), appearance: BrowserAppearanceSettings = BrowserAppearanceSettings(),
          preferences: BrowserPreferences = BrowserPreferences(), history: BrowserHistoryStore? = nil) {
@@ -92,6 +93,10 @@ final class BrowserController {
     func newWindow() { onNewWindow?() }
     func closeWindow() { onCloseWindow?() }
 
+    func moveTabToNewWindow(_ id: UUID, at point: NSPoint) -> Bool {
+        onMoveTabToNewWindow?(id, point) ?? false
+    }
+
     func selectNextTab(backward: Bool = false) {
         if isAddressPresented { dismissAddress() }
         model.selectNextTab(backward: backward)
@@ -115,6 +120,7 @@ final class BrowserController {
         passwords.dismiss()
         onNewWindow = nil
         onCloseWindow = nil
+        onMoveTabToNewWindow = nil
         model.shutdown()
     }
 

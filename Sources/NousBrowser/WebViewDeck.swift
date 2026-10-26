@@ -8,9 +8,10 @@ import WebKit
 struct WebViewDeck: NSViewRepresentable {
     let tabs: [BrowserTab]
     let selectedID: UUID?
+    var owner: BrowserModel? = nil
 
     func makeNSView(context: Context) -> WebViewDeckView { WebViewDeckView() }
-    func updateNSView(_ deck: WebViewDeckView, context: Context) { deck.show(tabs, selectedID: selectedID) }
+    func updateNSView(_ deck: WebViewDeckView, context: Context) { deck.show(tabs, selectedID: selectedID, owner: owner) }
 }
 
 @MainActor
@@ -22,7 +23,10 @@ final class WebViewDeckView: NSView {
 
     override var isFlipped: Bool { true }
 
-    func show(_ tabs: [BrowserTab], selectedID: UUID?) {
+    func show(_ proposedTabs: [BrowserTab], selectedID: UUID?, owner: BrowserModel? = nil) {
+        // A delayed SwiftUI update from the former window cannot reclaim a
+        // transferred view after the tab has changed owners.
+        let tabs = proposedTabs.filter { tab in owner.map { tab.isOwned(by: $0) } ?? true }
         let liveIDs = Set(tabs.map(\.id))
         recentIDs.removeAll { !liveIDs.contains($0) }
         if let selectedID {
@@ -45,6 +49,9 @@ final class WebViewDeckView: NSView {
             }
             // A page in element fullscreen lives in WebKit's fullscreen window.
             // WebKit returns it here when fullscreen ends; never pull it back.
+            if owner != nil, view.superview is WebViewDeckView, view.superview !== self {
+                view.removeFromSuperview()
+            }
             if view.superview == nil {
                 view.frame = bounds
                 view.autoresizingMask = [.width, .height]

@@ -23,6 +23,24 @@ enum SidebarTabDragGeometry {
     static let contentInset: CGFloat = 68
     static let rowSpacing: CGFloat = 1
     static var stride: CGFloat { BrowserDesign.rowHeight + rowSpacing }
+
+    static func isOutsideWindow(_ point: NSPoint, frame: NSRect) -> Bool {
+        point.x.isFinite && point.y.isFinite && !frame.insetBy(dx: -8, dy: -8).contains(point)
+    }
+}
+
+@MainActor
+final class SidebarDragWindowReference {
+    weak var window: NSWindow?
+    weak var view: NSView?
+    var lastDragScreenPoint: NSPoint?
+
+    func screenPoint(forSidebarPoint point: CGPoint) -> NSPoint? {
+        guard let view, let window = view.window else { return nil }
+        let local = NSPoint(x: view.bounds.minX + point.x,
+                            y: view.isFlipped ? view.bounds.minY + point.y : view.bounds.maxY - point.y)
+        return window.convertPoint(toScreen: view.convert(local, to: nil))
+    }
 }
 
 struct SidebarTabFramePreference: PreferenceKey {
@@ -58,6 +76,7 @@ struct SidebarTabDragSession {
     var pointer: CGPoint
     var center: CGPoint
     var changedEvents = 0
+    var awaitsExternalRelease = false
     var isSettling = false
 }
 
@@ -210,7 +229,9 @@ struct SidebarDragCancellationMonitor: NSViewRepresentable {
     let isEnabled: Bool
     let canCancel: Bool
     let onCancel: () -> Void
-    let onPointerRelease: () -> Void
+    let windowReference: SidebarDragWindowReference
+    let onPointerRelease: (NSPoint) -> Void
+    let onPointerPress: () -> Void
 
     func makeNSView(context: Context) -> MonitorView { MonitorView() }
 
@@ -218,6 +239,10 @@ struct SidebarDragCancellationMonitor: NSViewRepresentable {
         view.canCancel = canCancel
         view.onCancel = onCancel
         view.onPointerRelease = onPointerRelease
+        view.onPointerPress = onPointerPress
+        view.windowReference = windowReference
+        windowReference.view = view
+        windowReference.window = view.window
         view.setEnabled(isEnabled)
     }
 
@@ -226,11 +251,19 @@ struct SidebarDragCancellationMonitor: NSViewRepresentable {
     final class MonitorView: NSView {
         var canCancel = false
         var onCancel: (() -> Void)?
-        var onPointerRelease: (() -> Void)?
+        var onPointerRelease: ((NSPoint) -> Void)?
+        var onPointerPress: (() -> Void)?
+        var windowReference: SidebarDragWindowReference?
         private var eventMonitor: Any?
         private var resignObserver: NSObjectProtocol?
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            windowReference?.window = window
+            windowReference?.view = self
+        }
 
         func setEnabled(_ enabled: Bool) {
             if !enabled {
@@ -241,15 +274,21 @@ struct SidebarDragCancellationMonitor: NSViewRepresentable {
                 return
             }
             guard eventMonitor == nil else { return }
-            eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseUp, .leftMouseDown]) { [weak self] event in
+            eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseUp, .leftMouseDown, .leftMouseDragged]) { [weak self] event in
                 let consumed = MainActor.assumeIsolated {
                     guard let self else { return false }
                     if event.type == .keyDown, event.keyCode == 53, self.canCancel {
                         self.onCancel?()
                         return true
                     }
-                    if event.type == .leftMouseUp || event.type == .leftMouseDown {
-                        self.onPointerRelease?()
+                    if event.type == .leftMouseUp || event.type == .leftMouseDragged {
+                        guard event.window == nil || event.window === self.window else { return false }
+                        let point = event.window?.convertPoint(toScreen: event.locationInWindow) ?? NSEvent.mouseLocation
+                        self.windowReference?.lastDragScreenPoint = point
+                        if event.type == .leftMouseDragged { return false }
+                        self.onPointerRelease?(point)
+                    } else if event.type == .leftMouseDown {
+                        self.onPointerPress?()
                     }
                     return false
                 }

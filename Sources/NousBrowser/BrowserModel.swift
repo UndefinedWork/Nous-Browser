@@ -106,6 +106,7 @@ final class BrowserModel {
     @ObservationIgnored var onLastTabClosed: (() -> Void)?
     @ObservationIgnored var onVisit: ((URL, String) -> Void)?
     @ObservationIgnored var onPageTitleChanged: ((URL, String) -> Void)?
+    @ObservationIgnored var onOpenLinkInNewWindow: ((URL) -> Void)?
     /// Injectable so tests can age tabs without waiting.
     @ObservationIgnored var now: () -> Date = Date.init
 
@@ -113,11 +114,16 @@ final class BrowserModel {
     var addressDisplay: String { selectedTab?.url?.absoluteString ?? "" }
     var canRestoreClosedTab: Bool { !closedTabs.isEmpty }
 
-    init(sessionURL: URL? = nil, restoreSession: Bool = true, loadSelectedTab: Bool = true, startWithBlankTab: Bool = false) {
+    init(sessionURL: URL? = nil, restoreSession: Bool = true, loadSelectedTab: Bool = true, startWithBlankTab: Bool = false,
+         initialTab: BrowserTab? = nil) {
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Nous Browser", isDirectory: true)
         self.sessionURL = sessionURL ?? directory.appendingPathComponent("session.json")
-        if restoreSession,
+        if let initialTab {
+            tabs = [initialTab]
+            selectedTabID = initialTab.id
+            initialTab.owner = self
+        } else if restoreSession,
            let data = try? Data(contentsOf: self.sessionURL),
            let session = try? JSONDecoder().decode(BrowserSession.self, from: data),
            !session.tabs.isEmpty {
@@ -134,7 +140,7 @@ final class BrowserModel {
             selectedTabID = tab.id
         }
         isRestoring = false
-        if loadSelectedTab { selectedTab?.loadIfNeeded() }
+        if loadSelectedTab, initialTab == nil { selectedTab?.loadIfNeeded() }
     }
 
     func newTab(url: URL? = nil) {
@@ -143,6 +149,40 @@ final class BrowserModel {
         selectedTabID = tab.id
         tab.loadIfNeeded()
         persistSession()
+    }
+
+    @discardableResult
+    func openLinkInNewTab(_ url: URL, after sourceID: UUID) -> BrowserTab? {
+        guard !isShutDown, Self.canOpenExternalURL(url),
+              let source = tabs.firstIndex(where: { $0.id == sourceID }) else { return nil }
+        let tab = BrowserTab(url: url, owner: self)
+        // Links from a pinned page start the normal group, like duplicated pins.
+        tabs.insert(tab, at: tabs[source].isPinned ? firstNormalTabIndex : source + 1)
+        selectedTabID = tab.id
+        tab.loadIfNeeded()
+        persistSession()
+        return tab
+    }
+
+    func openLinkInNewWindow(_ url: URL, from sourceID: UUID? = nil) {
+        guard !isShutDown, Self.canOpenExternalURL(url),
+              sourceID == nil || tabs.contains(where: { $0.id == sourceID }) else { return }
+        onOpenLinkInNewWindow?(url)
+    }
+
+    /// A transfer changes ownership without closing, pausing or reloading the page.
+    /// The manager saves the destination first, then this source session.
+    func takeTabForTransfer(_ id: UUID) -> BrowserTab? {
+        guard !isShutDown, let index = tabs.firstIndex(where: { $0.id == id }),
+              tabs[index].webView.fullscreenState == .notInFullscreen else { return nil }
+        let tab = tabs.remove(at: index)
+        tab.owner = nil
+        tab.webView.removeFromSuperview()
+        if selectedTabID == id {
+            selectedTabID = tabs.isEmpty ? nil : tabs[min(index, tabs.count - 1)].id
+            selectedTab?.loadIfNeeded()
+        }
+        return tab
     }
 
     func selectTab(_ id: UUID) {
@@ -201,6 +241,7 @@ final class BrowserModel {
         if closedTabs.count > 20 { closedTabs.removeFirst() }
         tab.cancelFaviconLoading()
         tab.detachPageNavigationShortcuts()
+        (tab.webView as? BrowserWebView)?.invalidateContextMenu()
         let closingWebView = tab.webView
         closingWebView.stopLoading()
         closingWebView.pauseAllMediaPlayback(completionHandler: nil)
@@ -354,6 +395,7 @@ final class BrowserModel {
         onLastTabClosed = nil
         onVisit = nil
         onPageTitleChanged = nil
+        onOpenLinkInNewWindow = nil
         saveTask?.cancel()
         saveTask = nil
         tabs.forEach { $0.shutdown() }
@@ -400,9 +442,11 @@ final class BrowserModel {
         return hibernated
     }
 
-    fileprivate func openPopup(configuration: WKWebViewConfiguration) -> WKWebView {
+    fileprivate func openPopup(configuration: WKWebViewConfiguration, after sourceID: UUID) -> WKWebView {
         let tab = BrowserTab(owner: self, configuration: configuration)
-        tabs.append(tab)
+        let index = tabs.firstIndex { $0.id == sourceID }
+        let destination = index.map { tabs[$0].isPinned ? firstNormalTabIndex : $0 + 1 } ?? tabs.count
+        tabs.insert(tab, at: destination)
         selectedTabID = tab.id
         persistSession()
         return tab.webView
@@ -433,6 +477,7 @@ final class BrowserTab: NSObject, Identifiable {
     @ObservationIgnored var lastActiveAt = Date()
 
     @ObservationIgnored fileprivate weak var owner: BrowserModel?
+    func isOwned(by model: BrowserModel) -> Bool { owner === model }
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []
     @ObservationIgnored private var hasLoaded = false
     @ObservationIgnored private var pendingInteractionState: Any?
@@ -478,10 +523,20 @@ final class BrowserTab: NSObject, Identifiable {
         BrowserUserAgent.configure(config)
         BrowserPasswordAutofill.install(configuration: config)
         BrowserPageNavigationShortcuts.install(in: config)
-        return WKWebView(frame: .zero, configuration: config)
+        return BrowserWebView(frame: .zero, configuration: config)
     }
 
     private func attach(_ webView: WKWebView) {
+        if let browserView = webView as? BrowserWebView {
+            browserView.onOpenLinkInNewTab = { [weak self, weak webView] url in
+                guard let self, self.webView === webView else { return }
+                self.owner?.openLinkInNewTab(url, after: self.id)
+            }
+            browserView.onOpenLinkInNewWindow = { [weak self, weak webView] url in
+                guard let self, self.webView === webView else { return }
+                self.owner?.openLinkInNewWindow(url, from: self.id)
+            }
+        }
         pageNavigationShortcuts = BrowserPageNavigationShortcuts.attach(to: webView) { [weak self, weak webView] direction in
             guard let self, let webView, self.webView === webView,
                   let owner = self.owner, owner.selectedTab === self,
@@ -547,6 +602,7 @@ final class BrowserTab: NSObject, Identifiable {
     }
 
     private func detachWebView() {
+        (webView as? BrowserWebView)?.invalidateContextMenu()
         detachPageNavigationShortcuts()
         observations.forEach { $0.invalidate() }
         observations = []
@@ -560,6 +616,13 @@ final class BrowserTab: NSObject, Identifiable {
     fileprivate func detachPageNavigationShortcuts() {
         pageNavigationShortcuts?.invalidate()
         pageNavigationShortcuts = nil
+    }
+
+    func prepareAfterTransfer() {
+        guard errorDescription == nil else { return }
+        // Live views keep their DOM/history untouched. Only an unloaded page
+        // needs its first load or its hibernated interaction state restored.
+        if isHibernated || (!hasLoaded && webView.url == nil && !webView.isLoading) { loadIfNeeded() }
     }
 
     func loadIfNeeded(force: Bool = false) {
@@ -807,7 +870,7 @@ extension BrowserTab: WKNavigationDelegate {
             return
         }
         if navigationAction.modifierFlags.contains(.command), navigationAction.navigationType == .linkActivated {
-            owner?.newTab(url: url)
+            owner?.openLinkInNewTab(url, after: id)
             decisionHandler(.cancel)
             return
         }
@@ -859,7 +922,7 @@ extension BrowserTab: WKNavigationDelegate {
 
 extension BrowserTab: WKUIDelegate {
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        owner?.openPopup(configuration: configuration)
+        owner?.openPopup(configuration: configuration, after: id)
     }
 
     func webViewDidClose(_ webView: WKWebView) { owner?.closeTab(id) }

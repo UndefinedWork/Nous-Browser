@@ -134,7 +134,9 @@
     "Zoom Out",
     "Actual Size",
     "Select Tab %d",
-    "Select Last Tab"
+    "Select Last Tab",
+    "Open in New Tab",
+    "Open Link in New Window"
   ],
   "infoPlist": {
     "NSCameraUsageDescription": "Allow camera access on websites you authorize, such as video meetings.",
