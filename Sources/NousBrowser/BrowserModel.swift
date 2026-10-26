@@ -509,6 +509,7 @@ final class BrowserTab: NSObject, Identifiable {
     @ObservationIgnored private var faviconRequestID = UUID()
     @ObservationIgnored private var passwordAutofill: BrowserPasswordAutofill.Attachment?
     @ObservationIgnored private var pageNavigationShortcuts: BrowserPageNavigationShortcuts.Attachment?
+    @ObservationIgnored private var userAgentPolicy: BrowserUserAgent.NavigationPolicy?
 
     var displayTitle: String {
         !hasWebContent && url == nil ? L10n.string("New Tab") : title
@@ -547,6 +548,7 @@ final class BrowserTab: NSObject, Identifiable {
     }
 
     private func attach(_ webView: WKWebView) {
+        userAgentPolicy = BrowserUserAgent.NavigationPolicy(webView: webView)
         if let browserView = webView as? BrowserWebView {
             browserView.onOpenLinkInNewTab = { [weak self, weak webView] url in
                 guard let self, self.webView === webView else { return }
@@ -622,6 +624,8 @@ final class BrowserTab: NSObject, Identifiable {
     }
 
     private func detachWebView() {
+        userAgentPolicy?.invalidate()
+        userAgentPolicy = nil
         (webView as? BrowserWebView)?.invalidateContextMenu()
         detachPageNavigationShortcuts()
         observations.forEach { $0.invalidate() }
@@ -715,6 +719,9 @@ final class BrowserTab: NSObject, Identifiable {
     static let terminationReloadWindow: TimeInterval = 10
 
     func load(_ url: URL, cachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy) {
+        // Cancel an older identity lookup before a new address starts loading.
+        // The main-frame navigation policy resolves a first Search identity.
+        userAgentPolicy?.applyKnownIdentity(for: url)
         let wasBlankTab = !hasWebContent && self.url == nil
         let hadPlaceholderTitle = ["New Tab", "新标签页", "新標籤頁", L10n.string("New Tab")].contains(title)
         hasLoaded = true
@@ -874,6 +881,7 @@ extension BrowserTab: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
+        guard webView === self.webView else { decisionHandler(.cancel); return }
         guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
         let scheme = url.scheme?.lowercased() ?? ""
         if !["https", "http", "about", "blob", "data", "file"].contains(scheme) {
@@ -894,17 +902,33 @@ extension BrowserTab: WKNavigationDelegate {
             decisionHandler(.cancel)
             return
         }
-        decisionHandler(navigationAction.shouldPerformDownload ? .download : .allow)
+        let policy: WKNavigationActionPolicy = navigationAction.shouldPerformDownload ? .download : .allow
+        guard navigationAction.targetFrame?.isMainFrame == true, let userAgentPolicy else {
+            decisionHandler(policy)
+            return
+        }
+        userAgentPolicy.prepare(for: url) { ready in decisionHandler(ready ? policy : .cancel) }
+    }
+
+    func webView(_ webView: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!) {
+        guard webView === self.webView else { return }
+        // A redirect can leave Search without a new navigation-action callback.
+        // Restore native identity before committing the destination document.
+        userAgentPolicy?.applyKnownIdentity(for: webView.url)
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void) {
+        guard webView === self.webView else { decisionHandler(.cancel); return }
         let disposition = (navigationResponse.response as? HTTPURLResponse)?
             .value(forHTTPHeaderField: "Content-Disposition")?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() ?? ""
         let isAttachment = disposition.split(separator: ";", maxSplits: 1).first?
             .trimmingCharacters(in: .whitespacesAndNewlines) == "attachment"
-        decisionHandler(isAttachment || !navigationResponse.canShowMIMEType ? .download : .allow)
+        let policy: WKNavigationResponsePolicy = isAttachment || !navigationResponse.canShowMIMEType ? .download : .allow
+        guard navigationResponse.isForMainFrame, let url = navigationResponse.response.url,
+              let userAgentPolicy else { decisionHandler(policy); return }
+        userAgentPolicy.prepare(for: url) { ready in decisionHandler(ready ? policy : .cancel) }
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) { download.delegate = self }
