@@ -1,6 +1,74 @@
 import Foundation
 import Testing
+import WebKit
 @testable import NousBrowser
+
+@Suite("Selection search stays in Nous", .serialized)
+@MainActor
+struct BrowserSelectionSearchTests {
+    @Test func controllerSearchPreferencesDriveAdjacentSearchTabs() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let defaultsDomain = "NousBrowserSelectionSearch-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: defaultsDomain))
+        let preferences = BrowserPreferences(defaults: defaults)
+        let model = BrowserModel(sessionURL: directory.appendingPathComponent("session.json"), restoreSession: false,
+                                 loadSelectedTab: false, startWithBlankTab: true)
+        let controller = BrowserController(model: model, preferences: preferences)
+        defer {
+            model.shutdown()
+            defaults.removePersistentDomain(forName: defaultsDomain)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let source = try #require(model.selectedTab)
+        let view = try #require(source.webView as? BrowserWebView)
+        model.newTab()
+        let following = try #require(model.selectedTabID)
+        #expect(model.searchEngineProvider() == .google)
+        controller.preferences.selectSearchEngine(.duckDuckGo)
+        #expect(view.searchEngineTitle?() == BrowserSearchEngine.duckDuckGo.title)
+        let query = "C++ 中文 & test"
+        view.onSearchSelection?(query)
+        let result = try #require(model.selectedTab)
+        result.webView.stopLoading()
+        #expect(model.tabs.map(\.id) == [source.id, result.id, following])
+        #expect(result.url == BrowserSearchEngine.duckDuckGo.searchURL(query: query))
+        #expect(URLComponents(url: try #require(result.url), resolvingAgainstBaseURL: false)?.queryItems?.first?.value == query)
+        controller.preferences.selectSearchEngine(.bing)
+        #expect(view.searchEngineTitle?() == BrowserSearchEngine.bing.title)
+        view.onSearchSelection?("Updated default")
+        let updated = try #require(model.selectedTab)
+        updated.webView.stopLoading()
+        #expect(model.tabs.map(\.id) == [source.id, updated.id, result.id, following])
+        #expect(updated.url == BrowserSearchEngine.bing.searchURL(query: "Updated default"))
+    }
+
+    @Test func transferredPagesUseTheDestinationSearchEngineAndTabList() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let source = BrowserModel(sessionURL: directory.appendingPathComponent("source.json"), restoreSession: false,
+                                  loadSelectedTab: false, startWithBlankTab: true)
+        let destination = BrowserModel(sessionURL: directory.appendingPathComponent("destination.json"), restoreSession: false,
+                                       loadSelectedTab: false, startWithBlankTab: true)
+        defer {
+            source.shutdown()
+            destination.shutdown()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        source.searchEngineProvider = { .google }
+        destination.searchEngineProvider = { .baidu }
+        let moving = try #require(source.selectedTab)
+        let view = try #require(moving.webView as? BrowserWebView)
+        let existing = try #require(destination.selectedTabID)
+        #expect(source.takeTabForTransfer(moving.id) === moving)
+        #expect(destination.adoptTransferredTab(moving, at: 0))
+        #expect(view.searchEngineTitle?() == BrowserSearchEngine.baidu.title)
+        view.onSearchSelection?("Moved selection")
+        let result = try #require(destination.selectedTab)
+        result.webView.stopLoading()
+        #expect(source.tabs.isEmpty)
+        #expect(destination.tabs.map(\.id) == [moving.id, result.id, existing])
+        #expect(result.url == BrowserSearchEngine.baidu.searchURL(query: "Moved selection"))
+    }
+}
 
 @Suite("Browser address handling")
 struct BrowserAddressTests {
@@ -157,5 +225,17 @@ struct SidebarSizingTests {
         #expect(SidebarSizing.effectiveWidth(preferred: 9_000, windowWidth: 1_000) == 420)
         #expect(SidebarSizing.effectiveWidth(preferred: .nan, windowWidth: 900) == 243)
         #expect(SidebarSizing.effectiveWidth(preferred: 360, windowWidth: .nan) == 360)
+    }
+}
+
+@Suite("Safari website wrappers stay in Nous")
+struct SafariWebsiteWrapperTests {
+    @Test func onlyTheKnownHTTPSWrapperBecomesAnInternalWebsite() throws {
+        let wrapped = try #require(URL(string: "x-safari-https://example.com:8443/path?q=C%2B%2B&text=%E4%B8%AD%E6%96%87#section"))
+        let website = try #require(BrowserModel.unwrappedSafariWebsite(wrapped))
+        #expect(website.absoluteString == "https://example.com:8443/path?q=C%2B%2B&text=%E4%B8%AD%E6%96%87#section")
+        for input in ["x-safari-https:///missing-host", "x-safari-https://user:secret@example.com/", "x-safari-http://example.com/", "x-webkit-app-launch://example.com/", "https://example.com/", "mailto:test@example.com"] {
+            #expect(BrowserModel.unwrappedSafariWebsite(try #require(URL(string: input))) == nil)
+        }
     }
 }

@@ -4,7 +4,7 @@ import Testing
 import WebKit
 @testable import NousBrowser
 
-@Suite("Native webpage link context menus", .serialized)
+@Suite("Native webpage link and search context menus", .serialized)
 @MainActor
 struct BrowserWebViewTests {
     @Test func validatesTheClickedFrameRatherThanTheTopLevelOrigin() throws {
@@ -127,6 +127,140 @@ struct BrowserWebViewTests {
         #expect(unrelated.action == nil && unrelated.target == nil && unrelated.representedObject == nil)
     }
 
+    @Test func selectionMessagesValidateTheActualFrameAndPreserveSearchMeaning() {
+        let body: [String: Any] = ["selection": " \nC++ 中文 & test\t", "documentURL": "https://frame.example:8443/page"]
+        #expect(BrowserWebView.selectionText(from: body, frameScheme: "https", frameHost: "frame.example", framePort: 8443) == "C++ 中文 & test")
+        #expect(BrowserWebView.selectionText(from: body, frameScheme: "https", frameHost: "top.example", framePort: 8443) == nil)
+        #expect(BrowserWebView.selectionText(from: body, frameScheme: "https", frameHost: "frame.example", framePort: 443) == nil)
+        #expect(BrowserWebView.selectionText(from: body, frameScheme: "http", frameHost: "frame.example", framePort: 8443) == nil)
+        let invalidBodies: [Any] = [NSNull(), ["selection": NSNull(), "documentURL": "https://frame.example/"],
+                             ["selection": " ", "documentURL": "https://frame.example/"],
+                             ["selection": String(repeating: "中", count: 6_000), "documentURL": "https://frame.example/"],
+                             ["selection": "text", "documentURL": "not a URL"], ["selection": "text"]]
+        for invalid in invalidBodies {
+            #expect(BrowserWebView.selectionText(from: invalid, frameScheme: "https", frameHost: "frame.example", framePort: 443) == nil)
+        }
+        for document in ["about:blank", "about:srcdoc"] {
+            #expect(BrowserWebView.selectionText(from: ["selection": "Frame text", "documentURL": document],
+                                               frameScheme: "https", frameHost: "frame.example", framePort: 443) == "Frame text")
+        }
+    }
+
+    @Test func selectionContextRejectsStaleDifferentPageAndDifferentLocationMessages() throws {
+        let page = try #require(URL(string: "https://page.example/"))
+        let now = Date()
+        let context = BrowserWebView.ContextSelection(text: "Selected words", pageURL: page, eventDate: now,
+                                                      screenPoint: NSPoint(x: 80, y: 120))
+        #expect(context.matches(pageURL: page, screenPoint: NSPoint(x: 81, y: 119), now: now))
+        #expect(!context.matches(pageURL: URL(string: "https://other.example/"), screenPoint: NSPoint(x: 80, y: 120), now: now))
+        #expect(!context.matches(pageURL: page, screenPoint: NSPoint(x: 100, y: 120), now: now))
+        #expect(!context.matches(pageURL: page, screenPoint: NSPoint(x: 80, y: 120), now: now.addingTimeInterval(2)))
+        #expect(!context.matches(pageURL: page, screenPoint: NSPoint(x: 80, y: 120), now: now.addingTimeInterval(-2)))
+    }
+
+    @Test func searchReplacesTheSystemActionAndPreservesNativeEditingItems() throws {
+        let view = makeView()
+        defer { view.invalidateContextMenu() }
+        let menu = NSMenu()
+        let search = menu.addItem(withTitle: "Search with Google", action: #selector(NativeActionSpy.invoke(_:)), keyEquivalent: "")
+        let originalTarget = NativeActionSpy()
+        search.target = originalTarget
+        let image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
+        search.image = image
+        let copy = menu.addItem(withTitle: "Copy", action: #selector(NativeActionSpy.invoke(_:)), keyEquivalent: "")
+        copy.target = originalTarget
+        let lookup = menu.addItem(withTitle: "Look Up “Words”", action: nil, keyEquivalent: "")
+        let translate = menu.addItem(withTitle: "Translate “Words”", action: nil, keyEquivalent: "")
+        var queries: [String] = []
+        view.searchEngineTitle = { BrowserSearchEngine.bing.title }
+        view.onSearchSelection = { queries.append($0) }
+
+        view.rewriteSearchItems(in: menu, selection: "C++ 中文 & test")
+        #expect(menu.items == [search, copy, lookup, translate])
+        #expect(search.title == L10n.format("Search with %@", BrowserSearchEngine.bing.title))
+        #expect(search.image === image)
+        #expect(search.isEnabled)
+        #expect((search.target as? NSObject) !== originalTarget)
+        #expect(copy.target as? NativeActionSpy === originalTarget)
+        try invoke(search)
+        #expect(queries == ["C++ 中文 & test"])
+        #expect(originalTarget.calls == 0)
+        // Rewriting a later menu must not change the already-dispatched menu's
+        // captured selection, which AppKit can invoke after didCloseMenu.
+        let later = NSMenu()
+        later.addItem(withTitle: "Search with Google", action: nil, keyEquivalent: "")
+        view.rewriteSearchItems(in: later, selection: "Later selection")
+        try invoke(search)
+        #expect(queries == ["C++ 中文 & test", "C++ 中文 & test"])
+        view.invalidateContextMenu()
+        try invoke(search)
+        #expect(queries.count == 2)
+    }
+
+    @Test func unavailableSelectionCannotFallBackToTheSystemSearchEvenWhenMenuAutoenablesItems() throws {
+        let view = makeView()
+        defer { view.invalidateContextMenu() }
+        let menu = NSMenu()
+        menu.autoenablesItems = true
+        let originalTarget = NativeActionSpy()
+        let search = menu.addItem(withTitle: "Search with Google", action: #selector(NativeActionSpy.invoke(_:)), keyEquivalent: "")
+        search.target = originalTarget
+        var queries: [String] = []
+        view.onSearchSelection = { queries.append($0) }
+        view.rewriteSearchItems(in: menu, selection: nil)
+        #expect(!search.isEnabled)
+        let validator = try #require(search.target as? NSMenuItemValidation)
+        #expect(!validator.validateMenuItem(search))
+        try invoke(search)
+        #expect(queries.isEmpty && originalTarget.calls == 0)
+        view.rewriteSearchItems(in: menu, selection: "Trusted selection")
+        #expect(search.isEnabled)
+        try invoke(search)
+        #expect(queries == ["Trusted selection"])
+        #expect(originalTarget.calls == 0)
+    }
+
+    @Test func localizedSearchAndServicesEntriesRouteThroughNousWithoutChangingOtherServices() throws {
+        let view = makeView()
+        defer { view.invalidateContextMenu() }
+        let menu = NSMenu()
+        let search = menu.addItem(withTitle: "Googleで検索", action: nil, keyEquivalent: "")
+        let legacy = menu.addItem(withTitle: "Webを検索", action: nil, keyEquivalent: "")
+        let services = menu.addItem(withTitle: "Services", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        services.submenu = submenu
+        let nestedSearch = submenu.addItem(withTitle: "Search With Google", action: nil, keyEquivalent: "")
+        let otherService = submenu.addItem(withTitle: "Make New Sticky Note", action: nil, keyEquivalent: "")
+        var queries: [String] = []
+        view.onSearchSelection = { queries.append($0) }
+        view.rewriteSearchItems(in: menu, selection: "選択した文字", nativeSearchFormat: "%[tt]@で検索", nativeWebSearchTitle: "Webを検索")
+        #expect(services.submenu === submenu)
+        #expect(otherService.target == nil && otherService.action == nil)
+        try invoke(search)
+        try invoke(legacy)
+        try invoke(nestedSearch)
+        #expect(queries == Array(repeating: "選択した文字", count: 3))
+        #expect(BrowserWebView.matchesSearchTitle("用Google搜索", format: "用%@搜索"))
+        #expect(!BrowserWebView.matchesSearchTitle("Googleで検索の設定", format: "%[tt]@で検索"))
+        #expect(!BrowserWebView.matchesSearchTitle("で検索", format: "%[tt]@で検索"))
+        #expect(!BrowserWebView.matchesSearchTitle("Search options", format: "No placeholder"))
+    }
+
+    @Test func externalBrowserServicesAreRemovedWhileEditingAndFileServicesRemain() {
+        let services = NSMenu(title: "Services")
+        for title in ["Search With Google", "Open URL", "Add to Reading List", "Open", "Open man Page in Terminal", "Ask Claude"] {
+            services.addItem(withTitle: title, action: nil, keyEquivalent: "")
+        }
+        BrowserWebView.removeExternalBrowserItems(in: services)
+        #expect(services.items.map(\.title) == ["Open", "Open man Page in Terminal", "Ask Claude"])
+        let webpage = NSMenu()
+        webpage.addItem(withTitle: "Search with Google", action: nil, keyEquivalent: "")
+        webpage.addItem(withTitle: "Open with Safari", action: nil, keyEquivalent: "")
+        webpage.addItem(withTitle: "Open with Preview", action: nil, keyEquivalent: "")
+        BrowserWebView.removeExternalBrowserItems(in: webpage)
+        #expect(webpage.items.map(\.title) == ["Search with Google", "Open with Preview"])
+    }
+
     @Test func inheritedPopupConfigurationKeepsItsStoreAndOneAllFrameListener() throws {
         let configuration = WKWebViewConfiguration()
         let store = WKWebsiteDataStore.nonPersistent()
@@ -171,7 +305,8 @@ struct BrowserWebViewTests {
             }
         }
         var document = { URL: 'https://iframe.example/page', addEventListener(name, fn) { listeners[name] = fn; } };
-        var window = { webkit: { messageHandlers: { nousLinkContextMenu: { postMessage(body) { sent.push(body); } } } } };
+        var window = { getSelection() { return { toString() { return 'C++ 中文 & test'; } }; },
+            webkit: { messageHandlers: { nousLinkContextMenu: { postMessage(body) { sent.push(body); } } } } };
         """#)
         context.evaluateScript(BrowserWebView.contextMenuSource)
         try #require(context.exception == nil)
@@ -195,6 +330,7 @@ struct BrowserWebViewTests {
         #expect(messages[0]["documentURL"] as? String == "https://iframe.example/page")
         #expect(messages[1]["href"] as? String == "https://iframe.example/base/relative-target")
         #expect(messages[2]["href"] is NSNull)
+        #expect(messages.allSatisfy { $0["selection"] as? String == "C++ 中文 & test" })
     }
 
     private func makeView() -> BrowserWebView {
@@ -208,4 +344,10 @@ struct BrowserWebViewTests {
         let action = try #require(item.action)
         target.perform(action, with: item)
     }
+}
+
+@MainActor
+private final class NativeActionSpy: NSObject {
+    var calls = 0
+    @objc func invoke(_ item: NSMenuItem) { calls += 1 }
 }

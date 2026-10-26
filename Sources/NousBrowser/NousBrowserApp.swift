@@ -41,6 +41,7 @@ final class BrowserController {
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
             .appendingPathComponent("history.json"))
         passwords = BrowserPasswordController(model: model)
+        model.searchEngineProvider = { [weak preferences] in preferences?.searchEngine ?? .google }
     }
     var isAddressPresented = false
     var addressText = ""

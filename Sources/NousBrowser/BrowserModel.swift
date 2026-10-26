@@ -107,6 +107,7 @@ final class BrowserModel {
     @ObservationIgnored var onVisit: ((URL, String) -> Void)?
     @ObservationIgnored var onPageTitleChanged: ((URL, String) -> Void)?
     @ObservationIgnored var onOpenLinkInNewWindow: ((URL) -> Void)?
+    @ObservationIgnored var searchEngineProvider: () -> BrowserSearchEngine = { .google }
     /// Injectable so tests can age tabs without waiting.
     @ObservationIgnored var now: () -> Date = Date.init
 
@@ -295,6 +296,17 @@ final class BrowserModel {
         }
         return url.isFileURL && !url.hasDirectoryPath
             && ["html", "htm", "xhtml"].contains(url.pathExtension.lowercased())
+    }
+
+    /// Safari's explicit HTTPS wrapper still represents a website. Resolve
+    /// that known format internally instead of sending it to Launch Services.
+    nonisolated static func unwrappedSafariWebsite(_ url: URL) -> URL? {
+        guard url.scheme?.lowercased() == "x-safari-https",
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let host = components.host, !host.isEmpty,
+              components.user == nil, components.password == nil else { return nil }
+        components.scheme = "https"
+        return components.url
     }
 
     /// Supports URL entry, localhost development addresses, and ordinary search queries.
@@ -557,6 +569,11 @@ final class BrowserTab: NSObject, Identifiable {
             browserView.onOpenLinkInNewWindow = { [weak self, weak webView] url in
                 guard let self, self.webView === webView else { return }
                 self.owner?.openLinkInNewWindow(url, from: self.id)
+            }
+            browserView.searchEngineTitle = { [weak self] in self?.owner?.searchEngineProvider().title ?? BrowserSearchEngine.google.title }
+            browserView.onSearchSelection = { [weak self, weak webView] text in
+                guard let self, self.webView === webView, let owner = self.owner else { return }
+                owner.openLinkInNewTab(owner.searchEngineProvider().searchURL(query: text), after: self.id)
             }
         }
         pageNavigationShortcuts = BrowserPageNavigationShortcuts.attach(to: webView) { [weak self, weak webView] direction in
@@ -884,6 +901,14 @@ extension BrowserTab: WKNavigationDelegate {
         guard webView === self.webView else { decisionHandler(.cancel); return }
         guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
         let scheme = url.scheme?.lowercased() ?? ""
+        if scheme == "x-safari-https" {
+            decisionHandler(.cancel)
+            guard navigationAction.navigationType == .linkActivated || navigationAction.sourceFrame.isMainFrame,
+                  let website = BrowserModel.unwrappedSafariWebsite(url) else { return }
+            if navigationAction.targetFrame?.isMainFrame == true { load(website) }
+            else { owner?.openLinkInNewTab(website, after: id) }
+            return
+        }
         if !["https", "http", "about", "blob", "data", "file"].contains(scheme) {
             decisionHandler(.cancel)
             guard navigationAction.navigationType == .linkActivated || navigationAction.sourceFrame.isMainFrame else { return }
