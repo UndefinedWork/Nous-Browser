@@ -1,0 +1,37 @@
+README.md
+  s_3d6e78ea1e9f59::t_275584b848bb19 29,137
+Sources/NousBrowser/SidebarTabDragging.swift
+  s_3d6e78ea1e9f59::t_8068cad41ec6c5 23-24
+  s_3d6e78ea1e9f59::t_3d019f19409f3e 28-49
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_275584b848bb19 22,24
+Docs/QA-1.0.6.md
+  s_3d6e78ea1e9f59::t_c31b3c5c73d82e 1-11,13-25
+  s_3d6e78ea1e9f59::t_78f2f1a377b7eb 12,26
+Tests/NousBrowserTests/SidebarLayoutGeometryTests.swift
+  s_3d6e78ea1e9f59::t_6e82c4709f0262 61,66-69,71-72
+  s_3d6e78ea1e9f59::t_0bc580ee63d7d1 1-60,62-65,70,73-74
+Sources/NousBrowser/SidebarEdgeGlass.swift
+  s_3d6e78ea1e9f59::t_8068cad41ec6c5 13,19,68
+Sources/NousBrowser/BrowserShell.swift
+  s_3d6e78ea1e9f59::t_e025f70a3986e5 4,6,8-14,50-51,274-275,300-302,305-308,336-338,340-341,345-346,687,696,819-821,823-825,827,832,834
+  s_3d6e78ea1e9f59::t_0c7d0af818dfef 439-440,485-487
+Sources/NousBrowser/BrowserTabDragCoordinator.swift
+  s_3d6e78ea1e9f59::t_3d019f19409f3e 194-196,214-220,225,232
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e1e70bf6824647cd7d116c692e7bd0366b78b569",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
