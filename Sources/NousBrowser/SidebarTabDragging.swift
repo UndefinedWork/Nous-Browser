@@ -20,9 +20,32 @@ enum SidebarDragDiagnostics {
 
 enum SidebarTabDragGeometry {
     static let coordinateSpace = "nous-browser-sidebar-viewport"
-    static let contentInset: CGFloat = 68
+    static let contentInset: CGFloat = BrowserDesign.topContentInset
+    static let bottomContentInset: CGFloat = BrowserDesign.bottomContentInset
     static let rowSpacing: CGFloat = 1
     static var stride: CGFloat { BrowserDesign.rowHeight + rowSpacing }
+
+    static func rowFrame(at index: Int, sidebarWidth: CGFloat, scrollOffset: CGFloat) -> CGRect {
+        CGRect(x: BrowserDesign.inset,
+               y: contentInset + CGFloat(index) * stride - scrollOffset,
+               width: max(0, sidebarWidth - BrowserDesign.inset * 2),
+               height: BrowserDesign.rowHeight)
+    }
+
+    static func proposedIndex(forRowTop rowTop: CGFloat, scrollOffset: CGFloat) -> Int {
+        let proposed = (rowTop + scrollOffset - contentInset) / stride
+        guard proposed.isFinite else { return 0 }
+        return Int(exactly: proposed.rounded()) ?? 0
+    }
+
+    static func containsDropPoint(_ point: CGPoint, viewport: CGSize) -> Bool {
+        guard point.x.isFinite, point.y.isFinite,
+              viewport.width.isFinite, viewport.height.isFinite,
+              viewport.width > 0, viewport.height > 0 else { return false }
+        return CGRect(origin: .zero, size: viewport).insetBy(dx: 6, dy: 12).contains(point)
+            && point.y >= contentInset - 8
+            && point.y <= viewport.height - bottomContentInset + 8
+    }
 
     static func isOutsideWindow(_ point: NSPoint, frame: NSRect) -> Bool {
         point.x.isFinite && point.y.isFinite && !frame.insetBy(dx: -8, dy: -8).contains(point)

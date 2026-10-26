@@ -191,11 +191,9 @@ final class BrowserTabDragCoordinator {
                   window.isVisible, !window.isMiniaturized, window.attachedSheet == nil,
                   !controller.isAddressPresented,
                   let local = endpoint.reference.sidebarPoint(forScreenPoint: point),
-                  CGRect(origin: .zero, size: endpoint.viewport).insetBy(dx: 6, dy: 12).contains(local),
-                  local.y >= SidebarTabDragGeometry.contentInset - 8,
-                  local.y <= endpoint.viewport.height - SidebarTabDragGeometry.contentInset + 8 else { continue }
-            let raw = Int(((local.y - grabOffset.y + endpoint.metrics.offsetY
-                            - SidebarTabDragGeometry.contentInset) / SidebarTabDragGeometry.stride).rounded())
+                  SidebarTabDragGeometry.containsDropPoint(local, viewport: endpoint.viewport) else { continue }
+            let raw = SidebarTabDragGeometry.proposedIndex(forRowTop: local.y - grabOffset.y,
+                                                          scrollOffset: endpoint.metrics.offsetY)
             let pinnedCount = controller.model.tabs.prefix(while: \.isPinned).count
             let index = tab.isPinned ? min(max(0, raw), pinnedCount)
                 : min(max(pinnedCount, raw), controller.model.tabs.count)
@@ -213,23 +211,25 @@ final class BrowserTabDragCoordinator {
             cancel()
             return
         }
-        guard let endpoint = endpoints[landing.controllerID],
-              let point = endpoint.reference.screenPoint(forSidebarPoint:
-                CGPoint(x: BrowserDesign.inset,
-                        y: SidebarTabDragGeometry.contentInset + CGFloat(landing.index) * SidebarTabDragGeometry.stride
-                            - endpoint.metrics.offsetY)) else {
+        guard let endpoint = endpoints[landing.controllerID] else {
+            if now - landingStarted > 0.5 { cancel() }
+            return
+        }
+        let rowFrame = SidebarTabDragGeometry.rowFrame(at: landing.index, sidebarWidth: endpoint.viewport.width,
+                                                      scrollOffset: endpoint.metrics.offsetY)
+        guard let point = endpoint.reference.screenPoint(forSidebarPoint: rowFrame.origin) else {
             if now - landingStarted > 0.5 { cancel() }
             return
         }
         let destination = NSPoint(x: point.x - imagePadding,
-                                  y: point.y - BrowserDesign.rowHeight - imagePadding)
+                                  y: point.y - rowFrame.height - imagePadding)
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let dt = CGFloat(min(1.0 / 30.0, max(1.0 / 240.0, now - lastSpringTime)))
         lastSpringTime = now
         let omega: CGFloat = 28
         let damping: CGFloat = 0.86
         var origin = panel.frame.origin
-        let destinationWidth = max(0, endpoint.viewport.width - BrowserDesign.inset * 2) + imagePadding * 2
+        let destinationWidth = rowFrame.width + imagePadding * 2
         var width = panel.frame.width
         velocity.x += (omega * omega * (destination.x - origin.x) - 2 * damping * omega * velocity.x) * dt
         velocity.y += (omega * omega * (destination.y - origin.y) - 2 * damping * omega * velocity.y) * dt

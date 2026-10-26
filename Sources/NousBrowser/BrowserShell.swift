@@ -1,10 +1,17 @@
 import AppKit
 import SwiftUI
 
-// Measurements come from Pico / Nous Browser, 368:6439 and 370:10995.
+// Measurements come from Pico / Nous Browser, 373:417.
 enum BrowserDesign {
-    static let inset: CGFloat = 16
+    static let inset: CGFloat = 12
     static let buttonSize: CGFloat = 36
+    static let bottomButtonSize: CGFloat = 32
+    static let bottomButtonSpacing: CGFloat = 8
+    static let topContentInset: CGFloat = inset * 2 + buttonSize
+    static let bottomContentInset: CGFloat = inset * 2 + bottomButtonSize
+    static let lightWindowBacking = Color(white: 250.0 / 255.0)
+    static let darkWindowBacking = Color(white: 0.12)
+    static let windowBackingOpacity = 0.90
     static let rowHeight: CGFloat = 36
     static let windowRadius: CGFloat = 28
     static let pageRadius: CGFloat = 18
@@ -40,7 +47,8 @@ struct BrowserShell: View {
             )
             ZStack(alignment: .leading) {
                 WindowMaterial()
-                    .overlay(colorScheme == .dark ? Color(white: 0.12).opacity(0.70) : Color.white.opacity(0.76))
+                    .overlay((colorScheme == .dark ? BrowserDesign.darkWindowBacking : BrowserDesign.lightWindowBacking)
+                        .opacity(BrowserDesign.windowBackingOpacity))
 
                 BrowserSidebar(controller: controller)
                     .frame(width: sidebarWidth)
@@ -263,7 +271,8 @@ private struct BrowserSidebar: View {
                         if incomingIndex == orderedTabs.count { insertionGap }
                     }
                     .padding(.horizontal, BrowserDesign.inset)
-                    .padding(.vertical, SidebarTabDragGeometry.contentInset)
+                    .padding(.top, SidebarTabDragGeometry.contentInset)
+                    .padding(.bottom, SidebarTabDragGeometry.bottomContentInset)
                     // Rows sit above this background, so a row press can only drag
                     // the tab; the empty list area below the rows moves the window.
                     .frame(minHeight: geometry.size.height, alignment: .top)
@@ -288,10 +297,15 @@ private struct BrowserSidebar: View {
 
                 VStack(spacing: 0) {
                     SidebarEdgeGlass(edge: .top,
-                                     buttonCenters: [34, geometry.size.width - 34], height: 88)
+                                     buttonCenters: [BrowserDesign.inset + BrowserDesign.buttonSize / 2,
+                                                     geometry.size.width - BrowserDesign.inset - BrowserDesign.buttonSize / 2],
+                                     height: 88, controlCenterFromEdge: BrowserDesign.inset + BrowserDesign.buttonSize / 2)
                     Spacer(minLength: 0)
                     SidebarEdgeGlass(edge: .bottom,
-                                     buttonCenters: [34, 78, geometry.size.width - 34], height: 88)
+                                     buttonCenters: [BrowserDesign.inset + BrowserDesign.bottomButtonSize / 2,
+                                                     BrowserDesign.inset + BrowserDesign.bottomButtonSize * 1.5 + BrowserDesign.bottomButtonSpacing,
+                                                     geometry.size.width - BrowserDesign.inset - BrowserDesign.bottomButtonSize / 2],
+                                     height: 88, controlCenterFromEdge: BrowserDesign.inset + BrowserDesign.bottomButtonSize / 2)
                 }
                 // Continue the glass behind the page's corner cutouts without
                 // expanding the sidebar's content or interactive area.
@@ -319,14 +333,17 @@ private struct BrowserSidebar: View {
                         GlassSymbolButton("plus", label: L10n.string("New Tab"), help: L10n.string("New Tab") + "  ⌘T", action: controller.newTab)
                     }
                     Spacer(minLength: 0)
-                    HStack(spacing: 8) {
-                        GlassSymbolButton("chevron.left", label: L10n.string("Back"), help: L10n.string("Back") + "  ⌘← / ⌘[") { model.goBack() }
+                    HStack(spacing: BrowserDesign.bottomButtonSpacing) {
+                        GlassSymbolButton("chevron.left", label: L10n.string("Back"), help: L10n.string("Back") + "  ⌘← / ⌘[",
+                                          size: BrowserDesign.bottomButtonSize, symbolSize: 10, symbolWeight: .medium) { model.goBack() }
                             .disabled(model.selectedTab?.canGoBack != true)
-                        GlassSymbolButton("chevron.right", label: L10n.string("Forward"), help: L10n.string("Forward") + "  ⌘→ / ⌘]") { model.goForward() }
+                        GlassSymbolButton("chevron.right", label: L10n.string("Forward"), help: L10n.string("Forward") + "  ⌘→ / ⌘]",
+                                          size: BrowserDesign.bottomButtonSize, symbolSize: 10, symbolWeight: .medium) { model.goForward() }
                             .disabled(model.selectedTab?.canGoForward != true)
                         Spacer(minLength: 0)
                         GlassSymbolButton(model.selectedTab?.isLoading == true ? "xmark" : "arrow.trianglehead.clockwise.rotate.90",
-                                          label: model.selectedTab?.isLoading == true ? L10n.string("Stop Loading") : L10n.string("Reload"), help: L10n.string("Reload") + "  ⌘R") {
+                                          label: model.selectedTab?.isLoading == true ? L10n.string("Stop Loading") : L10n.string("Reload"), help: L10n.string("Reload") + "  ⌘R",
+                                          size: BrowserDesign.bottomButtonSize, symbolSize: 10, symbolWeight: .medium) {
                             if model.selectedTab?.isLoading == true { model.stopLoading() } else { model.reload() }
                         }
                     }
@@ -419,8 +436,8 @@ private struct BrowserSidebar: View {
 
     private func updateDraftDestination() {
         guard let session = dragSession, !session.isSettling else { return }
-        let proposed = Int(((session.center.y + scrollMetrics.offsetY - SidebarTabDragGeometry.contentInset
-                             - BrowserDesign.rowHeight / 2) / SidebarTabDragGeometry.stride).rounded())
+        let proposed = SidebarTabDragGeometry.proposedIndex(forRowTop: session.center.y - BrowserDesign.rowHeight / 2,
+                                                            scrollOffset: scrollMetrics.offsetY)
         let order = TabReordering.moving(session.id, in: draftOrder, pinnedIDs: session.pinnedIDs, to: proposed)
         guard order != draftOrder else { return }
         withAnimation(reduceMotion ? nil : BrowserMotion.spring) { draftOrder = order }
@@ -465,9 +482,9 @@ private struct BrowserSidebar: View {
         guard var session = dragSession, !session.isSettling else { return }
         let token = session.token
         session.isSettling = true
-        session.center = CGPoint(x: session.sourceRect.midX,
-                                 y: SidebarTabDragGeometry.contentInset + CGFloat(destination) * SidebarTabDragGeometry.stride
-                                    + BrowserDesign.rowHeight / 2 - scrollMetrics.offsetY)
+        let rowFrame = SidebarTabDragGeometry.rowFrame(at: destination,
+            sidebarWidth: session.sourceRect.width + BrowserDesign.inset * 2, scrollOffset: scrollMetrics.offsetY)
+        session.center = CGPoint(x: rowFrame.midX, y: rowFrame.midY)
         NSCursor.arrow.set()
         controller.tabDragCoordinator?.completeTransfer(to: controller, index: destination)
         withAnimation(reduceMotion ? nil : BrowserMotion.spring, completionCriteria: .logicallyComplete) {
@@ -667,7 +684,7 @@ private struct BrowserTabRow: View {
                     if tab.url != nil { copyLinkButton }
                     miniButton("xmark", label: L10n.string("Close Tab"), action: close)
                 }
-                .padding(.trailing, 12)
+                .padding(.trailing, 7)
                 .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .trailing)))
             }
         }
@@ -676,7 +693,7 @@ private struct BrowserTabRow: View {
         .background(Color.white.opacity(colorScheme == .dark ? (hovered ? 0.08 : selected ? 0.14 : 0) : (hovered ? 0.5 : selected ? 1 : 0)), in: Capsule())
         .overlay {
             Capsule()
-                .strokeBorder((colorScheme == .dark ? Color.white : Color.black).opacity(selected ? 0.06 : 0), lineWidth: 0.5)
+                .strokeBorder((colorScheme == .dark ? Color.white : Color.black).opacity(selected ? 0.08 : 0), lineWidth: 0.5)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
                 .animation(reduceMotion ? nil : BrowserMotion.tabSwitch, value: selected)
@@ -799,16 +816,22 @@ struct GlassSymbolButton: View {
     let symbol: String
     let label: String
     let help: String
+    let size: CGFloat
+    let symbolSize: CGFloat
+    let symbolWeight: Font.Weight
     let action: () -> Void
-    init(_ symbol: String, label: String, help: String, action: @escaping () -> Void) {
+    init(_ symbol: String, label: String, help: String,
+         size: CGFloat = BrowserDesign.buttonSize, symbolSize: CGFloat = 15, symbolWeight: Font.Weight = .regular,
+         action: @escaping () -> Void) {
         self.symbol = symbol; self.label = label; self.help = help; self.action = action
+        self.size = size; self.symbolSize = symbolSize; self.symbolWeight = symbolWeight
     }
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 15, weight: .regular))
+                .font(.system(size: symbolSize, weight: symbolWeight))
                 .foregroundStyle(.primary.opacity(0.8))
-                .frame(width: BrowserDesign.buttonSize, height: BrowserDesign.buttonSize)
+                .frame(width: size, height: size)
                 .contentShape(Circle())
         }
         .buttonStyle(SpringGlassStyle())

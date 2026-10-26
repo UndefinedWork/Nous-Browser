@@ -10,12 +10,13 @@ struct SidebarEdgeGlass: View {
     let edge: Edge
     let buttonCenters: [CGFloat]
     var height: CGFloat = 96
+    var controlCenterFromEdge: CGFloat = 34
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var colorScheme
 
     private var fogColor: Color {
-        colorScheme == .dark ? Color(white: 0.12) : .white
+        colorScheme == .dark ? BrowserDesign.darkWindowBacking : BrowserDesign.lightWindowBacking
     }
 
     var body: some View {
@@ -64,6 +65,6 @@ struct SidebarEdgeGlass: View {
     }
 
     private var controlCenterY: CGFloat {
-        min(0.45, 34 / max(1, height))
+        min(0.45, controlCenterFromEdge / max(1, height))
     }
 }
