@@ -1,0 +1,48 @@
+Sources/NousBrowser/BrowserWebView.swift
+  s_3d6e78ea1e9f59::t_9acb049035cffc 11,21,65,84,88,167,192-194,261-350,471-475,514-532,565,576,582-588,592-593
+  s_3d6e78ea1e9f59::t_289960b36b7183 90-92,203-205,207-218,224,226-232,476-477,480,485,566-575,603-648
+  s_3d6e78ea1e9f59::t_880441cfac16c8 219-223,225
+  s_3d6e78ea1e9f59::t_c852c34e7f0382 478
+  s_3d6e78ea1e9f59::t_e6f3bc2d1a79e2 649
+README.md
+  s_3d6e78ea1e9f59::t_cf928ae5755c47 23,38,148,167
+  s_3d6e78ea1e9f59::t_e56334d3a5059c 168
+Sources/NousBrowser/BrowserDownloadCoordinator.swift
+  s_3d6e78ea1e9f59::t_7d4fbc0f12c804 1-18,20-27,45,48,50-59,80-81,85-91,93-95,101-102,104-128,135,137,158-163,182,188-207,209-213,215-219,227-230,232-235,237-238,252-260,262-266,283-354
+  s_3d6e78ea1e9f59::t_142356600aa565 19,28-44,46-47,49,60-79,82-84,92,96-100,103,129-134,136,138-157,164-167,169-181,183-187,208,214,220-226,231,236,239-247,250-251,267-282
+  s_3d6e78ea1e9f59::t_8b6c2e01836029 168,248-249,261
+Sources/NousBrowser/BrowserModel.swift
+  s_3d6e78ea1e9f59::t_8e6a0213279598 583-584,586,963-968
+  s_3d6e78ea1e9f59::t_bd5880fecdb127 585
+Tests/NousBrowserTests/BrowserDownloadCoordinatorTests.swift
+  s_3d6e78ea1e9f59::t_2ff826c357ce63 1-99,142-147
+  s_3d6e78ea1e9f59::t_8b6c2e01836029 100-141
+Tests/NousBrowserTests/BrowserWebViewTests.swift
+  s_3d6e78ea1e9f59::t_bebb82b70383e7 486,488-579
+  s_3d6e78ea1e9f59::t_754af2cd2f4224 319,356-485
+  s_3d6e78ea1e9f59::t_82809d2fe52d9d 487
+Tests/Fixtures/browser_test_server.py
+  s_3d6e78ea1e9f59::t_b8ee41fedf1cde 5,15-17,21,28-30,70-134,428-498,507-509,545,559-560
+  s_3d6e78ea1e9f59::t_8b6c2e01836029 19-20,499-506
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_b547d58c21e427 22,24
+Docs/QA-1.1.4.md
+  s_3d6e78ea1e9f59::t_2d975f6154d205 1-39
+  s_3d6e78ea1e9f59::t_c5e631ac39ab04 40-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "6f0f2ee35e0f5de9afecdb77951ebb89487f0784",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
