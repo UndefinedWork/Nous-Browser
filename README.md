@@ -20,6 +20,7 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 - **浏览器设置**：选择 Google、Bing、DuckDuckGo 或百度作为默认搜索引擎；配置 ⌘L 快捷访问的网站及顺序。快捷入口会发现网页声明的 favicon，支持页面跳转和相对图标地址。
 - **地址输入与网页推荐**：识别 `x。com`、`x．com` 等中文标点网址；按网页标题、网址关键词匹配已打开和常访问的网页，参考访问频率及最近访问时间排序。
 - **常用网页能力**：前进、后退、下载、网页全屏、本机 HTML/XHTML 文件和用户主动打开的新标签页；拦截脚本自动弹出的窗口。
+- **选择下载位置**：下载链接、附件，以及右键下载图片、视频和音频时，使用 macOS 系统保存框选择文件名和位置。右键下载在点击 Save 后发起；取消或下载失败不会覆盖已有文件。
 - **AI 助手连接**：通过标准 MCP stdio 接口，让支持本机 MCP 的 AI agent 查看标签和操作网页；在设置中开启或停止访问。
 
 ## 连接 AI agent（MCP）
@@ -34,7 +35,7 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 - 当前首个预编译包为 **Apple Silicon** 版本；Intel Mac 可在满足系统与开发环境要求时从源码构建。
 - 从源码构建需要 **Xcode 26 或更新版本、Swift 6.2 或更新版本**。
 
-当前源码版本：**1.1.3（Build 43）**。预编译安装包的构建号见对应 Release。
+当前源码版本：**1.1.4（Build 44）**。预编译安装包的构建号见对应 Release。
 
 ## 下载与安装
 
@@ -144,7 +145,7 @@ open "build/Nous Browser.app"
 
 ## 测试
 
-本次发布验证记录：[1.1.3（Build 43）](Docs/QA-1.1.3.md)。[快捷键核对与待补功能](Docs/KeyboardShortcuts.md)。
+本次发布验证记录：[1.1.4（Build 44）](Docs/QA-1.1.4.md)。[快捷键核对与待补功能](Docs/KeyboardShortcuts.md)。
 
 ```sh
 swift test
@@ -162,6 +163,8 @@ python3 Tests/Fixtures/browser_test_server.py
 ```
 
 在应用中访问 `http://127.0.0.1:8765/`，使用页面提供的虚构账号登录、保存测试备注，然后正常退出并重新打开应用，检查会话和备注是否保留。`/browser-profile` 提供浏览器身份检查，`/web-compatibility` 提供网页全屏与弹窗行为检查。
+
+`/downloads` 提供系统保存框、改名、取消、覆盖、Blob、data URL、带模拟登录状态的附件，以及图片／音频右键下载测试。所有文件与登录数据均为本地生成的测试内容。
 
 ## 打包安装文件
 

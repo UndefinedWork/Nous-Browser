@@ -316,7 +316,7 @@ struct BrowserWebViewTests {
         var sent = [], listeners = {};
         class Element {
             constructor(href, baseURI) { this.href = href; this.baseURI = baseURI; }
-            matches(selector) { return this.href !== null; }
+            matches(selector) { return selector === 'a[href], area[href]' && this.href !== null; }
             getAttribute(name) { return name === 'href' ? this.href : null; }
         }
         class URL {
@@ -351,6 +351,230 @@ struct BrowserWebViewTests {
         #expect(messages[1]["href"] as? String == "https://iframe.example/base/relative-target")
         #expect(messages[2]["href"] is NSNull)
         #expect(messages.allSatisfy { $0["selection"] as? String == "C++ 中文 & test" })
+    }
+
+    @Test func downloadMessagesValidateFrameOriginsSchemesAndFilenames() throws {
+        let body: [String: Any] = [
+            "documentURL": "https://frame.example:8443/page",
+            "href": "https://cdn.example/file.pdf", "downloadFilename": "../report.pdf",
+            "imageURL": "data:image/png;base64,cGljdHVyZQ==",
+            "videoURL": "blob:https://frame.example:8443/fixture-id",
+            "audioURL": "https://media.example/track.m4a"
+        ]
+        let requests = BrowserWebView.downloadRequests(from: body, frameScheme: "https", frameHost: "frame.example", framePort: 8443)
+        #expect(requests.count == 4)
+        #expect(requests[.link]?.suggestedFilename == "report.pdf")
+        #expect(requests[.video]?.url.absoluteString == body["videoURL"] as? String)
+        #expect(requests[.image]?.url.scheme == "data")
+        #expect(BrowserWebView.downloadRequests(from: body, frameScheme: "https", frameHost: "top.example", framePort: 8443).isEmpty)
+        #expect(BrowserWebView.downloadRequests(from: body, frameScheme: "https", frameHost: "frame.example", framePort: 443).isEmpty)
+        for value in ["file:///private/test", "javascript:alert(1)", "mailto:test@example.test", "https://user:password@example.test/file",
+                      "/relative.mp4", "blob:https://different.example/fixture-id", "blob:https://frame.example/fixture-id",
+                      "data:missing-comma", "data:text/plain," + String(repeating: "x", count: 2 * 1024 * 1024)] {
+            let invalid: [String: Any] = ["documentURL": "https://frame.example:8443/page", "videoURL": value]
+            #expect(BrowserWebView.downloadRequests(from: invalid, frameScheme: "https", frameHost: "frame.example", framePort: 8443).isEmpty)
+        }
+    }
+
+    @Test func nativeDownloadsUseTheirOwnResourceAndPreserveOtherMenuActions() throws {
+        let view = makeView()
+        defer { view.invalidateContextMenu() }
+        let menu = NSMenu()
+        let native = NativeActionSpy()
+        let kinds: [(String, BrowserWebView.DownloadKind)] = [("Download Linked File", .link), ("Download Image", .image),
+                                                              ("Download Video", .video), ("Download Audio", .audio)]
+        let items = kinds.map { title, _ in menu.addItem(withTitle: title, action: #selector(NativeActionSpy.invoke(_:)), keyEquivalent: "") }
+        items.forEach { $0.target = native }
+        let videoImage = NSImage(systemSymbolName: "arrow.down.to.line", accessibilityDescription: nil)
+        items[2].image = videoImage
+        let play = menu.addItem(withTitle: "Play", action: #selector(NativeActionSpy.invoke(_:)), keyEquivalent: "")
+        play.target = native
+        let copy = menu.addItem(withTitle: "Copy Video Address", action: #selector(NativeActionSpy.invoke(_:)), keyEquivalent: "")
+        copy.target = native
+        var received: [BrowserWebView.DownloadRequest] = []
+        view.onDownload = { received.append($0) }
+        let requests = Dictionary(uniqueKeysWithValues: kinds.map { _, kind in
+            (kind, BrowserWebView.DownloadRequest(url: URL(string: "https://example.test/\(kind.rawValue)")!))
+        })
+        view.rewriteDownloadItems(in: menu, requests: requests)
+        #expect(menu.items == items + [play, copy])
+        #expect(items[2].image === videoImage)
+        #expect(play.target as? NativeActionSpy === native && copy.target as? NativeActionSpy === native)
+        for item in items { try invoke(item) }
+        #expect(received == kinds.compactMap { requests[$0.1] })
+        #expect(native.calls == 0)
+        view.invalidateContextMenu()
+        try invoke(items[2])
+        #expect(received.count == 4)
+    }
+
+    @Test func missingDownloadContextCannotRunNativeActionAndLateMessageEnablesIt() throws {
+        let view = makeView()
+        defer { view.invalidateContextMenu() }
+        let menu = NSMenu()
+        let native = NativeActionSpy()
+        let item = menu.addItem(withTitle: "Download Video", action: #selector(NativeActionSpy.invoke(_:)), keyEquivalent: "")
+        item.target = native
+        var received: [BrowserWebView.DownloadRequest] = []
+        view.onDownload = { received.append($0) }
+        view.rewriteDownloadItems(in: menu, requests: [:])
+        #expect(!item.isEnabled)
+        #expect(!(try #require(item.target as? NSMenuItemValidation)).validateMenuItem(item))
+        try invoke(item)
+        #expect(native.calls == 0 && received.isEmpty)
+        let first = BrowserWebView.DownloadRequest(url: URL(string: "https://example.test/first.mp4")!)
+        let latest = BrowserWebView.DownloadRequest(url: URL(string: "https://example.test/latest.mp4")!)
+        view.rewriteDownloadItems(in: menu, requests: [.video: first])
+        view.rewriteDownloadItems(in: menu, requests: [.video: latest])
+        #expect(item.isEnabled)
+        try invoke(item)
+        #expect(received == [latest])
+    }
+
+    @Test func localizedDownloadTitlesDoNotAlterUnknownNativeItems() throws {
+        let view = makeView()
+        defer { view.invalidateContextMenu() }
+        let menu = NSMenu()
+        let video = menu.addItem(withTitle: "下载视频", action: nil, keyEquivalent: "")
+        let image = menu.addItem(withTitle: "将图像存储为…", action: nil, keyEquivalent: "")
+        let unknown = menu.addItem(withTitle: "Unknown native action", action: nil, keyEquivalent: "")
+        let request = BrowserWebView.DownloadRequest(url: URL(string: "https://example.test/asset")!)
+        var received: [BrowserWebView.DownloadRequest] = []
+        view.onDownload = { received.append($0) }
+        view.rewriteDownloadItems(in: menu, requests: [.video: request, .image: request],
+                                  nativeTitles: [.video: ["下载视频"], .image: ["将图像存储为…"]])
+        try invoke(video)
+        try invoke(image)
+        #expect(received == [request, request])
+        #expect(video.title == "下载视频" && image.title == "将图像存储为…")
+        #expect(unknown.action == nil && unknown.target == nil)
+    }
+
+    @Test func pageListenerCapturesMediaCurrentSourcesAndAnchorDownloadName() throws {
+        let context = try #require(JSContext())
+        context.evaluateScript(#"""
+        var sent = [], listeners = {};
+        class Element {
+            constructor(tag, currentSrc, src, attrs = {}) { this.tag = tag; this.currentSrc = currentSrc; this.src = src; this.attrs = attrs; this.baseURI = 'https://frame.example/base/'; }
+            matches(selector) { return selector === 'a[href], area[href]' ? this.tag === 'a' : this.tag === selector; }
+            getAttribute(name) { return this.attrs[name] ?? null; }
+        }
+        class URL { constructor(value, base) { this.href = /^(https?:|blob:|data:)/.test(value) ? value : base + value; } }
+        var document = { URL: 'https://frame.example/page', addEventListener(name, fn) { listeners[name] = fn; } };
+        var window = { getSelection() { return { toString() { return ''; } }; },
+            webkit: { messageHandlers: { nousLinkContextMenu: { postMessage(body) { sent.push(body); } } } } };
+        """#)
+        context.evaluateScript(BrowserWebView.contextMenuSource)
+        let result = context.evaluateScript(#"""
+        const anchor = new Element('a', null, null, {href: 'asset', download: 'chosen.mp4'});
+        const video = new Element('video', 'blob:https://frame.example/clip', 'fallback.mp4');
+        const image = new Element('img', 'high-resolution.png', 'fallback.png');
+        const audio = new Element('audio', '', 'track.m4a');
+        const event = {isTrusted: true, screenX: 1, screenY: 2, composedPath() { return [video, image, audio, anchor]; }};
+        listeners.contextmenu({...event, isTrusted: false});
+        listeners.contextmenu(event);
+        sent;
+        """#)
+        try #require(context.exception == nil)
+        let messages = try #require(result?.toArray() as? [[String: Any]])
+        #expect(messages.count == 1)
+        #expect(messages[0]["downloadFilename"] as? String == "chosen.mp4")
+        #expect(messages[0]["href"] as? String == "https://frame.example/base/asset")
+        #expect(messages[0]["videoURL"] as? String == "blob:https://frame.example/clip")
+        #expect(messages[0]["imageURL"] as? String == "https://frame.example/base/high-resolution.png")
+        #expect(messages[0]["audioURL"] as? String == "https://frame.example/base/track.m4a")
+    }
+
+    @Test func trustedMediaControlEventFindsItsHostWithoutSelectingUnrelatedMedia() throws {
+        let context = try #require(JSContext())
+        context.evaluateScript(#"""
+        var sent = [], listeners = {}, hitPoints = [];
+        class Element {
+            constructor(tag, src) { this.tag = tag; this.currentSrc = src; this.baseURI = 'https://frame.example/'; }
+            matches(selector) { return this.tag === selector; }
+        }
+        class URL { constructor(value) { this.href = value; } }
+        const video = new Element('video', 'https://frame.example/clicked.mp4');
+        const control = new Element('button');
+        control.getRootNode = () => ({host: video});
+        var document = { URL: 'https://frame.example/page',
+            elementFromPoint(x, y) { hitPoints.push([x, y]); return control; },
+            addEventListener(name, fn) { listeners[name] = fn; } };
+        var window = { getSelection() { return null; },
+            webkit: { messageHandlers: { nousLinkContextMenu: { postMessage(body) { sent.push(body); } } } } };
+        """#)
+        context.evaluateScript(BrowserWebView.contextMenuSource)
+        let result = context.evaluateScript(#"""
+        const event = { isTrusted: true, clientX: 120, clientY: 80, screenX: 1, screenY: 2,
+            composedPath() { return [control]; } };
+        listeners.contextmenu({...event, isTrusted: false});
+        listeners.contextmenu(event);
+        ({sent, hitPoints});
+        """#)
+        try #require(context.exception == nil)
+        let value = try #require(result?.toDictionary() as? [String: Any])
+        let messages = try #require(value["sent"] as? [[String: Any]])
+        #expect(messages.count == 1)
+        #expect(messages[0]["videoURL"] as? String == "https://frame.example/clicked.mp4")
+        #expect(value["hitPoints"] as? [[Int]] == [[120, 80]])
+    }
+
+    @Test func nativeHitTestUsesTheExactPointAndDoesNotSeeThroughOverlaysOrCrossOriginFrames() throws {
+        let context = try #require(JSContext())
+        context.evaluateScript(#"""
+        var hitPoints = [], clicked;
+        class URL { constructor(value, base) { this.href = /^(https?:|blob:|data:)/.test(value) ? value : base + value; } }
+        class Element {
+            constructor(tag, source) { this.tag = tag; this.currentSrc = source; this.baseURI = 'https://page.example/'; }
+            matches(selector) { return selector === 'iframe, frame' ? this.tag === 'iframe' : this.tag === selector; }
+        }
+        var document = { URL: 'https://page.example/', elementFromPoint(x, y) { hitPoints.push([x, y]); return clicked; } };
+        var window = { innerWidth: 800, innerHeight: 600 };
+        """#)
+        context.evaluateScript("function nativeHit(x, y) {\n" + BrowserWebView.downloadHitTestSource + "\n}")
+        let result = context.evaluateScript(#"""
+        clicked = new Element('video', 'blob:https://page.example/clip');
+        const video = nativeHit(0.5, 0.5);
+        clicked = new Element('div');
+        const overlay = nativeHit(0.5, 0.5);
+        clicked = new Element('iframe');
+        Object.defineProperty(clicked, 'contentDocument', {get() { throw new Error('cross-origin'); }});
+        const crossOrigin = nativeHit(0.5, 0.5);
+        ({video, overlay, crossOrigin, hitPoints});
+        """#)
+        try #require(context.exception == nil)
+        let value = try #require(result?.toDictionary() as? [String: Any])
+        let video = try #require(value["video"] as? [String: Any])
+        #expect(video["videoURL"] as? String == "blob:https://page.example/clip")
+        #expect((value["overlay"] as? [String: Any])?["videoURL"] is NSNull)
+        #expect((value["crossOrigin"] as? [String: Any])?.isEmpty == true)
+        #expect(value["hitPoints"] as? [[Int]] == [[400, 300], [400, 300], [400, 300]])
+    }
+
+    @Test func nativeHitTestDescendsSameOriginFramesAndOpenShadowRoots() throws {
+        let context = try #require(JSContext())
+        context.evaluateScript(#"""
+        var childPoint;
+        class URL { constructor(value, base) { this.href = /^(https?:|blob:|data:)/.test(value) ? value : base + value; } }
+        const image = {currentSrc: 'retina.png', src: 'small.png', baseURI: 'https://page.example/frame/',
+            matches(selector) { return selector === 'img'; }};
+        const shadow = {matches() { return false; }, shadowRoot: {elementFromPoint() { return image; }}};
+        const childDocument = {URL: 'https://page.example/frame/page', elementFromPoint(x, y) { childPoint = [x, y]; return shadow; }};
+        const frame = { contentDocument: childDocument, offsetWidth: 200, offsetHeight: 200, clientLeft: 2, clientTop: 2,
+            matches(selector) { return selector === 'iframe, frame'; },
+            getBoundingClientRect() { return {left: 300, top: 200, width: 200, height: 200}; } };
+        var document = {URL: 'https://page.example/', elementFromPoint() { return frame; }};
+        var window = {innerWidth: 800, innerHeight: 600};
+        """#)
+        context.evaluateScript("function nativeHit(x, y) {\n" + BrowserWebView.downloadHitTestSource + "\n}")
+        let result = context.evaluateScript("({body: nativeHit(0.5, 0.5), childPoint})")
+        try #require(context.exception == nil)
+        let value = try #require(result?.toDictionary() as? [String: Any])
+        let body = try #require(value["body"] as? [String: Any])
+        #expect(value["childPoint"] as? [Int] == [98, 98])
+        #expect(body["documentURL"] as? String == "https://page.example/frame/page")
+        #expect(body["imageURL"] as? String == "https://page.example/frame/retina.png")
+        #expect(BrowserWebView.downloadRequests(from: body, frameScheme: "https", frameHost: "page.example", framePort: 443)[.image] != nil)
     }
 
     private func makeView() -> BrowserWebView {

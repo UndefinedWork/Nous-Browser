@@ -2,6 +2,7 @@
 """Local development fixture. All accounts and cookies here are synthetic.
 
 Run with: python3 Tests/Fixtures/browser_test_server.py
+Open /downloads for Save-panel, authenticated, Blob, and media download cases.
 This fixture has no application runtime dependency and never uses real accounts.
 """
 
@@ -11,14 +12,22 @@ from email.utils import format_datetime
 from html import escape
 from http import cookies
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import io
+import math
+import re
 import struct
-from urllib.parse import urlsplit
+import time
+from urllib.parse import parse_qs, urlsplit
+import wave
 import zlib
 
 
 COOKIE_NAME = "nous_browser_fixture_session"
 COOKIE_VALUE = "synthetic-local-session"
 STORAGE_KEY = "nous-browser-fixture-note"
+DOWNLOAD_COOKIE_NAME = "nous_browser_download_fixture"
+DOWNLOAD_COOKIE_VALUE = "synthetic-download-session"
+DOWNLOAD_PAYLOAD = b"Nous Browser saved download fixture\nSynthetic data only.\n"
 
 
 def make_fixture_icon(letter: str, color: tuple[int, int, int]) -> bytes:
@@ -56,6 +65,71 @@ FAVICON_FIXTURES = {
     "/favicon-icons/secondary.png": make_fixture_icon("S", (239, 132, 31)),
     "/favicon.ico": make_fixture_icon("G", (108, 116, 126)),
 }
+
+
+def make_fixture_audio() -> bytes:
+    """Generate one second of quiet 440 Hz mono PCM audio without asset files."""
+    sample_rate = 8000
+    samples = b"".join(
+        struct.pack("<h", round(2000 * math.sin(2 * math.pi * 440 * frame / sample_rate)))
+        for frame in range(sample_rate)
+    )
+    output = io.BytesIO()
+    with wave.open(output, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(sample_rate)
+        audio.writeframes(samples)
+    return output.getvalue()
+
+
+DOWNLOAD_AUDIO = make_fixture_audio()
+DOWNLOAD_IMAGE = make_fixture_icon("F", (35, 105, 240))
+
+
+def downloads_body() -> str:
+    return r"""
+<section aria-label="Save panel verification">
+  <h2>Choose a destination</h2>
+  <p>Each download should open the native Save panel. Choose a folder and filename,
+     then Save. Cancel should leave no final file. Download twice to test replacement.</p>
+  <nav>
+    <a id="download-attribute" href="/downloads/payload.txt" download="chosen-name.txt">Download attribute</a>
+    <a id="download-attachment" href="/downloads/attachment">Attachment response</a>
+    <a id="download-new-window" href="/downloads/attachment" target="_blank">New-window attachment</a>
+    <a id="download-data" href="data:text/plain;charset=utf-8,Nous%20data%20download%20fixture%0A" download="data-fixture.txt">Data URL</a>
+  </nav>
+  <button id="download-blob">Download Blob</button>
+  <script>
+    document.getElementById('download-blob').addEventListener('click', () => {
+      const url = URL.createObjectURL(new Blob(['Nous blob download fixture\n'], {type: 'text/plain'}));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'blob-fixture.txt';
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    });
+  </script>
+</section>
+<section aria-label="Authenticated and interrupted downloads">
+  <h2>Session and failure handling</h2>
+  <p>Opening this page sets a synthetic HttpOnly cookie scoped to /downloads. The
+     protected attachment requires it; no real account is used.</p>
+  <p><a id="download-protected" href="/downloads/protected">Authenticated attachment</a></p>
+  <p><a id="download-interrupted" href="/downloads/interrupted">Interrupted download</a></p>
+  <p>For the interrupted case, choose an existing test file and confirm Replace.
+     The connection deliberately ends early; the original file must remain intact.</p>
+</section>
+<section aria-label="Native media context menu downloads">
+  <h2>Native context menus</h2>
+  <p>Right-click the image, audio, or the link to test Save Image, Download Audio,
+     and Download Linked File. The image and one-second quiet tone are generated locally.</p>
+  <p><img id="download-image" src="/downloads/image.png" width="128" height="128" alt="Synthetic blue F image"></p>
+  <audio id="download-audio" aria-label="Synthetic one-second audio" controls preload="metadata" src="/downloads/audio.wav"></audio>
+  <p><a href="/downloads/payload.txt">Native linked-file download</a></p>
+</section>"""
 
 
 def page(title: str, body: str, head: str = "") -> str:
@@ -351,6 +425,88 @@ def web_compatibility_body() -> str:
 class FixtureHandler(BaseHTTPRequestHandler):
     server_version = "NousBrowserFixture/1.0"
 
+    def send_download_fixture(self, route: str) -> None:
+        status = 200
+        headers = {}
+        content_type = "text/plain; charset=utf-8"
+        if route in ("/downloads", "/downloads/"):
+            payload = page("Download Save Panel", downloads_body()).encode("utf-8")
+            content_type = "text/html; charset=utf-8"
+            headers["Set-Cookie"] = (
+                f"{DOWNLOAD_COOKIE_NAME}={DOWNLOAD_COOKIE_VALUE}; Path=/downloads; HttpOnly; SameSite=Lax"
+            )
+        elif route == "/downloads/payload.txt":
+            payload = DOWNLOAD_PAYLOAD
+        elif route == "/downloads/attachment":
+            payload = DOWNLOAD_PAYLOAD
+            headers["Content-Disposition"] = 'attachment; filename="attachment-fixture.txt"'
+        elif route == "/downloads/protected":
+            jar = cookies.SimpleCookie()
+            try:
+                jar.load(self.headers.get("Cookie", ""))
+            except cookies.CookieError:
+                pass
+            token = jar.get(DOWNLOAD_COOKIE_NAME)
+            if token is not None and token.value == DOWNLOAD_COOKIE_VALUE:
+                payload = b"Nous authenticated download fixture\n"
+                headers["Content-Disposition"] = 'attachment; filename="authenticated-fixture.txt"'
+                content_type = "application/octet-stream"
+            else:
+                status = 401
+                payload = b"Synthetic download session missing; open /downloads first.\n"
+        elif route == "/downloads/interrupted":
+            payload = b"Deliberately incomplete download.\n"
+            headers["Content-Disposition"] = 'attachment; filename="interrupted-fixture.txt"'
+            headers["Content-Length"] = "1000000"
+            headers["Connection"] = "close"
+            self.close_connection = True
+        elif route == "/downloads/image.png":
+            payload = DOWNLOAD_IMAGE
+            content_type = "image/png"
+        elif route == "/downloads/audio.wav":
+            payload = DOWNLOAD_AUDIO
+            content_type = "audio/wav"
+            headers["Accept-Ranges"] = "bytes"
+            # WebKit can probe native media with Range: bytes=0-1 before playback.
+            byte_range = re.fullmatch(r"bytes=(\d*)-(\d*)", self.headers.get("Range", ""))
+            if byte_range and any(byte_range.groups()):
+                first, last = byte_range.groups()
+                length = len(payload)
+                start = int(first) if first else max(0, length - int(last))
+                end = min(int(last), length - 1) if first and last else length - 1
+                if start >= length or start > end:
+                    status = 416
+                    headers["Content-Range"] = f"bytes */{length}"
+                    payload = b""
+                else:
+                    status = 206
+                    headers["Content-Range"] = f"bytes {start}-{end}/{length}"
+                    payload = payload[start:end + 1]
+        else:
+            self.send_html("Not found", "<p>Unknown download fixture route.</p>", status=404)
+            return
+
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", headers.pop("Content-Length", str(len(payload))))
+        self.send_header("Cache-Control", "no-store")
+        for name, value in headers.items():
+            self.send_header(name, value)
+        self.end_headers()
+        try:
+            self.wfile.write(payload)
+            self.wfile.flush()
+            if route == "/downloads/interrupted":
+                # Leave time to accept Save/Replace before the deliberate EOF.
+                # HTTP-only fixture checks can use ?delay=0 to avoid the wait.
+                try:
+                    delay = float(parse_qs(urlsplit(self.path).query).get("delay", ["20"])[0])
+                except ValueError:
+                    delay = 20
+                time.sleep(max(0, min(delay, 60)))
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # Choosing Cancel may close the download connection.
+
     def send_html(self, title: str, body: str, status: int = 200, head: str = "") -> None:
         encoded = page(title, body, head).encode("utf-8")
         self.send_response(status)
@@ -386,6 +542,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
 <a href="/next">Next Page</a>
 <a href="/popup" target="_blank" rel="opener">New Window</a>
 <a href="/download" download>Download sample.txt</a>
+<a href="/downloads">Download Save Panel</a>
 <a href="/scrollbars">Scrollbar Test</a>
 <a href="/favicon-test">Favicon Primary</a>
 <a href="/favicon-test-second">Favicon Secondary</a>
@@ -399,6 +556,8 @@ class FixtureHandler(BaseHTTPRequestHandler):
 </section>"""
                 + storage_form(),
             )
+        elif route == "/downloads" or route.startswith("/downloads/"):
+            self.send_download_fixture(route)
         elif route == "/login":
             expires = format_datetime(datetime.now(timezone.utc) + timedelta(days=365), usegmt=True)
             self.redirect_with_cookie(

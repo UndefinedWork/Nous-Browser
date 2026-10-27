@@ -8,6 +8,7 @@ final class BrowserWebView: WKWebView {
     var onOpenLinkInNewTab: ((URL) -> Void)?
     var onOpenLinkInNewWindow: ((URL) -> Void)?
     var onSearchSelection: ((String) -> Void)?
+    var onDownload: ((DownloadRequest) -> Void)?
     var searchEngineTitle: (() -> String)?
 
     static let contextMenuWorld = WKContentWorld.world(name: "NousBrowserLinkContextMenu")
@@ -17,6 +18,7 @@ final class BrowserWebView: WKWebView {
                                                                            valueOptions: .strongMemory)
     private var contextLink: ContextLink?
     private var contextSelection: ContextSelection?
+    private var contextDownloads: ContextDownloads?
     private static let serviceMenuFilter = ServiceMenuFilter()
     private var openMenu: OpenMenu?
     private var isContextMenuActive = true
@@ -60,6 +62,7 @@ final class BrowserWebView: WKWebView {
         onOpenLinkInNewTab = nil
         onOpenLinkInNewWindow = nil
         onSearchSelection = nil
+        onDownload = nil
         searchEngineTitle = nil
         urlObservation = nil
         let controller = configuration.userContentController
@@ -78,10 +81,15 @@ final class BrowserWebView: WKWebView {
         openMenu = OpenMenu(menu: menu, pageURL: url, openedAt: Date(), screenPoint: screenPoint)
         let link = contextLink.flatMap { $0.matches(pageURL: url, screenPoint: screenPoint) ? $0.url : nil }
         let selection = contextSelection.flatMap { $0.matches(pageURL: url, screenPoint: screenPoint) ? $0.text : nil }
+        let downloads = contextDownloads.flatMap { $0.matches(pageURL: url, screenPoint: screenPoint) ? $0.requests : nil } ?? [:]
         // Never leave WebKit's system search action installed, even if the
         // frame's trusted context message has not arrived yet.
         rewriteSearchItems(in: menu, selection: selection, websiteLink: link)
+        rewriteDownloadItems(in: menu, requests: downloads)
         if let link { rewriteLinkItems(in: menu, link: link) }
+        if menu.items.contains(where: { ($0.target as? DownloadAction)?.request == nil && $0.target is DownloadAction }) {
+            requestDownloadHitTest(in: menu, event: event)
+        }
     }
 
     override func didCloseMenu(_ menu: NSMenu, with event: NSEvent?) {
@@ -156,6 +164,7 @@ final class BrowserWebView: WKWebView {
     private func clearContextLink() {
         contextLink = nil
         contextSelection = nil
+        contextDownloads = nil
         openMenu = nil
     }
 
@@ -180,6 +189,9 @@ final class BrowserWebView: WKWebView {
         contextLink = link.map { ContextLink(url: $0, pageURL: url, eventDate: eventDate, screenPoint: point) }
         let context = ContextSelection(text: selection, pageURL: url, eventDate: eventDate, screenPoint: point)
         contextSelection = context
+        let downloads = Self.downloadRequests(from: body, frameScheme: origin.protocol,
+                                              frameHost: origin.host, framePort: origin.port)
+        contextDownloads = ContextDownloads(requests: downloads, context: context)
         // Usually the earlier mousedown/contextmenu message arrives before
         // AppKit opens the menu. If IPC is slightly later, update this same
         // menu only during its initial opening, never a subsequent menu.
@@ -188,7 +200,36 @@ final class BrowserWebView: WKWebView {
            let menu = openMenu.menu {
                 if let link { rewriteLinkItems(in: menu, link: link) }
             rewriteSearchItems(in: menu, selection: selection, websiteLink: link)
+            rewriteDownloadItems(in: menu, requests: downloads.merging(openMenu.hitTestDownloads) { captured, _ in captured })
+        }
+    }
 
+    /// Native media controls can consume DOM mouse/context-menu events. Query
+    /// the actual native click point in our isolated world, without depending
+    /// on event IPC timing or loosening its origin/coordinate checks.
+    private func requestDownloadHitTest(in menu: NSMenu, event: NSEvent) {
+        guard let opened = openMenu, let pageURL = url,
+              let origin = URLComponents(url: pageURL, resolvingAgainstBaseURL: false),
+              let scheme = origin.scheme, ["http", "https"].contains(scheme.lowercased()),
+              let host = origin.host, bounds.width > 0, bounds.height > 0 else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        let x = (point.x - bounds.minX) / bounds.width
+        let y = (isFlipped ? point.y - bounds.minY : bounds.maxY - point.y) / bounds.height
+        guard x.isFinite, y.isFinite, (0...1).contains(x), (0...1).contains(y) else { return }
+        Task { @MainActor [weak self, weak menu] in
+            guard let self,
+                  let body = try? await self.callAsyncJavaScript(Self.downloadHitTestSource,
+                    arguments: ["x": x, "y": y], in: nil, contentWorld: Self.contextMenuWorld),
+                  let menu, self.isContextMenuActive,
+                  let current = self.openMenu, current.id == opened.id,
+                  self.url == pageURL else { return }
+            let fallback = Self.downloadRequests(from: body, frameScheme: scheme,
+                                                 frameHost: host, framePort: origin.port ?? 0)
+            self.openMenu?.hitTestDownloads = fallback
+            let captured = self.contextDownloads.flatMap {
+                $0.matches(pageURL: pageURL, screenPoint: current.screenPoint) ? $0.requests : nil
+            } ?? [:]
+            self.rewriteDownloadItems(in: menu, requests: captured.merging(fallback) { trusted, _ in trusted })
         }
     }
 
@@ -216,6 +257,96 @@ final class BrowserWebView: WKWebView {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
+
+    struct DownloadRequest: Equatable {
+        let url: URL
+        var suggestedFilename: String? = nil
+    }
+
+    enum DownloadKind: String, CaseIterable {
+        case link, image, video, audio
+    }
+
+    /// URLs are captured in the clicked frame, including currentSrc for srcset
+    /// images and media sources. Never resolve relative URLs against the top page.
+    static func downloadRequests(from body: Any, frameScheme: String, frameHost: String,
+                                 framePort: Int) -> [DownloadKind: DownloadRequest] {
+        guard let body = body as? [String: Any],
+              validDocument(body["documentURL"] as? String, frameScheme: frameScheme,
+                            frameHost: frameHost, framePort: framePort) else { return [:] }
+        var requests: [DownloadKind: DownloadRequest] = [:]
+        for kind in DownloadKind.allCases {
+            let key = kind == .link ? "href" : kind.rawValue + "URL"
+            guard let value = body[key] as? String,
+                  let url = downloadURL(value, frameScheme: frameScheme, frameHost: frameHost, framePort: framePort) else { continue }
+            var filename: String?
+            if kind == .link, let raw = body["downloadFilename"] as? String, raw.utf8.count <= 1024 {
+                let leaf = (raw.replacingOccurrences(of: "\\", with: "/") as NSString).lastPathComponent
+                    .components(separatedBy: .controlCharacters).joined()
+                if !leaf.isEmpty, ![".", ".."].contains(leaf) { filename = leaf }
+            }
+            requests[kind] = DownloadRequest(url: url, suggestedFilename: filename)
+        }
+        return requests
+    }
+
+    private static func downloadURL(_ value: String, frameScheme: String, frameHost: String, framePort: Int) -> URL? {
+        guard value.utf8.count <= 2 * 1024 * 1024, let components = URLComponents(string: value),
+              let scheme = components.scheme?.lowercased(), components.user == nil, components.password == nil,
+              let url = components.url else { return nil }
+        switch scheme {
+        case "http", "https":
+            guard value.utf8.count <= 65_536, let host = components.host, !host.isEmpty else { return nil }
+        case "blob":
+            guard value.utf8.count <= 65_536,
+                  let origin = URLComponents(string: String(value.dropFirst(5))),
+                  origin.scheme?.lowercased() == frameScheme.lowercased(),
+                  (origin.host ?? "").lowercased() == frameHost.lowercased(),
+                  normalizedPort(origin.port ?? 0, scheme: frameScheme) == normalizedPort(framePort, scheme: frameScheme),
+                  origin.user == nil, origin.password == nil else { return nil }
+        case "data":
+            guard value.contains(",") else { return nil }
+        default: return nil
+        }
+        return url
+    }
+
+    /// Native context-menu downloads do not enter WKNavigationDelegate's
+    /// didBecomeDownload callbacks. Route their existing menu items through the
+    /// public startDownload API and the browser's destination chooser instead.
+    func rewriteDownloadItems(in menu: NSMenu, requests: [DownloadKind: DownloadRequest],
+                              nativeTitles: [DownloadKind: [String]]? = nil) {
+        let titles = nativeTitles ?? Self.nativeDownloadTitles
+        let pageURL = url
+        for item in menu.items where item.submenu == nil {
+            let previous = item.target as? DownloadAction
+            let isOurs = previous != nil && (item.representedObject as? DownloadAction) === previous &&
+                item.action == #selector(DownloadAction.download(_:))
+            guard let kind = isOurs ? previous?.kind : DownloadKind.allCases.first(where: {
+                (titles[$0] ?? []).contains(item.title)
+            }) else { continue }
+            let target = DownloadAction(kind: kind, request: requests[kind], canDownload: { [weak self] in
+                self?.isContextMenuActive == true && self?.url == pageURL && self?.onDownload != nil
+            }, perform: { [weak self] request in self?.onDownload?(request) })
+            item.representedObject = target
+            item.target = target
+            item.action = #selector(DownloadAction.download(_:))
+            item.isEnabled = target.validateMenuItem(item)
+        }
+    }
+
+    private static let nativeDownloadTitles: [DownloadKind: [String]] = {
+        let bundle = Bundle(identifier: "com.apple.WebCore")
+        let keys: [DownloadKind: [String]] = [
+            .link: ["Download Linked File", "Download Linked File As…", "Download Linked File As..."],
+            .image: ["Download Image", "Save Image As…", "Save Image As...", "Save Image to Downloads"],
+            .video: ["Download Video", "Download Video As…", "Save Video As…", "Save Video As..."],
+            .audio: ["Download Audio", "Download Audio As…", "Save Audio As…", "Save Audio As..."]
+        ]
+        return keys.mapValues { values in
+            Array(Set(values + values.map { bundle?.localizedString(forKey: $0, value: $0, table: nil) ?? $0 }))
+        }
+    }()
 
     private static func validDocument(_ document: String?, frameScheme: String, frameHost: String, framePort: Int) -> Bool {
         guard let document, let documentURL = URL(string: document) else { return false }
@@ -337,11 +468,21 @@ final class BrowserWebView: WKWebView {
         }
     }
 
+    private struct ContextDownloads {
+        let requests: [DownloadKind: DownloadRequest]
+        let context: ContextSelection
+        func matches(pageURL: URL?, screenPoint: NSPoint) -> Bool {
+            context.matches(pageURL: pageURL, screenPoint: screenPoint)
+        }
+    }
+
     private struct OpenMenu {
+        let id = UUID()
         weak var menu: NSMenu?
         let pageURL: URL?
         let openedAt: Date
         let screenPoint: NSPoint
+        var hitTestDownloads: [DownloadKind: DownloadRequest] = [:]
     }
 
     @MainActor private final class LinkAction: NSObject {
@@ -367,6 +508,25 @@ final class BrowserWebView: WKWebView {
         @objc func search(_ sender: NSMenuItem) {
             guard let selection, canSearch() else { return }
             perform(selection)
+        }
+    }
+
+    @MainActor private final class DownloadAction: NSObject, NSMenuItemValidation {
+        let kind: DownloadKind
+        let request: DownloadRequest?
+        let canDownload: () -> Bool
+        let perform: (DownloadRequest) -> Void
+        init(kind: DownloadKind, request: DownloadRequest?, canDownload: @escaping () -> Bool,
+             perform: @escaping (DownloadRequest) -> Void) {
+            self.kind = kind
+            self.request = request
+            self.canDownload = canDownload
+            self.perform = perform
+        }
+        func validateMenuItem(_ menuItem: NSMenuItem) -> Bool { request != nil && canDownload() }
+        @objc func download(_ sender: NSMenuItem) {
+            guard let request, canDownload() else { return }
+            perform(request)
         }
     }
 
@@ -402,15 +562,35 @@ final class BrowserWebView: WKWebView {
         globalThis.__nousLinkContextMenuInstalled = true;
         const report = event => {
             if (!event.isTrusted) return;
-            const anchor = event.composedPath().find(node =>
+            const path = event.composedPath();
+            // A closed native-control shadow tree can omit its media host
+            // from the exposed event path. Only inspect the topmost element
+            // under this same trusted event, never unrelated media on the page.
+            if (Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
+                let hit = document.elementFromPoint?.(event.clientX, event.clientY);
+                for (let depth = 0; hit && depth < 64; depth++) {
+                    if (!path.includes(hit)) path.push(hit);
+                    hit = hit.assignedSlot || hit.parentElement || hit.getRootNode?.().host;
+                }
+            }
+            const anchor = path.find(node =>
                 node instanceof Element && node.matches('a[href], area[href]'));
             let href = null;
             if (anchor) {
                 try { href = new URL(anchor.getAttribute('href'), anchor.baseURI).href; } catch (_) {}
             }
+            const source = selector => {
+                const element = path.find(node => node instanceof Element && node.matches(selector));
+                if (!element) return null;
+                const value = element.currentSrc || element.src;
+                if (!value || value.length > 2 * 1024 * 1024) return null;
+                try { return new URL(value, element.baseURI).href; } catch (_) { return null; }
+            };
             let selection = window.getSelection()?.toString() || '';
             window.webkit?.messageHandlers?.nousLinkContextMenu?.postMessage({
                 href, selection: selection.slice(0, 16384), documentURL: document.URL,
+                downloadFilename: anchor?.getAttribute('download')?.slice(0, 1024) || null,
+                imageURL: source('img'), videoURL: source('video'), audioURL: source('audio'),
                 screenX: event.screenX, screenY: event.screenY, timestamp: Date.now()
             });
         };
@@ -419,5 +599,52 @@ final class BrowserWebView: WKWebView {
         }, true);
         document.addEventListener('contextmenu', report, true);
     })();
+    """#
+
+    /// Function body for callAsyncJavaScript. x/y are normalized native view
+    /// coordinates, so CSS zoom and Retina backing scale do not change the
+    /// hit point. Cross-origin frames are deliberately left to frame messages.
+    static let downloadHitTestSource = #"""
+    let doc = document;
+    let px = x * window.innerWidth;
+    let py = y * window.innerHeight;
+    let element = null;
+    for (let depth = 0; depth < 16; depth++) {
+        element = doc.elementFromPoint(px, py);
+        if (!element) return {};
+        for (let shadowDepth = 0; shadowDepth < 16; shadowDepth++) {
+            const child = element.shadowRoot?.elementFromPoint?.(px, py);
+            if (!child || child === element) break;
+            element = child;
+        }
+        if (!element.matches('iframe, frame')) break;
+        let childDocument;
+        try { childDocument = element.contentDocument; } catch (_) { return {}; }
+        if (!childDocument) return {};
+        const rect = element.getBoundingClientRect();
+        if (!rect.width || !rect.height || !element.offsetWidth || !element.offsetHeight) return {};
+        px = (px - rect.left) * element.offsetWidth / rect.width - element.clientLeft;
+        py = (py - rect.top) * element.offsetHeight / rect.height - element.clientTop;
+        doc = childDocument;
+    }
+    const path = [];
+    for (let depth = 0; element && depth < 64; depth++) {
+        path.push(element);
+        element = element.assignedSlot || element.parentElement || element.getRootNode?.().host;
+    }
+    const anchor = path.find(node => node.matches?.('a[href], area[href]'));
+    const source = selector => {
+        const node = path.find(item => item.matches?.(selector));
+        const value = node && (node.currentSrc || node.src);
+        if (!value || value.length > 2 * 1024 * 1024) return null;
+        try { return new URL(value, node.baseURI).href; } catch (_) { return null; }
+    };
+    let href = null;
+    if (anchor) {
+        try { href = new URL(anchor.getAttribute('href'), anchor.baseURI).href; } catch (_) {}
+    }
+    return { documentURL: doc.URL, href,
+        downloadFilename: anchor?.getAttribute('download')?.slice(0, 1024) || null,
+        imageURL: source('img'), videoURL: source('video'), audioURL: source('audio') };
     """#
 }

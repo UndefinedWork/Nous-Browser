@@ -580,6 +580,10 @@ final class BrowserTab: NSObject, Identifiable {
                 guard let self, self.webView === webView, let owner = self.owner else { return }
                 owner.openLinkInNewTab(owner.searchEngineProvider().searchURL(query: text), after: self.id)
             }
+            browserView.onDownload = { [weak self, weak webView] request in
+                guard let self, let webView, self.webView === webView else { return }
+                BrowserDownloadCoordinator.shared.startDownload(request: request, from: webView)
+            }
         }
         pageNavigationShortcuts = BrowserPageNavigationShortcuts.attach(to: webView) { [weak self, weak webView] direction in
             guard let self, let webView, self.webView === webView,
@@ -956,8 +960,12 @@ extension BrowserTab: WKNavigationDelegate {
         userAgentPolicy.prepare(for: url) { ready in decisionHandler(ready ? policy : .cancel) }
     }
 
-    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) { download.delegate = self }
-    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) { download.delegate = self }
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        BrowserDownloadCoordinator.shared.accept(download, from: webView)
+    }
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        BrowserDownloadCoordinator.shared.accept(download, from: webView)
+    }
 
     func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         let method = challenge.protectionSpace.authenticationMethod
@@ -1034,27 +1042,5 @@ extension BrowserTab: WKUIDelegate {
         if let window = webView.window {
             panel.beginSheetModal(for: window) { completionHandler($0 == .OK ? panel.urls : nil) }
         } else { completionHandler(panel.runModal() == .OK ? panel.urls : nil) }
-    }
-}
-
-extension BrowserTab: WKDownloadDelegate {
-    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping @MainActor @Sendable (URL?) -> Void) {
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = suggestedFilename
-        panel.canCreateDirectories = true
-        if let window = webView.window ?? NSApp.keyWindow {
-            panel.beginSheetModal(for: window) { completionHandler($0 == .OK ? panel.url : nil) }
-        } else { completionHandler(panel.runModal() == .OK ? panel.url : nil) }
-    }
-
-    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
-        let nsError = error as NSError
-        guard !(nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled),
-              !(nsError.domain == NSCocoaErrorDomain && nsError.code == NSUserCancelledError) else { return }
-        let alert = NSAlert()
-        alert.messageText = L10n.string("Download failed")
-        alert.informativeText = error.localizedDescription
-        alert.addButton(withTitle: L10n.string("OK"))
-        present(alert) { _ in }
     }
 }
