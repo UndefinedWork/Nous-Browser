@@ -1,0 +1,84 @@
+Tests/NousBrowserTests/BrowserSidebarStateTests.swift
+  s_3d6e78ea1e9f59::t_582a0ca3bef9cc 128
+  s_3d6e78ea1e9f59::t_9ad7aa7185bafe 9
+  s_3d6e78ea1e9f59::t_41b645a3156f51 1-8,10-127,129-191
+Docs/QA-Sidebar-1.1.6.md
+  s_3d6e78ea1e9f59::t_73332411144ffe 22,38,40-55,58
+  s_3d6e78ea1e9f59::t_2e7d8bbed2ecc7 1-21,23-35,37,39,57
+  s_3d6e78ea1e9f59::t_daf21a054d3d47 36,56
+Sources/NousBrowser/BrowserHelpWindow.swift
+  s_3d6e78ea1e9f59::t_686596aff5f3ae 33-34,36
+Resources/Localization/es.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_c2679455f75df8 152-157
+Resources/Localization/zh-Hant.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_c2679455f75df8 18-19,153-158
+Resources/Localization/pt-BR.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_c2679455f75df8 152-157
+Sources/NousBrowser/BrowserModel.swift
+  s_3d6e78ea1e9f59::t_4fd0457fd7af5c 61-63,65-66,71,75,86,106-108,144,350-363,422-423
+Resources/Localization/ko.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_c2679455f75df8 153-158
+Sources/NousBrowser/BrowserWindowManager.swift
+  s_3d6e78ea1e9f59::t_4fd0457fd7af5c 107
+Sources/NousBrowser/NousBrowserApp.swift
+  s_3d6e78ea1e9f59::t_686596aff5f3ae 230-232,269,281-283,286-288
+  s_3d6e78ea1e9f59::t_09423c6f947a00 289
+Resources/Localization/zh-Hans.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_c2679455f75df8 18-19,153-158
+Resources/Localization/de.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_c2679455f75df8 152-157
+Sources/NousBrowser/SidebarTabTooltip.swift
+  s_3d6e78ea1e9f59::t_742bc9318e83c7 112,114
+  s_3d6e78ea1e9f59::t_cbcd532232432d 1-111,113,115-119
+Sources/NousBrowser/SidebarTabDragging.swift
+  s_3d6e78ea1e9f59::t_2a913fdac7453f 25-27,31-40,42,47-49,54,59-60,177,183,185-199,214
+  s_3d6e78ea1e9f59::t_239a2dad951611 204-206,208
+Resources/Localization/en.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_c2679455f75df8 153-158
+Resources/Localization/ja.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_c2679455f75df8 153-158
+Resources/Localization/ru.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_c2679455f75df8 152-157
+Sources/NousBrowser/BrowserShell.swift
+  s_3d6e78ea1e9f59::t_dfe901dcd624d5 389,395,397,772
+  s_3d6e78ea1e9f59::t_94bb46e2b7411a 357,378-379,391-393,400-404,415-449,452,491,537,635-636,638-639,663-664,666-669,711,726,732,757-760,790,807,821,831
+  s_3d6e78ea1e9f59::t_627805b96f6c20 330,332-333,336,339-340,349
+  s_3d6e78ea1e9f59::t_3bc612bc3f2587 6-7,36,40-41,57,78,106-117,147,159-162,218,261,283-290,303-304,317
+Tests/NousBrowserTests/SidebarTabTooltipTests.swift
+  s_3d6e78ea1e9f59::t_9f1d099a362671 1-57,59-101
+  s_3d6e78ea1e9f59::t_93da952f04a2dd 58
+Sources/NousBrowser/BrowserTabDragCoordinator.swift
+  s_3d6e78ea1e9f59::t_a3a3e05c303889 223-230,233
+  s_3d6e78ea1e9f59::t_af2f1e65870993 32,75,143,176,197-198,200-201,232
+Resources/Localization/it.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_c2679455f75df8 152-157
+Resources/Localization/fr.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_c2679455f75df8 152-157
+Docs/KeyboardShortcuts.md
+  s_3d6e78ea1e9f59::t_5a5e588ad78dd4 15-25
+Tests/NousBrowserTests/SidebarLayoutGeometryTests.swift
+  s_3d6e78ea1e9f59::t_563c492f228c6f 74-131
+README.md
+  s_3d6e78ea1e9f59::t_686596aff5f3ae 76-77,92
+  s_3d6e78ea1e9f59::t_daf21a054d3d47 153
+  s_3d6e78ea1e9f59::t_5a5e588ad78dd4 11,38,66-68
+  s_3d6e78ea1e9f59::t_72e4c204638387 69
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_47806bb70deb9e 22,24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "6c2800161115228710c054e72cff2ce988fd0f34",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
