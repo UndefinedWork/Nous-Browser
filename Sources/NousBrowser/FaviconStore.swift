@@ -24,6 +24,8 @@ final class FaviconStore {
     private var sourceDates: [String: Date] = [:]
     private var downloads: [String: Task<Data?, Never>] = [:]
     private var failures: [String: Date] = [:]
+    private var discoveries: [String: Task<[URL], Never>] = [:]
+    private var discoveryDates: [String: Date] = [:]
     private let lifetime: TimeInterval = 7 * 24 * 60 * 60
     nonisolated private static let maximumBytes = 2 * 1024 * 1024
 
@@ -85,11 +87,53 @@ final class FaviconStore {
         return image
     }
 
+    /// An unloaded shortcut has no DOM observer. Discover its own declared icon
+    /// before using /favicon.ico; an old root cache must not suppress discovery.
+    func quickLinkImage(for pageURL: URL) async -> NSImage? {
+        guard !Task.isCancelled, pageURL.user == nil, pageURL.password == nil,
+              let key = pageKey(pageURL) else { return nil }
+        let originalRecord = cachedRecord(key)
+        if let record = originalRecord, record.isEmpty != true,
+           !isRootRecord(record, for: pageURL), Date().timeIntervalSince(record.storedAt) < lifetime,
+           let image = cachedImage(forKey: key) { return image }
+
+        // Missing declarations and network failures are retried later, without
+        // fetching the same public page every time the address palette opens.
+        if let date = discoveryDates[key], Date().timeIntervalSince(date) < 300 {
+            return await resolvedImage(for: pageURL, candidates: [], allowRootFallback: true,
+                                       usePageCache: true, preservingPageRecord: .some(originalRecord))
+        }
+        let task: Task<[URL], Never>
+        if let existing = discoveries[key] { task = existing }
+        else {
+            let session = session
+            task = Task { await FaviconDiscovery.candidates(for: pageURL, using: session) }
+            discoveries[key] = task
+        }
+        let candidates = await task.value
+        discoveries[key] = nil
+        guard !Task.isCancelled else { return nil }
+        // A live page may publish a document/emoji icon while HTML is loading.
+        // Its exact-page result always wins over this unauthenticated discovery.
+        guard cachedRecord(key) == originalRecord else { return cachedImage(for: pageURL) }
+        discoveryDates[key] = Date()
+        if discoveryDates.count > 256 { discoveryDates.removeAll(keepingCapacity: true) }
+        return await resolvedImage(for: pageURL, candidates: candidates, allowRootFallback: true,
+                                   usePageCache: true, preservingPageRecord: .some(originalRecord))
+    }
+
     func image(for pageURL: URL, candidates: [URL] = [], allowRootFallback: Bool = true, usePageCache: Bool = true) async -> NSImage? {
+        await resolvedImage(for: pageURL, candidates: candidates, allowRootFallback: allowRootFallback,
+                            usePageCache: usePageCache)
+    }
+
+    private func resolvedImage(for pageURL: URL, candidates: [URL], allowRootFallback: Bool,
+                               usePageCache: Bool, preservingPageRecord: Record?? = nil) async -> NSImage? {
         // A canceled empty-declaration task must not enter the fresh-root fast
         // path and replace a newer document icon before its first suspension.
         guard !Task.isCancelled else { return nil }
         guard let key = pageKey(pageURL), let origin = originKey(pageURL) else { return nil }
+        if let expected = preservingPageRecord, cachedRecord(key) != expected { return cachedImage(for: pageURL) }
         let originalPageEntry = cachedEntry(for: pageURL)
         let entry: (image: NSImage, record: Record?)? = usePageCache ? originalPageEntry
             : cachedOriginEntry(for: pageURL).map { ($0.image, $0.record) }
@@ -115,6 +159,7 @@ final class FaviconStore {
 
         for url in urls {
             guard !Task.isCancelled else { return allowRootFallback ? cached : nil }
+            if let expected = preservingPageRecord, cachedRecord(key) != expected { return cachedImage(for: pageURL) }
             // A previously cached root icon must not mask a newly declared icon.
             if fresh, record?.sourceURL == url, let cached { return cached }
             let sourceKey = Self.digest(url.absoluteString)
@@ -136,6 +181,7 @@ final class FaviconStore {
             downloads[sourceKey] = nil
             // A canceled fallback request must not overwrite a newer declared icon.
             guard !Task.isCancelled else { return allowRootFallback ? cached : nil }
+            if let expected = preservingPageRecord, cachedRecord(key) != expected { return cachedImage(for: pageURL) }
             // A suggestion's uncancelled root request can finish after the live
             // page has supplied its declared icon. Keep that newer success.
             if candidates.isEmpty, let latest = cachedEntry(for: pageURL),

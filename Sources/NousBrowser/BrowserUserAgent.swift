@@ -32,17 +32,17 @@ enum BrowserUserAgent {
         return ["", "/", "/webhp", "/search"].contains(path)
     }
 
-    static var supportsModernGoogleEditorsCompatibility: Bool {
+    static var supportsModernGoogleWorkspaceCompatibility: Bool {
         if #available(macOS 26.4, *) { return true }
         return false
     }
 
     static var compatibilityVersion: String {
-        supportsModernGoogleEditorsCompatibility ? "26.4" : "26.0"
+        supportsModernGoogleWorkspaceCompatibility ? "26.4" : "26.0"
     }
 
-    static func needsGoogleEditorsCompatibility(_ url: URL?, supportsModernEditors: Bool = supportsModernGoogleEditorsCompatibility) -> Bool {
-        guard supportsModernEditors, let url,
+    static func needsGoogleWorkspaceCompatibility(_ url: URL?, supportsModernWorkspace: Bool = supportsModernGoogleWorkspaceCompatibility) -> Bool {
+        guard supportsModernWorkspace, let url,
               ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
               url.user == nil, url.password == nil,
               url.port == nil || url.port == (url.scheme?.lowercased() == "https" ? 443 : 80),
@@ -57,12 +57,17 @@ enum BrowserUserAgent {
                 path == $0 || path.hasPrefix($0 + "/")
             }
         case "sheets.google.com", "slides.google.com": return true
+        case "mail.google.com":
+            // Gmail's landing URL redirects into /mail. Apply the same profile
+            // before that first request, without extending it to other Google
+            // services or the separate accounts.google.com sign-in host.
+            return path.isEmpty || path == "/" || path == "/mail" || path.hasPrefix("/mail/")
         default: return false
         }
     }
 
     static func needsGoogleCompatibility(_ url: URL?) -> Bool {
-        needsGoogleSearchCompatibility(url) || needsGoogleEditorsCompatibility(url)
+        needsGoogleSearchCompatibility(url) || needsGoogleWorkspaceCompatibility(url)
     }
 
     private(set) static var cachedCompatibilityUserAgent: String?
@@ -94,7 +99,7 @@ enum BrowserUserAgent {
     /// below Safari 26.4. Cocoa WKWebView can report outerWidth=0, reducing a
     /// Retina canvas to 0.5x. On macOS 26.4+ DPR already includes page zoom;
     /// advertise that capability floor, without claiming newer Safari APIs.
-    /// Older systems retain the Search-only profile and native editor identity.
+    /// Older systems retain the Search-only profile and native Workspace identity.
     static func googleCompatibilityUserAgent(from native: String) -> String? {
         guard let engine = native.split(separator: " ").first(where: { $0.hasPrefix("AppleWebKit/") })?
             .dropFirst("AppleWebKit/".count), !engine.isEmpty,

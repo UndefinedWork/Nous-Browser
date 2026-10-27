@@ -5,17 +5,20 @@ struct QuickLinkIcon: View {
     private struct Request: Equatable {
         let url: URL
         let hasPreferredImage: Bool
+        let discoversDeclaredIcon: Bool
     }
 
     let url: URL
     let preferredImage: NSImage?
+    private let discoversDeclaredIcon: Bool
     @State private var image: NSImage?
     @State private var imageURL: URL
 
-    init(link: BrowserQuickLink) { self.init(url: link.url) }
-    init(url: URL, preferredImage: NSImage? = nil) {
+    init(link: BrowserQuickLink) { self.init(url: link.url, discoversDeclaredIcon: true) }
+    init(url: URL, preferredImage: NSImage? = nil, discoversDeclaredIcon: Bool = false) {
         self.url = url
         self.preferredImage = preferredImage
+        self.discoversDeclaredIcon = discoversDeclaredIcon
         _image = State(initialValue: FaviconStore.shared.cachedImage(for: url))
         _imageURL = State(initialValue: url)
     }
@@ -30,14 +33,16 @@ struct QuickLinkIcon: View {
         }
         .frame(width: 24, height: 24)
         .accessibilityHidden(true)
-        .task(id: Request(url: url, hasPreferredImage: preferredImage != nil)) {
+        .task(id: Request(url: url, hasPreferredImage: preferredImage != nil, discoversDeclaredIcon: discoversDeclaredIcon)) {
             imageURL = url
             if let preferredImage {
                 image = preferredImage
                 return
             }
             image = FaviconStore.shared.cachedImage(for: url)
-            let fetched = await FaviconStore.shared.image(for: url)
+            let fetched = discoversDeclaredIcon
+                ? await FaviconStore.shared.quickLinkImage(for: url)
+                : await FaviconStore.shared.image(for: url)
             guard !Task.isCancelled else { return }
             image = fetched
         }

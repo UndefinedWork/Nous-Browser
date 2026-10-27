@@ -73,7 +73,7 @@ struct BrowserUserAgentTests {
         #expect(!BrowserUserAgent.needsGoogleSearchCompatibility(nil))
     }
 
-    @Test @MainActor func editorsCompatibilityIsRestrictedToExactGoogleEditorHostsAndPaths() throws {
+    @Test @MainActor func workspaceCompatibilityIsRestrictedToExactGoogleAppHostsAndPaths() throws {
         let eligible = [
             "https://docs.google.com/spreadsheets", "https://docs.google.com/spreadsheets/",
             "https://DOCS.GOOGLE.COM/spreadsheets/d/fixture/edit?gid=0#gid=0",
@@ -88,11 +88,15 @@ struct BrowserUserAgentTests {
             "https://docs.google.com/presentation/d/fixture/edit#slide=id.fixture",
             "https://docs.google.com/presentation/u/0/", "https://slides.google.com",
             "https://slides.google.com/", "https://slides.google.com:443/u/0/",
-            "http://SLIDES.GOOGLE.COM:80/"
+            "http://SLIDES.GOOGLE.COM:80/",
+            "https://mail.google.com", "https://mail.google.com/", "https://mail.google.com/?authuser=1",
+            "https://mail.google.com/mail", "https://mail.google.com/mail/",
+            "https://MAIL.GOOGLE.COM/mail/u/0/#inbox", "https://mail.google.com/mail/u/1/?ui=2#sent",
+            "https://mail.google.com:443/mail/u/0/", "http://mail.google.com:80/mail/"
         ]
         for address in eligible {
             let url = try #require(URL(string: address))
-            #expect(BrowserUserAgent.needsGoogleEditorsCompatibility(url, supportsModernEditors: true))
+            #expect(BrowserUserAgent.needsGoogleWorkspaceCompatibility(url, supportsModernWorkspace: true))
             #expect(!BrowserUserAgent.needsGoogleSearchCompatibility(url))
         }
         let native = [
@@ -111,6 +115,12 @@ struct BrowserUserAgentTests {
             "https://sheets.google.com.evil.test/", "https://www.sheets.google.com/",
             "https://slides.google.com.evil.test/", "https://www.slides.google.com/",
             "https://sub.docs.google.com/document/", "https://docs.google.com.evil.test/presentation/",
+            "https://mail.google.com/chat/", "https://mail.google.com/mailbox", "https://mail.google.com/mail-other",
+            "https://mail.google.com/Mail/u/0/", "https://mail.google.com/mail%2Fu/0/",
+            "https://mail.google.com/%6dail/u/0/", "https://mail.google.com//mail/u/0/",
+            "https://mail.google.com/mail/%2e%2e/chat", "https://mail.google.com/mail/%2e/u/0/",
+            "https://mail.google.com.evil.test/mail/", "https://www.mail.google.com/mail/",
+            "https://sub.mail.google.com/mail/", "https://gmail.com/", "https://www.gmail.com/",
             "https://accounts.google.com/", "https://drive.google.com/", "https://google.com/search",
             "https://fixture:fixture@docs.google.com/spreadsheets/d/fixture", "https://fixture@sheets.google.com/",
             "https://fixture:fixture@docs.google.com/document/d/fixture", "https://fixture@slides.google.com/",
@@ -118,31 +128,34 @@ struct BrowserUserAgentTests {
             "http://docs.google.com:443/spreadsheets/", "https://sheets.google.com:8443/",
             "https://slides.google.com:80/", "http://slides.google.com:443/", "https://slides.google.com:8443/",
             "https://docs.google.com:8443/document/", "https://docs.google.com:80/presentation/",
+            "https://fixture:fixture@mail.google.com/mail/", "https://fixture@mail.google.com/",
+            "https://mail.google.com:8443/mail/", "https://mail.google.com:80/mail/", "http://mail.google.com:443/mail/",
+            "ftp://mail.google.com/mail/", "file://mail.google.com/mail/", "//mail.google.com/mail/",
             "ftp://slides.google.com/", "file://docs.google.com/document/",
             "ftp://sheets.google.com/", "file://docs.google.com/spreadsheets/", "about:blank",
             "//docs.google.com/spreadsheets/d/fixture", "/spreadsheets/d/fixture"
         ]
         for address in native {
-            #expect(!BrowserUserAgent.needsGoogleEditorsCompatibility(try #require(URL(string: address)), supportsModernEditors: true))
+            #expect(!BrowserUserAgent.needsGoogleWorkspaceCompatibility(try #require(URL(string: address)), supportsModernWorkspace: true))
         }
-        for malformed in ["https://", "https://docs.google.com:invalid/spreadsheets/", ""] {
-            #expect(!BrowserUserAgent.needsGoogleEditorsCompatibility(URL(string: malformed), supportsModernEditors: true))
+        for malformed in ["https://", "https://docs.google.com:invalid/spreadsheets/", "https://mail.google.com:invalid/mail/", ""] {
+            #expect(!BrowserUserAgent.needsGoogleWorkspaceCompatibility(URL(string: malformed), supportsModernWorkspace: true))
         }
-        #expect(!BrowserUserAgent.needsGoogleEditorsCompatibility(nil, supportsModernEditors: true))
+        #expect(!BrowserUserAgent.needsGoogleWorkspaceCompatibility(nil, supportsModernWorkspace: true))
     }
 
-    @Test @MainActor func editorsCompatibilityRequiresTheModernSystemCapabilityWhileSearchRemainsAvailable() throws {
-        let expectedEditorsCompatibility: Bool
-        if #available(macOS 26.4, *) { expectedEditorsCompatibility = true }
-        else { expectedEditorsCompatibility = false }
-        #expect(BrowserUserAgent.supportsModernGoogleEditorsCompatibility == expectedEditorsCompatibility)
+    @Test @MainActor func workspaceCompatibilityRequiresTheModernSystemCapabilityWhileSearchRemainsAvailable() throws {
+        let expectedWorkspaceCompatibility: Bool
+        if #available(macOS 26.4, *) { expectedWorkspaceCompatibility = true }
+        else { expectedWorkspaceCompatibility = false }
+        #expect(BrowserUserAgent.supportsModernGoogleWorkspaceCompatibility == expectedWorkspaceCompatibility)
         for address in ["https://docs.google.com/spreadsheets/d/fixture", "https://sheets.google.com/",
                         "https://docs.google.com/document/d/fixture", "https://docs.google.com/presentation/d/fixture",
-                        "https://slides.google.com/"] {
+                        "https://slides.google.com/", "https://mail.google.com/", "https://mail.google.com/mail/u/0/"] {
             let url = try #require(URL(string: address))
-            #expect(!BrowserUserAgent.needsGoogleEditorsCompatibility(url, supportsModernEditors: false))
-            #expect(BrowserUserAgent.needsGoogleEditorsCompatibility(url) == expectedEditorsCompatibility)
-            #expect(BrowserUserAgent.needsGoogleCompatibility(url) == expectedEditorsCompatibility)
+            #expect(!BrowserUserAgent.needsGoogleWorkspaceCompatibility(url, supportsModernWorkspace: false))
+            #expect(BrowserUserAgent.needsGoogleWorkspaceCompatibility(url) == expectedWorkspaceCompatibility)
+            #expect(BrowserUserAgent.needsGoogleCompatibility(url) == expectedWorkspaceCompatibility)
         }
         let search = try #require(URL(string: "https://google.com/search?q=fixture"))
         #expect(BrowserUserAgent.needsGoogleSearchCompatibility(search))
@@ -212,7 +225,7 @@ struct BrowserUserAgentTests {
         }
     }
 
-    @Test @MainActor func cachedIdentityAppliesToSearchAndSupportedEditorsSynchronouslyAndNativePagesClearIt() {
+    @Test @MainActor func cachedIdentityAppliesToSearchAndSupportedWorkspaceAppsSynchronouslyAndNativePagesClearIt() {
         let webView = makeWebView()
         var resolverCalls = 0
         let policy = BrowserUserAgent.NavigationPolicy(webView: webView, cachedCompatibilityUserAgent: "Fixture Search UA") {
@@ -225,7 +238,8 @@ struct BrowserUserAgentTests {
         #expect(webView.customUserAgent == "Fixture Search UA")
         for address in ["https://docs.google.com/spreadsheets/d/fixture",
                         "https://docs.google.com/document/d/fixture",
-                        "https://docs.google.com/presentation/d/fixture"] {
+                        "https://docs.google.com/presentation/d/fixture",
+                        "https://mail.google.com/", "https://mail.google.com/mail/u/0/"] {
             let previousCount = decisions.count
             policy.prepare(for: URL(string: address)!) { decisions.append($0) }
             #expect(decisions.count == previousCount + 1 && decisions.last == true)
@@ -233,12 +247,12 @@ struct BrowserUserAgentTests {
             else { #expect((webView.customUserAgent ?? "").isEmpty) }
         }
         policy.prepare(for: URL(string: "https://accounts.google.com/")!) { decisions.append($0) }
-        #expect(decisions == [true, true, true, true, true])
+        #expect(decisions == Array(repeating: true, count: 7))
         #expect((webView.customUserAgent ?? "").isEmpty)
         policy.applyKnownIdentity(for: URL(string: "https://google.com/webhp")!)
         #expect(webView.customUserAgent == "Fixture Search UA")
         for address in ["https://sheets.google.com/", "https://slides.google.com/",
-                        "https://docs.google.com/document/d/fixture"] {
+                        "https://docs.google.com/document/d/fixture", "https://mail.google.com/mail/u/1/#inbox"] {
             policy.applyKnownIdentity(for: URL(string: address)!)
             if #available(macOS 26.4, *) { #expect(webView.customUserAgent == "Fixture Search UA") }
             else { #expect((webView.customUserAgent ?? "").isEmpty) }
@@ -263,8 +277,9 @@ struct BrowserUserAgentTests {
         #expect(resolverCalls == 0)
     }
 
-    @Test(arguments: ["document", "presentation", "spreadsheets"])
-    @MainActor func coldEditorNavigationResolvesIdentityAndKeepsItAcrossEditorSwitches(path: String) async {
+    @Test(arguments: ["https://docs.google.com/document/d/fixture", "https://docs.google.com/presentation/d/fixture",
+                      "https://docs.google.com/spreadsheets/d/fixture", "https://mail.google.com/", "https://mail.google.com/mail/u/0/"])
+    @MainActor func coldWorkspaceNavigationResolvesIdentityAndKeepsItAcrossAppSwitches(address: String) async {
         guard #available(macOS 26.4, *) else { return }
         let webView = makeWebView()
         let deferred = DeferredAgent()
@@ -274,29 +289,32 @@ struct BrowserUserAgentTests {
             return await deferred.resolve()
         }
         var decisions: [Bool] = []
-        policy.prepare(for: URL(string: "https://docs.google.com/\(path)/d/fixture")!) { decisions.append($0) }
+        policy.prepare(for: URL(string: address)!) { decisions.append($0) }
         #expect(decisions.isEmpty)
         await deferred.waitUntilStarted()
-        deferred.finish("Resolved Editor UA")
+        deferred.finish("Resolved Workspace UA")
         await deferred.waitUntilReturned()
         #expect(decisions == [true])
-        #expect(webView.customUserAgent == "Resolved Editor UA")
+        #expect(webView.customUserAgent == "Resolved Workspace UA")
 
-        for destination in ["document", "presentation", "spreadsheets"] {
-            policy.prepare(for: URL(string: "https://docs.google.com/\(destination)/d/fixture")!) { decisions.append($0) }
-            #expect(webView.customUserAgent == "Resolved Editor UA")
+        let destinations = ["https://docs.google.com/document/d/fixture", "https://docs.google.com/presentation/d/fixture",
+                            "https://docs.google.com/spreadsheets/d/fixture", "https://mail.google.com/mail/u/0/#inbox"]
+        for destination in destinations {
+            policy.prepare(for: URL(string: destination)!) { decisions.append($0) }
+            #expect(webView.customUserAgent == "Resolved Workspace UA")
         }
-        #expect(decisions == [true, true, true, true])
+        #expect(decisions == Array(repeating: true, count: destinations.count + 1))
         #expect(resolverCalls == 1)
         policy.prepare(for: URL(string: "https://accounts.google.com/")!) { decisions.append($0) }
-        #expect(decisions == [true, true, true, true, true])
+        #expect(decisions == Array(repeating: true, count: destinations.count + 2))
         #expect((webView.customUserAgent ?? "").isEmpty)
     }
 
-    @Test @MainActor func realWebKitProbeIsVisibleToDocsAndSlidesAndClearsForOtherSites() async throws {
+    @Test @MainActor func realWebKitProbeIsVisibleToWorkspaceAppsAndClearsForOtherSites() async throws {
         guard #available(macOS 26.4, *) else { return }
         let actualCompatibility = try #require(await BrowserUserAgent.compatibilityUserAgent())
-        for path in ["document", "presentation"] {
+        for address in ["https://docs.google.com/document/d/fixture", "https://docs.google.com/presentation/d/fixture",
+                        "https://docs.google.com/spreadsheets/d/fixture", "https://mail.google.com/", "https://mail.google.com/mail/u/0/"] {
             let webView = makeWebView()
             var resolverCalls = 0
             // A fresh per-tab policy must resolve the real shared probe even
@@ -305,16 +323,24 @@ struct BrowserUserAgentTests {
                 resolverCalls += 1
                 return await BrowserUserAgent.compatibilityUserAgent()
             }
-            let editorURL = try #require(URL(string: "https://docs.google.com/\(path)/d/fixture"))
+            let workspaceURL = try #require(URL(string: address))
             let ready = await withCheckedContinuation { continuation in
-                policy.prepare(for: editorURL) { continuation.resume(returning: $0) }
+                policy.prepare(for: workspaceURL) { continuation.resume(returning: $0) }
             }
             #expect(ready && resolverCalls == 1)
             #expect(webView.customUserAgent == actualCompatibility)
-            let editorAgent = try #require(try await webView.evaluateJavaScript("navigator.userAgent") as? String)
-            #expect(editorAgent == actualCompatibility)
-            #expect(editorAgent.contains("Version/26.4 Safari/"))
-            #expect(editorAgent.contains("NousBrowser/"))
+            // Use a local document with the selected origin so both reads
+            // exercise a loaded Navigator without contacting any account.
+            webView.loadHTMLString("<!doctype html><title>Workspace identity</title>", baseURL: workspaceURL)
+            for _ in 0..<100 {
+                if !webView.isLoading, webView.title == "Workspace identity" { break }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            #expect(webView.title == "Workspace identity")
+            let workspaceAgent = try #require(try await webView.evaluateJavaScript("navigator.userAgent") as? String)
+            #expect(workspaceAgent == actualCompatibility)
+            #expect(workspaceAgent.contains("Version/26.4 Safari/"))
+            #expect(workspaceAgent.contains("NousBrowser/"))
 
             let nativeURL = try #require(URL(string: "https://native.example.test/"))
             policy.prepare(for: nativeURL) { #expect($0) }
@@ -399,8 +425,9 @@ struct BrowserUserAgentTests {
         #expect(webView.customUserAgent == "Current Search UA")
     }
 
-    @Test(arguments: ["document", "presentation", "spreadsheets"])
-    @MainActor func aPendingEditorIdentityCannotRestoreCompatibilityAfterLeavingTheEditor(path: String) async {
+    @Test(arguments: ["https://docs.google.com/document/d/fixture", "https://docs.google.com/presentation/d/fixture",
+                      "https://docs.google.com/spreadsheets/d/fixture", "https://mail.google.com/", "https://mail.google.com/mail/u/0/"])
+    @MainActor func aPendingWorkspaceIdentityCannotRestoreCompatibilityAfterLeavingTheApp(address: String) async {
         guard #available(macOS 26.4, *) else { return }
         let webView = makeWebView()
         let deferred = DeferredAgent()
@@ -408,12 +435,12 @@ struct BrowserUserAgentTests {
             await deferred.resolve()
         }
         var decisions: [Bool] = []
-        policy.prepare(for: URL(string: "https://docs.google.com/\(path)/d/fixture")!) { decisions.append($0) }
+        policy.prepare(for: URL(string: address)!) { decisions.append($0) }
         await deferred.waitUntilStarted()
         policy.prepare(for: URL(string: "https://accounts.google.com/")!) { decisions.append($0) }
         #expect(decisions == [false, true])
         #expect((webView.customUserAgent ?? "").isEmpty)
-        deferred.finish("Stale Editor UA")
+        deferred.finish("Stale Workspace UA")
         await deferred.waitUntilReturned()
         #expect(decisions == [false, true])
         #expect((webView.customUserAgent ?? "").isEmpty)
