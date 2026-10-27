@@ -35,7 +35,7 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 - 当前首个预编译包为 **Apple Silicon** 版本；Intel Mac 可在满足系统与开发环境要求时从源码构建。
 - 从源码构建需要 **Xcode 26 或更新版本、Swift 6.2 或更新版本**。
 
-当前源码版本：**1.1.4（Build 44）**。预编译安装包的构建号见对应 Release。
+当前源码版本：**1.1.5（Build 45）**。预编译安装包的构建号见对应 Release。
 
 ## 下载与安装
 
@@ -145,7 +145,7 @@ open "build/Nous Browser.app"
 
 ## 测试
 
-本次发布验证记录：[1.1.4（Build 44）](Docs/QA-1.1.4.md)。[快捷键核对与待补功能](Docs/KeyboardShortcuts.md)。
+验证记录：[1.1.5 中文输入兼容性](Docs/QA-IME-1.1.5.md) · [1.1.4 下载保存框](Docs/QA-1.1.4.md)。[快捷键核对与待补功能](Docs/KeyboardShortcuts.md)。
 
 ```sh
 swift test

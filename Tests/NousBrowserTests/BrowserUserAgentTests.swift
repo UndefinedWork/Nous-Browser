@@ -169,16 +169,168 @@ struct BrowserUserAgentTests {
         BrowserUserAgent.configure(configuration)
         let token = try #require(configuration.applicationNameForUserAgent)
         let prefix = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/620.1.23 (KHTML, like Gecko)"
-        let result = try #require(BrowserUserAgent.googleCompatibilityUserAgent(from: prefix + " " + token))
+        let result = try #require(BrowserUserAgent.safariCompatibilityUserAgent(from: prefix + " " + token))
         let expectedVersion: String
         if #available(macOS 26.4, *) { expectedVersion = "26.4" }
         else { expectedVersion = "26.0" }
         #expect(result == prefix + " Version/\(expectedVersion) Safari/620.1.23 " + token)
         #expect(result.components(separatedBy: "NousBrowser/").count == 2)
-        #expect(BrowserUserAgent.googleCompatibilityUserAgent(from: prefix) == result)
+        #expect(BrowserUserAgent.safariCompatibilityUserAgent(from: prefix) == result)
         for invalid in ["Mozilla/5.0", "AppleWebKit/", "AppleWebKit/620.1beta", "AppleWebKit/620/1"] {
-            #expect(BrowserUserAgent.googleCompatibilityUserAgent(from: invalid) == nil)
+            #expect(BrowserUserAgent.safariCompatibilityUserAgent(from: invalid) == nil)
         }
+    }
+
+    @Test @MainActor func zoomSlidesCompatibilityIsRestrictedToVerifiedHTTPSHosts() throws {
+        for address in ["https://slides.zoom.us", "https://slides.zoom.us/",
+                        "https://SLIDES.ZOOM.US/p/fixture/edit?mode=edit#slide=1",
+                        "https://slides.zoom.us:443/d/fixture", "https://slides.zoom.com/",
+                        "https://slides.zoom.com:443/p/fixture", "https://present.zoom.us/"] {
+            let url = try #require(URL(string: address))
+            #expect(BrowserUserAgent.needsZoomSlidesCompatibility(url))
+            #expect(BrowserUserAgent.needsCompatibility(url))
+            #expect(!BrowserUserAgent.needsGoogleCompatibility(url))
+        }
+        for address in ["http://slides.zoom.us/", "http://slides.zoom.com/", "http://present.zoom.us/",
+                        "https://slides.zoom.us:80/", "https://slides.zoom.us:8443/",
+                        "https://slides.zoom.com:8443/", "https://present.zoom.us:8443/",
+                        "https://user@slides.zoom.us/", "https://user:password@slides.zoom.com/",
+                        "https://@present.zoom.us/", "https://slides.zoom.us.evil.test/",
+                        "https://evilslides.zoom.us/", "https://www.slides.zoom.us/",
+                        "https://us01slides.zoom.us/", "https://slides.zoom.us./",
+                        "https://zoom.us/signin", "https://zoom.com/", "https://accounts.zoom.us/",
+                        "https://docs.zoom.us/", "https://canvas.zoom.us/", "https://sheets.zoom.us/",
+                        "https://present.zoom.com/", "https://st1.zoom.us/zoom-docs/",
+                        "file://slides.zoom.us/", "ftp://slides.zoom.us/", "//slides.zoom.us/", "about:blank"] {
+            let url = try #require(URL(string: address))
+            #expect(!BrowserUserAgent.needsZoomSlidesCompatibility(url))
+            #expect(!BrowserUserAgent.needsCompatibility(url))
+        }
+        #expect(!BrowserUserAgent.needsZoomSlidesCompatibility(nil))
+        #expect(!BrowserUserAgent.needsCompatibility(nil))
+    }
+
+    @Test @MainActor func zoomSlidesAndGoogleTransitionsReuseIdentityAndLeaveOtherZoomSitesNative() async {
+        let webView = makeWebView()
+        let deferred = DeferredAgent()
+        var calls = 0
+        let policy = BrowserUserAgent.NavigationPolicy(webView: webView, cachedCompatibilityUserAgent: nil) {
+            calls += 1
+            return await deferred.resolve()
+        }
+        var decisions: [Bool] = []
+        policy.prepare(for: URL(string: "https://slides.zoom.us/p/fixture")!) { decisions.append($0) }
+        #expect(decisions.isEmpty)
+        await deferred.waitUntilStarted()
+        deferred.finish("Resolved Safari UA")
+        await deferred.waitUntilReturned()
+        #expect(decisions == [true])
+        #expect(webView.customUserAgent == "Resolved Safari UA")
+        for (address, compatible) in [
+            ("https://www.google.com/search?q=fixture", true),
+            ("https://zoom.us/signin", false),
+            ("https://slides.zoom.com/", true),
+            ("https://accounts.google.com/", false),
+            ("https://present.zoom.us/p/fixture", true),
+            ("https://docs.google.com/presentation/d/fixture", BrowserUserAgent.supportsModernGoogleWorkspaceCompatibility),
+            ("https://docs.zoom.us/doc/fixture", false),
+            ("https://slides.zoom.us/p/fixture", true)
+        ] {
+            policy.prepare(for: URL(string: address)!) { decisions.append($0) }
+            #expect(compatible ? webView.customUserAgent == "Resolved Safari UA" : (webView.customUserAgent ?? "").isEmpty)
+        }
+        #expect(decisions == Array(repeating: true, count: 9))
+        #expect(calls == 1)
+    }
+
+    @Test @MainActor func zoomPopupKnownIdentityIsScopedAndPendingResultsCannotRestoreItAfterLeaving() async {
+        let popup = makeWebView()
+        let known = BrowserUserAgent.NavigationPolicy(webView: popup, cachedCompatibilityUserAgent: "Popup Safari UA")
+        for address in ["https://slides.zoom.us/p/fixture", "https://slides.zoom.com/", "https://present.zoom.us/"] {
+            known.applyKnownIdentity(for: URL(string: address)!)
+            #expect(popup.customUserAgent == "Popup Safari UA")
+            known.applyKnownIdentity(for: URL(string: "https://zoom.us/signin")!)
+            #expect((popup.customUserAgent ?? "").isEmpty)
+        }
+
+        let deferred = DeferredAgent()
+        let pending = BrowserUserAgent.NavigationPolicy(webView: popup, cachedCompatibilityUserAgent: nil) {
+            await deferred.resolve()
+        }
+        var decisions: [Bool] = []
+        pending.prepare(for: URL(string: "https://slides.zoom.us/p/fixture")!) { decisions.append($0) }
+        await deferred.waitUntilStarted()
+        pending.applyKnownIdentity(for: URL(string: "https://zoom.us/signin")!)
+        #expect(decisions == [false])
+        #expect((popup.customUserAgent ?? "").isEmpty)
+        deferred.finish("Late Slides UA")
+        await deferred.waitUntilReturned()
+        #expect(decisions == [false])
+        #expect((popup.customUserAgent ?? "").isEmpty)
+    }
+
+    @Test @MainActor func realWebKitNavigatorEnablesZoomSlidesSafariCompositionBranchOnlyOnScopedSites() async throws {
+        let webView = makeWebView()
+        let compatibility = try #require(await BrowserUserAgent.compatibilityUserAgent())
+        let policy = BrowserUserAgent.NavigationPolicy(webView: webView, cachedCompatibilityUserAgent: nil)
+        // The public Slides editor reads navigator.userAgent through its shared
+        // detector. These are its two Safari patterns, not a Nous-only assertion.
+        let slidesSafariDetector = #"/Version\/[0-9\._]+.*Safari/.test(navigator.userAgent) || /AppleWebKit\/.+Zoom/i.test(navigator.userAgent)"#
+        let destinations = [
+            ("https://slides.zoom.us/p/fixture", true),
+            ("https://zoom.us/signin", false),
+            ("https://slides.zoom.com/", true),
+            ("https://www.google.com/search?q=fixture", true),
+            ("https://accounts.google.com/", false),
+            ("https://present.zoom.us/", true),
+            ("https://native.example.test/", false)
+        ]
+        for (index, destination) in destinations.enumerated() {
+            let (address, expectedSafari) = destination
+            let url = try #require(URL(string: address))
+            let ready = await withCheckedContinuation { continuation in
+                policy.prepare(for: url) { continuation.resume(returning: $0) }
+            }
+            #expect(ready)
+            let title = "Slides identity \(index)"
+            // No request is sent to Zoom or Google: load a local document with
+            // the selected origin after the real navigation policy resolves.
+            webView.loadHTMLString("<!doctype html><title>\(title)</title>", baseURL: url)
+            for _ in 0..<150 {
+                if !webView.isLoading, webView.title == title { break }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            #expect(webView.title == title)
+            let userAgent = try #require(try await webView.evaluateJavaScript("navigator.userAgent") as? String)
+            let recognized = try #require(try await webView.evaluateJavaScript(slidesSafariDetector) as? Bool)
+            #expect(recognized == expectedSafari)
+            // Exercise the observed Slides guard with this real Navigator's
+            // identity. This is a deterministic site-policy regression, not
+            // a synthetic-event substitute for native IME acceptance.
+            let compositionGuard = """
+            (() => {
+                const browser = { safari: \(slidesSafariDetector) };
+                let calls = 0;
+                function keydown(isCompositing, elapsedSinceCompositionEnd) {
+                    isCompositing ||
+                        browser.safari && elapsedSinceCompositionEnd < 50 ||
+                        ++calls;
+                }
+                keydown(true, 0);
+                const whileComposing = calls;
+                keydown(false, 1);
+                const afterConfirmingEnter = calls;
+                keydown(false, 100);
+                return [whileComposing, afterConfirmingEnter, calls];
+            })()
+            """
+            let calls = try #require(try await webView.evaluateJavaScript(compositionGuard) as? [Int])
+            #expect(calls == (expectedSafari ? [0, 0, 1] : [0, 1, 2]))
+            #expect(userAgent.contains("NousBrowser/"))
+            if expectedSafari { #expect(userAgent == compatibility) }
+            else { #expect(!userAgent.contains("Version/") && !userAgent.contains("Safari/")) }
+        }
+        webView.stopLoading()
     }
 
     // WebKit can normalize a nil-assigned Cocoa string property to "" on readback.

@@ -5,7 +5,8 @@ import WebKit
 enum BrowserUserAgent {
     static func configure(_ configuration: WKWebViewConfiguration) {
         // Keep the system's native embedded-browser identity by default.
-        // Only the Google endpoints below receive a compatibility identity.
+        // Only the verified Google and Zoom Slides endpoints below receive a
+        // compatibility identity, so their WebKit-specific behavior is enabled.
         // Replace inherited popup suffixes instead of appending to them.
         configuration.applicationNameForUserAgent = applicationToken
     }
@@ -70,6 +71,23 @@ enum BrowserUserAgent {
         needsGoogleSearchCompatibility(url) || needsGoogleWorkspaceCompatibility(url)
     }
 
+    static func needsZoomSlidesCompatibility(_ url: URL?) -> Bool {
+        guard let url, url.scheme?.lowercased() == "https",
+              url.user == nil, url.password == nil,
+              url.port == nil || url.port == 443,
+              let host = url.host?.lowercased() else { return false }
+        // Slides' canvas editor suppresses the Enter used to confirm an IME
+        // composition only when its UA detector recognizes Safari. A bare
+        // WKWebView UA misses that branch and the same Enter adds a newline.
+        // The .com and present aliases redirect to slides.zoom.us. Keep login,
+        // other Zoom products and unverified regional hosts on the native UA.
+        return ["slides.zoom.us", "slides.zoom.com", "present.zoom.us"].contains(host)
+    }
+
+    static func needsCompatibility(_ url: URL?) -> Bool {
+        needsGoogleCompatibility(url) || needsZoomSlidesCompatibility(url)
+    }
+
     private(set) static var cachedCompatibilityUserAgent: String?
     private static var probeTask: Task<String?, Never>?
 
@@ -85,7 +103,7 @@ enum BrowserUserAgent {
             let probe = WKWebView(frame: .zero, configuration: configuration)
             defer { probe.stopLoading() }
             guard let native = try? await probe.evaluateJavaScript("navigator.userAgent") as? String else { return nil }
-            return googleCompatibilityUserAgent(from: native)
+            return safariCompatibilityUserAgent(from: native)
         }
         probeTask = task
         let result = await task.value
@@ -99,8 +117,8 @@ enum BrowserUserAgent {
     /// below Safari 26.4. Cocoa WKWebView can report outerWidth=0, reducing a
     /// Retina canvas to 0.5x. On macOS 26.4+ DPR already includes page zoom;
     /// advertise that capability floor, without claiming newer Safari APIs.
-    /// Older systems retain the Search-only profile and native Workspace identity.
-    static func googleCompatibilityUserAgent(from native: String) -> String? {
+    /// Older systems retain native Google Workspace identity.
+    static func safariCompatibilityUserAgent(from native: String) -> String? {
         guard let engine = native.split(separator: " ").first(where: { $0.hasPrefix("AppleWebKit/") })?
             .dropFirst("AppleWebKit/".count), !engine.isEmpty,
               engine.allSatisfy({ $0.isNumber || $0 == "." }) else { return nil }
@@ -129,13 +147,13 @@ enum BrowserUserAgent {
 
         func applyKnownIdentity(for url: URL?) {
             invalidate()
-            webView?.customUserAgent = BrowserUserAgent.needsGoogleCompatibility(url) ? compatibilityAgent : nil
+            webView?.customUserAgent = BrowserUserAgent.needsCompatibility(url) ? compatibilityAgent : nil
         }
 
         func prepare(for url: URL, completion: @escaping @MainActor (Bool) -> Void) {
             invalidate()
             guard let webView else { completion(false); return }
-            guard BrowserUserAgent.needsGoogleCompatibility(url) else {
+            guard BrowserUserAgent.needsCompatibility(url) else {
                 webView.customUserAgent = nil
                 completion(true)
                 return

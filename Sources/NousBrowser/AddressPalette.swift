@@ -226,7 +226,7 @@ private struct NewTabSearchButtonStyle: ButtonStyle {
 
 
 // Native focus keeps ⌘L reliable even while a webpage owns the first responder.
-private struct AddressInput: NSViewRepresentable {
+struct AddressInput: NSViewRepresentable {
     @Binding var text: String
     let submit: () -> Void
     let cancel: () -> Void
@@ -252,6 +252,8 @@ private struct AddressInput: NSViewRepresentable {
             parent.text = field.stringValue
         }
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            // Candidate confirmation/navigation belongs to the native editor.
+            guard !textView.hasMarkedText() else { return false }
             switch commandSelector {
             case #selector(NSResponder.insertNewline(_:)): parent.submit(); return true
             case #selector(NSResponder.cancelOperation(_:)): parent.cancel(); return true
@@ -281,6 +283,9 @@ private struct AddressInput: NSViewRepresentable {
     func updateNSView(_ field: Field, context: Context) {
         context.coordinator.parent = self
         field.textColor = .labelColor
-        if field.stringValue != text { field.stringValue = text }
+        // The field value/binding may lag the editor while an IME owns marked
+        // text. Reassigning stringValue here discards that composition.
+        if (field.currentEditor() as? NSTextView)?.hasMarkedText() != true,
+           field.stringValue != text { field.stringValue = text }
     }
 }

@@ -176,7 +176,7 @@ struct BrowserPageFindBar: View {
     }
 }
 
-private struct PageFindInput: NSViewRepresentable {
+struct PageFindInput: NSViewRepresentable {
     @Binding var text: String
     let focusToken: UUID
     let next: () -> Void
@@ -209,6 +209,8 @@ private struct PageFindInput: NSViewRepresentable {
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            // Candidate confirmation/navigation belongs to the native editor.
+            guard !textView.hasMarkedText() else { return false }
             switch commandSelector {
             case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)),
                  #selector(NSResponder.insertLineBreak(_:)):
@@ -244,7 +246,10 @@ private struct PageFindInput: NSViewRepresentable {
     func updateNSView(_ field: Field, context: Context) {
         context.coordinator.parent = self
         field.textColor = .labelColor
-        if field.stringValue != text { field.stringValue = text }
+        // The field value/binding may lag the editor while an IME owns marked
+        // text. Reassigning stringValue here discards that composition.
+        if (field.currentEditor() as? NSTextView)?.hasMarkedText() != true,
+           field.stringValue != text { field.stringValue = text }
         if context.coordinator.token != focusToken {
             context.coordinator.token = focusToken
             field.focusAndSelect()
