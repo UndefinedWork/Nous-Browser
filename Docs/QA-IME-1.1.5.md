@@ -19,7 +19,7 @@ The public Zoom Slides frontend provides the missing connection:
 
 3. `95172.90f7745c.js` forwards that callback to the text body view. Its Enter branch calls `handleEnterInEmptyList(shift)` or `openNewLine(shift)`.
 
-Thus the default Nous UA disables the editor's existing WebKit composition safeguard. This code path matches the observed event order and the user's symptom. It is source-level causal evidence; the actual Zoom Slides document must still be exercised after installation to close acceptance.
+Thus the default Nous UA disables the editor's existing WebKit composition safeguard. This code path matches the observed event order and the user's symptom. The installed-app user acceptance below confirms the expected Return behavior in an actual Zoom Slides document.
 
 The change uses the existing Safari compatibility identity for exact HTTPS hosts `slides.zoom.us`, `slides.zoom.com`, and `present.zoom.us`, with no credentials and the default HTTPS port. Public requests verified that the latter two redirect to `slides.zoom.us`. Other Zoom destinations retain the existing native navigation policy. The identity retains the system-probed platform and WebKit engine plus the Nous version. Existing Google rules remain unchanged. No keyboard events, composition data, native editing APIs, or website handlers are replaced.
 
@@ -49,7 +49,7 @@ Related upstream evidence: [WebKit bug 324380](https://bugs.webkit.org/show_bug.
 
 Focused test result: 19 `BrowserUserAgentTests` passed in the final rerun, including the real Navigator and composition-guard assertions. Log: `.build/ime45-user-agent-tests.log`.
 
-## Installed acceptance still required
+## Installed acceptance criteria
 
 Use the installed candidate in Zoom Slides with real Chinese IME composition. Verify Return commits raw English without adding a newline, a subsequent Return adds exactly one newline, Space confirms a Chinese candidate, Shift-Return behaves normally after composition, and ordinary typing, deletion, selection, undo/redo, and clipboard editing still work. Repeat address/search input composition checks. Synthetic keyboard events and a passing UA test do not establish this live result.
 
@@ -64,7 +64,7 @@ Both fields now leave marked text untouched during SwiftUI value synchronization
 - Full serial suite: 289 tests across 43 suites; 284 passed, five existing password event-loop cases skipped, zero failures.
 - Final focused compatibility rerun after the Zoom guard assertion: 19 passed. Native text composition: 10 passed.
 - Release build 1.1.5 (45) completed; strict application signature verification passed.
-- Installed real Zoom Slides composition acceptance remains pending; these build and automated results are not a substitute for it.
+- Installed Zoom Slides composition-confirmation acceptance passed by direct user testing, as recorded below. The automated results alone are not treated as that proof.
 
 ## Installation and live editing checks
 
@@ -77,4 +77,6 @@ A separate synthetic-content Zoom Slides presentation was created for acceptance
 - Command-Z removed the test character, and Command-Shift-Z restored it.
 - Select-all, deletion and pasting synthetic text worked in the Slides text box.
 
-The actual Chinese composition-confirmation check is awaiting the user's physical input method. Automated typing did not activate the system IME candidate state and is not counted as that check. Local evidence: `.build/ime45-slides-ordinary-input.png`, `.build/ime45-slides-ready.png`.
+On 2026-10-27 the user completed the installed-app test with their actual Chinese input method and explicitly confirmed: Return commits the composing English without a newline; the subsequent ordinary Return inserts the newline. The test requested composing `hello` and then `abc`, confirming each with Return so they remain on the same line, followed by a separate Return. This closes the reported extra-newline acceptance case.
+
+Automated typing did not activate the system IME candidate state and is not counted as that proof. Space-to-confirm Chinese candidates and broader input-method coverage were not independently validated here. Local evidence: `.build/ime45-slides-ordinary-input.png`, `.build/ime45-slides-ready.png`, plus the user's explicit acceptance in this task.
