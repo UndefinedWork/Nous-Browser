@@ -1,0 +1,54 @@
+Tests/NousBrowserTests/FaviconStoreTests.swift
+  s_3d6e78ea1e9f59::t_cc15a30cb09d61 152-168
+  s_3d6e78ea1e9f59::t_542d9567439ef7 169-188,282-292
+  s_3d6e78ea1e9f59::t_70d3368ac950b6 10,22,26,37-38,43-49,51-60,62-66,69-70,72-73,75-79,86-87,94-95,98-99,102-129,136-147,149,189-220,224,227,240-247,253-262,268
+  s_3d6e78ea1e9f59::t_d3780eeca6e16c 293
+README.md
+  s_3d6e78ea1e9f59::t_b68f9be1d42c51 12,36
+  s_3d6e78ea1e9f59::t_129eee859a3eb8 146
+Tests/NousBrowserTests/BrowserFaviconObservationTests.swift
+  s_3d6e78ea1e9f59::t_0409b4618bbe12 163-168
+  s_3d6e78ea1e9f59::t_cffcf07a80b53c 89-90
+  s_3d6e78ea1e9f59::t_85b4fd1e809ac4 1-88,91-99,102-109,113-114,116-143,145-162,169-186
+  s_3d6e78ea1e9f59::t_9394e20081fdf9 100-101,110-112,115
+  s_3d6e78ea1e9f59::t_ff702cfff0ed65 144
+Sources/NousBrowser/BrowserFaviconObservation.swift
+  s_3d6e78ea1e9f59::t_ff702cfff0ed65 61,120,125
+  s_3d6e78ea1e9f59::t_186fb4b53993ec 1-60,62-119,121-124,126-294
+Tests/Fixtures/browser_test_server.py
+  s_3d6e78ea1e9f59::t_a5869301f14c7f 461-486
+Sources/NousBrowser/FaviconStore.swift
+  s_3d6e78ea1e9f59::t_cc15a30cb09d61 89-91
+  s_3d6e78ea1e9f59::t_6cf7215c321dd5 64
+  s_3d6e78ea1e9f59::t_542d9567439ef7 30,40
+  s_3d6e78ea1e9f59::t_9aaf5f7fbc1e2b 17,56-58,156-162,215-224
+  s_3d6e78ea1e9f59::t_136ff39881e215 13-15,50-55,59-63,65-67,76-77,123,153,174-184,191-194,197,226,228,231,256-260
+  s_3d6e78ea1e9f59::t_2c710d417fe0df 70-75,88,93-95,99-104,106,114,117,138,142,163,185-190,225
+  s_3d6e78ea1e9f59::t_9afd23755e12f6 227,261
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_b68f9be1d42c51 22,24
+Sources/NousBrowser/BrowserModel.swift
+  s_3d6e78ea1e9f59::t_5aa21028ba63a1 834,838,846,851
+  s_3d6e78ea1e9f59::t_b064fa7a41f332 521,559,565-568,628-633,654-656,797,799,801,806,811,824-829,831,833,835-837,839-841,843-845,847,850,852,875
+  s_3d6e78ea1e9f59::t_60abd2748c68ae 832,849
+Docs/QA-1.1.1.md
+  s_3d6e78ea1e9f59::t_129eee859a3eb8 1-36
+Tests/NousBrowserTests/BrowserTabFaviconTests.swift
+  s_3d6e78ea1e9f59::t_e1ab7be01f8f4d 1-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "1b647ccc0906d622ee2c0dd4b254b7a9ceaac7bc",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
