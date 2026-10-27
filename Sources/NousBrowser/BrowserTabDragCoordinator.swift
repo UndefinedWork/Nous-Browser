@@ -29,6 +29,7 @@ final class BrowserTabDragCoordinator {
     @ObservationIgnored private var widthVelocity: CGFloat = 0
     @ObservationIgnored private var lastSpringTime: TimeInterval = 0
     @ObservationIgnored private var landingStarted: TimeInterval = 0
+    @ObservationIgnored private var isCompactImage = false
     private let imagePadding: CGFloat = 20
 
     private final class Endpoint {
@@ -71,6 +72,7 @@ final class BrowserTabDragCoordinator {
         self.tab = tab
         tabID = tab.id
         sourceID = ObjectIdentifier(source)
+        isCompactImage = source.model.isSidebarCompact
         self.grabOffset = grabOffset
         pointer = point
         let panel = DragPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
@@ -138,6 +140,7 @@ final class BrowserTabDragCoordinator {
         pendingLanding = landing
         velocity = .zero
         widthVelocity = 0
+        isCompactImage = controller.model.isSidebarCompact
         if let tab { hostingView?.rootView = floatingImage(tab, settling: true) }
         lastSpringTime = ProcessInfo.processInfo.systemUptime
         landingStarted = lastSpringTime
@@ -170,7 +173,7 @@ final class BrowserTabDragCoordinator {
     }
 
     private func floatingImage(_ tab: BrowserTab, settling: Bool) -> AnyView {
-        AnyView(SidebarFloatingTab(tab: tab, isSettling: settling)
+        AnyView(SidebarFloatingTab(tab: tab, isSettling: settling, isCompact: isCompactImage)
             .frame(maxWidth: .infinity).frame(height: BrowserDesign.rowHeight)
             .padding(imagePadding).accessibilityHidden(true))
     }
@@ -191,9 +194,11 @@ final class BrowserTabDragCoordinator {
                   window.isVisible, !window.isMiniaturized, window.attachedSheet == nil,
                   !controller.isAddressPresented,
                   let local = endpoint.reference.sidebarPoint(forScreenPoint: point),
-                  SidebarTabDragGeometry.containsDropPoint(local, viewport: endpoint.viewport) else { continue }
+                  SidebarTabDragGeometry.containsDropPoint(local, viewport: endpoint.viewport,
+                                                           isCompact: controller.model.isSidebarCompact) else { continue }
             let raw = SidebarTabDragGeometry.proposedIndex(forRowTop: local.y - grabOffset.y,
-                                                          scrollOffset: endpoint.metrics.offsetY)
+                                                          scrollOffset: endpoint.metrics.offsetY,
+                                                          isCompact: controller.model.isSidebarCompact)
             let pinnedCount = controller.model.tabs.prefix(while: \.isPinned).count
             let index = tab.isPinned ? min(max(0, raw), pinnedCount)
                 : min(max(pinnedCount, raw), controller.model.tabs.count)
@@ -215,8 +220,17 @@ final class BrowserTabDragCoordinator {
             if now - landingStarted > 0.5 { cancel() }
             return
         }
+        // A second sidebar shortcut can reverse the presentation while a
+        // cancelled drag is still landing. Match its current destination mode
+        // as well as its current geometry, without rebuilding on every tick.
+        let destinationIsCompact = endpoint.controller?.model.isSidebarCompact == true
+        if isCompactImage != destinationIsCompact {
+            isCompactImage = destinationIsCompact
+            if let tab { hostingView?.rootView = floatingImage(tab, settling: true) }
+        }
         let rowFrame = SidebarTabDragGeometry.rowFrame(at: landing.index, sidebarWidth: endpoint.viewport.width,
-                                                      scrollOffset: endpoint.metrics.offsetY)
+                                                      scrollOffset: endpoint.metrics.offsetY,
+                                                      isCompact: destinationIsCompact)
         guard let point = endpoint.reference.screenPoint(forSidebarPoint: rowFrame.origin) else {
             if now - landingStarted > 0.5 { cancel() }
             return

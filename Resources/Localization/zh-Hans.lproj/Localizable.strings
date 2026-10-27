@@ -15,8 +15,8 @@
 "Reload" = "重新载入";
 "Stop Loading" = "停止载入";
 "Copy Current Link" = "复制当前链接";
-"Hide Sidebar" = "收起侧边栏";
-"Show Sidebar" = "展开侧边栏";
+"Hide Sidebar" = "隐藏侧边栏";
+"Show Sidebar" = "显示侧边栏";
 "Next Tab" = "下一个标签页";
 "Previous Tab" = "上一个标签页";
 "Minimize Window" = "最小化窗口";
@@ -150,3 +150,9 @@
 "Connection Configuration" = "连接配置";
 "Recent Activity" = "最近活动";
 "No agent activity yet." = "暂无 AI 助手活动。";
+
+/* Sidebar presentation */
+"Collapse Sidebar" = "收窄侧边栏";
+"Expand Sidebar" = "展开侧边栏";
+"Expand or Collapse Sidebar" = "展开或收窄侧边栏";
+"Hide or Show Sidebar" = "隐藏或显示侧边栏";

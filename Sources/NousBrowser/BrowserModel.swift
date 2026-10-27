@@ -58,16 +58,21 @@ struct BrowserSession: Codable, Equatable {
     var selectedTabID: UUID?
     var isSidebarVisible: Bool
     var sidebarWidth: Double
+    /// Kept independently of visibility so fully hiding the sidebar can restore
+    /// the user's previous expanded or icon-only presentation.
+    var isSidebarCompact: Bool
 
-    init(tabs: [Tab], selectedTabID: UUID?, isSidebarVisible: Bool, sidebarWidth: Double = SidebarSizing.defaultWidth) {
+    init(tabs: [Tab], selectedTabID: UUID?, isSidebarVisible: Bool, sidebarWidth: Double = SidebarSizing.defaultWidth,
+         isSidebarCompact: Bool = false) {
         self.tabs = tabs
         self.selectedTabID = selectedTabID
         self.isSidebarVisible = isSidebarVisible
         self.sidebarWidth = sidebarWidth
+        self.isSidebarCompact = isSidebarCompact
     }
 
     private enum CodingKeys: String, CodingKey {
-        case tabs, selectedTabID, isSidebarVisible, sidebarWidth
+        case tabs, selectedTabID, isSidebarVisible, sidebarWidth, isSidebarCompact
     }
 
     init(from decoder: Decoder) throws {
@@ -78,6 +83,7 @@ struct BrowserSession: Codable, Equatable {
         // Layout preferences are optional for sessions written by earlier builds.
         // An invalid layout value must not discard the user's tabs either.
         sidebarWidth = (try? container.decode(Double.self, forKey: .sidebarWidth)) ?? SidebarSizing.defaultWidth
+        isSidebarCompact = (try? container.decode(Bool.self, forKey: .isSidebarCompact)) ?? false
     }
 }
 
@@ -95,6 +101,9 @@ final class BrowserModel {
     }
     private(set) var sidebarWidth = SidebarSizing.defaultWidth
     var isSidebarVisible = true {
+        didSet { scheduleSave() }
+    }
+    var isSidebarCompact = false {
         didSet { scheduleSave() }
     }
 
@@ -132,6 +141,7 @@ final class BrowserModel {
             tabs = orderedTabs.map { BrowserTab(id: $0.id, title: $0.title, url: $0.url, isPinned: $0.isPinned, owner: self) }
             selectedTabID = tabs.contains(where: { $0.id == session.selectedTabID }) ? session.selectedTabID : tabs.first?.id
             isSidebarVisible = session.isSidebarVisible
+            isSidebarCompact = session.isSidebarCompact
             sidebarWidth = SidebarSizing.clampedWidth(session.sidebarWidth)
         } else {
             let tab = startWithBlankTab
@@ -337,7 +347,20 @@ final class BrowserModel {
         } else { tab.webView.reload() }
     }
     func stopLoading() { selectedTab?.webView.stopLoading() }
-    func toggleSidebar() { isSidebarVisible.toggle() }
+    /// Cmd-/ switches the visible presentation. From a fully hidden window it
+    /// explicitly reveals the expanded sidebar, rather than requiring a second
+    /// shortcut before the list becomes available.
+    func toggleSidebar() {
+        if isSidebarVisible { isSidebarCompact.toggle() }
+        else {
+            isSidebarCompact = false
+            isSidebarVisible = true
+        }
+    }
+
+    /// Cmd-. hides/restores the sidebar without changing its remembered width
+    /// or whether it was expanded or compact.
+    func toggleSidebarHidden() { isSidebarVisible.toggle() }
 
     private static let zoomLevels: [CGFloat] = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5]
 
@@ -396,7 +419,8 @@ final class BrowserModel {
             tabs: tabs.map { .init(id: $0.id, title: $0.title, url: Self.persistableURL($0.url), isPinned: $0.isPinned) },
             selectedTabID: selectedTabID,
             isSidebarVisible: isSidebarVisible,
-            sidebarWidth: sidebarWidth
+            sidebarWidth: sidebarWidth,
+            isSidebarCompact: isSidebarCompact
         )
         do {
             try FileManager.default.createDirectory(at: sessionURL.deletingLastPathComponent(), withIntermediateDirectories: true)

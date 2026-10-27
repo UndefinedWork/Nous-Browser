@@ -149,3 +149,9 @@
 "Connection Configuration" = "Настройки подключения";
 "Recent Activity" = "Последняя активность";
 "No agent activity yet." = "Действий агентов пока нет.";
+
+/* Sidebar presentation */
+"Collapse Sidebar" = "Свернуть боковую панель";
+"Expand Sidebar" = "Развернуть боковую панель";
+"Expand or Collapse Sidebar" = "Развернуть или свернуть боковую панель";
+"Hide or Show Sidebar" = "Скрыть или показать боковую панель";

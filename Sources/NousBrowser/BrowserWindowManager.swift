@@ -104,6 +104,7 @@ final class BrowserWindowManager {
         guard let transferred = sourceModel.takeTabForTransfer(id) else { return nil }
         let destination = makeWindow(session: workspace.makeWindowSession(), restoring: false, initialTab: transferred)
         destination.controller.model.isSidebarVisible = sourceModel.isSidebarVisible
+        destination.controller.model.isSidebarCompact = sourceModel.isSidebarCompact
         destination.controller.model.resizeSidebar(to: sourceModel.sidebarWidth)
         destination.controller.model.persistSession()
         sourceModel.persistSession()

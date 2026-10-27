@@ -150,3 +150,9 @@
 "Connection Configuration" = "Connection Configuration";
 "Recent Activity" = "Recent Activity";
 "No agent activity yet." = "No agent activity yet.";
+
+/* Sidebar presentation */
+"Collapse Sidebar" = "Collapse Sidebar";
+"Expand Sidebar" = "Expand Sidebar";
+"Expand or Collapse Sidebar" = "Expand or Collapse Sidebar";
+"Hide or Show Sidebar" = "Hide or Show Sidebar";

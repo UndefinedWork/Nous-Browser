@@ -3,6 +3,8 @@ import SwiftUI
 
 // Measurements come from Pico / Nous Browser, 373:417.
 enum BrowserDesign {
+    // Pico 391:485 — the icon rail keeps the same 36 pt rows and 12 pt insets.
+    static let compactSidebarWidth: CGFloat = 60
     static let inset: CGFloat = 12
     static let buttonSize: CGFloat = 36
     static let bottomButtonSize: CGFloat = 32
@@ -31,10 +33,12 @@ struct BrowserShell: View {
     private var model: BrowserModel { controller.model }
     @State private var isResizingSidebar = false
     @State private var isHoveringDivider = false
+    @State private var tabTooltip = SidebarTabTooltipState()
 
     var body: some View {
         GeometryReader { geometry in
-            let sidebarWidth = CGFloat(SidebarSizing.effectiveWidth(preferred: model.sidebarWidth, windowWidth: geometry.size.width))
+            let sidebarWidth = model.isSidebarCompact ? BrowserDesign.compactSidebarWidth
+                : CGFloat(SidebarSizing.effectiveWidth(preferred: model.sidebarWidth, windowWidth: geometry.size.width))
             let maximumWidth = CGFloat(SidebarSizing.effectiveWidth(preferred: SidebarSizing.maximumWidth, windowWidth: geometry.size.width))
             // Only the root mask clips the window perimeter. A second rounded
             // mask blends the light backing into dark webpage edges.
@@ -50,7 +54,7 @@ struct BrowserShell: View {
                     .overlay((colorScheme == .dark ? BrowserDesign.darkWindowBacking : BrowserDesign.lightWindowBacking)
                         .opacity(BrowserDesign.windowBackingOpacity))
 
-                BrowserSidebar(controller: controller)
+                BrowserSidebar(controller: controller, tooltip: tabTooltip)
                     .frame(width: sidebarWidth)
                     .offset(x: model.isSidebarVisible ? 0 : -sidebarWidth)
                     .opacity(model.isSidebarVisible ? 1 : 0)
@@ -71,7 +75,7 @@ struct BrowserShell: View {
                     }
                     .padding(.leading, model.isSidebarVisible ? sidebarWidth : 0)
 
-                if model.isSidebarVisible {
+                if model.isSidebarVisible && !model.isSidebarCompact {
                     SidebarResizeHandle(width: sidebarWidth, onBegin: {
                         isResizingSidebar = true
                     }, onResize: { width in
@@ -97,6 +101,18 @@ struct BrowserShell: View {
                     .offset(x: sidebarWidth - 5)
                     .transition(.opacity)
                     .zIndex(1)
+                }
+
+                if let tip = tabTooltip.presented, model.isSidebarVisible, model.isSidebarCompact,
+                   !controller.isAddressPresented {
+                    SidebarTabTooltip(title: tip.title)
+                        .frame(maxWidth: min(360, geometry.size.width - 76), alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .offset(x: 52, y: max(14, min(geometry.size.height - 14, tip.centerY)) - geometry.size.height / 2)
+                        .transition(.scale(scale: 0.94, anchor: .leading).combined(with: .opacity))
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                        .zIndex(1.5)
                 }
 
                 if controller.isAddressPresented {
@@ -128,6 +144,7 @@ struct BrowserShell: View {
             .clipShape(RoundedRectangle(cornerRadius: BrowserDesign.windowRadius, style: .continuous))
             .animation(reduceMotion || isResizingSidebar ? nil : BrowserMotion.spring, value: sidebarWidth)
             .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.isSidebarVisible)
+            .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.isSidebarCompact)
             .animation(reduceMotion ? nil : BrowserMotion.spring, value: controller.isAddressPresented)
             .animation(reduceMotion ? nil : BrowserMotion.tabSwitch, value: model.selectedTabID)
         }
@@ -139,6 +156,10 @@ struct BrowserShell: View {
             else if model.selectedTab?.isLoading == true { model.stopLoading() }
         }
         .onChange(of: model.selectedTabID) { controller.find.pageDidChange() }
+        .onChange(of: model.isSidebarVisible) { tabTooltip.dismiss() }
+        .onChange(of: model.isSidebarCompact) { tabTooltip.dismiss() }
+        .onChange(of: model.selectedTabID) { tabTooltip.dismiss() }
+        .onChange(of: controller.isAddressPresented) { tabTooltip.dismiss() }
         .onChange(of: model.selectedTab?.url) { controller.find.pageDidChange() }
         .onChange(of: model.selectedTab?.isLoading) { controller.find.pageDidChange() }
         .sheet(isPresented: Binding(get: { controller.passwords.isPresented },
@@ -194,6 +215,7 @@ struct BrowserShell: View {
 
 private struct BrowserSidebar: View {
     let controller: BrowserController
+    let tooltip: SidebarTabTooltipState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var model: BrowserModel { controller.model }
     @State private var draftOrder: [UUID] = []
@@ -236,7 +258,7 @@ private struct BrowserSidebar: View {
                     VStack(spacing: SidebarTabDragGeometry.rowSpacing) {
                         ForEach(Array(orderedTabs.enumerated()), id: \.element.id) { index, tab in
                             if incomingIndex == index { insertionGap }
-                            BrowserTabRow(tab: tab, selected: model.selectedTabID == tab.id,
+                            BrowserTabRow(tab: tab, selected: model.selectedTabID == tab.id, isCompact: model.isSidebarCompact,
                                           select: { withAnimation(reduceMotion ? nil : BrowserMotion.tabSwitch) { model.selectTab(tab.id) } },
                                           close: { withAnimation(reduceMotion ? nil : BrowserMotion.spring) { model.closeTab(tab.id) } },
                                           copy: { controller.copyURL(tab, showsToast: false) },
@@ -258,7 +280,14 @@ private struct BrowserSidebar: View {
                                           moveUp: { moveAccessibly(tab.id, by: -1) },
                                           moveDown: { moveAccessibly(tab.id, by: 1) },
                                           canMoveUp: canMove(tab.id, by: -1),
-                                          canMoveDown: canMove(tab.id, by: 1))
+                                          canMoveDown: canMove(tab.id, by: 1),
+                                          hoverChanged: { hovering in
+                                              if hovering, model.isSidebarCompact, model.isSidebarVisible,
+                                                 dragSession == nil, controller.tabDragCoordinator?.tabID == nil,
+                                                 !controller.isAddressPresented, let frame = rowFrames[tab.id] {
+                                                  tooltip.hover(tabID: tab.id, title: tab.displayTitle, centerY: frame.midY)
+                                              } else { tooltip.leave(tabID: tab.id) }
+                                          })
                             .background {
                                 GeometryReader { rowGeometry in
                                     Color.clear.preference(key: SidebarTabFramePreference.self,
@@ -271,8 +300,8 @@ private struct BrowserSidebar: View {
                         if incomingIndex == orderedTabs.count { insertionGap }
                     }
                     .padding(.horizontal, BrowserDesign.inset)
-                    .padding(.top, SidebarTabDragGeometry.contentInset)
-                    .padding(.bottom, SidebarTabDragGeometry.bottomContentInset)
+                    .padding(.top, SidebarTabDragGeometry.topInset(isCompact: model.isSidebarCompact))
+                    .padding(.bottom, SidebarTabDragGeometry.bottomInset(isCompact: model.isSidebarCompact))
                     // Rows sit above this background, so a row press can only drag
                     // the tab; the empty list area below the rows moves the window.
                     .frame(minHeight: geometry.size.height, alignment: .top)
@@ -285,6 +314,7 @@ private struct BrowserSidebar: View {
                         SidebarDragDiagnostics.log("scroll.geometry offset=\(metrics.offsetY) max=\(metrics.maximumOffsetY)")
                     }
                     scrollMetrics = metrics
+                    if previous.offsetY != metrics.offsetY { tooltip.dismiss() }
                     registerDragEndpoint(geometry.size)
                     updateDraftDestination()
                 }
@@ -297,15 +327,17 @@ private struct BrowserSidebar: View {
 
                 VStack(spacing: 0) {
                     SidebarEdgeGlass(edge: .top,
-                                     buttonCenters: [BrowserDesign.inset + BrowserDesign.buttonSize / 2,
+                                     buttonCenters: model.isSidebarCompact ? [30] : [BrowserDesign.inset + BrowserDesign.buttonSize / 2,
                                                      geometry.size.width - BrowserDesign.inset - BrowserDesign.buttonSize / 2],
-                                     height: 88, controlCenterFromEdge: BrowserDesign.inset + BrowserDesign.buttonSize / 2)
+                                     height: model.isSidebarCompact ? 132 : 88,
+                                     controlCenterFromEdge: model.isSidebarCompact ? 52 : BrowserDesign.inset + BrowserDesign.buttonSize / 2)
                     Spacer(minLength: 0)
                     SidebarEdgeGlass(edge: .bottom,
-                                     buttonCenters: [BrowserDesign.inset + BrowserDesign.bottomButtonSize / 2,
+                                     buttonCenters: model.isSidebarCompact ? [30] : [BrowserDesign.inset + BrowserDesign.bottomButtonSize / 2,
                                                      BrowserDesign.inset + BrowserDesign.bottomButtonSize * 1.5 + BrowserDesign.bottomButtonSpacing,
                                                      geometry.size.width - BrowserDesign.inset - BrowserDesign.bottomButtonSize / 2],
-                                     height: 88, controlCenterFromEdge: BrowserDesign.inset + BrowserDesign.bottomButtonSize / 2)
+                                     height: model.isSidebarCompact ? 168 : 88,
+                                     controlCenterFromEdge: model.isSidebarCompact ? 68 : BrowserDesign.inset + BrowserDesign.bottomButtonSize / 2)
                 }
                 // Continue the glass behind the page's corner cutouts without
                 // expanding the sidebar's content or interactive area.
@@ -314,7 +346,7 @@ private struct BrowserSidebar: View {
                 .allowsHitTesting(false)
 
                 if controller.tabDragCoordinator == nil, let session = dragSession, let tab = model.tabs.first(where: { $0.id == session.id }) {
-                    SidebarFloatingTab(tab: tab, isSettling: session.isSettling)
+                    SidebarFloatingTab(tab: tab, isSettling: session.isSettling, isCompact: model.isSidebarCompact)
                         .frame(width: max(0, geometry.size.width - BrowserDesign.inset * 2))
                         .position(session.center)
                         .transaction { if !session.isSettling { $0.animation = nil } }
@@ -322,33 +354,7 @@ private struct BrowserSidebar: View {
                         .accessibilityHidden(true)
                 }
 
-                VStack(spacing: 0) {
-                    HStack {
-                        GlassSymbolButton("sidebar.left", label: L10n.string("Hide Sidebar"), help: L10n.string("Hide Sidebar") + "  ⌘/") {
-                            withAnimation(BrowserMotion.spring) { model.toggleSidebar() }
-                        }
-                        WindowDragArea()
-                            .frame(maxWidth: .infinity)
-                            .frame(height: BrowserDesign.buttonSize)
-                        GlassSymbolButton("plus", label: L10n.string("New Tab"), help: L10n.string("New Tab") + "  ⌘T", action: controller.newTab)
-                    }
-                    Spacer(minLength: 0)
-                    HStack(spacing: BrowserDesign.bottomButtonSpacing) {
-                        GlassSymbolButton("chevron.left", label: L10n.string("Back"), help: L10n.string("Back") + "  ⌘← / ⌘[",
-                                          size: BrowserDesign.bottomButtonSize, symbolSize: 10, symbolWeight: .medium) { model.goBack() }
-                            .disabled(model.selectedTab?.canGoBack != true)
-                        GlassSymbolButton("chevron.right", label: L10n.string("Forward"), help: L10n.string("Forward") + "  ⌘→ / ⌘]",
-                                          size: BrowserDesign.bottomButtonSize, symbolSize: 10, symbolWeight: .medium) { model.goForward() }
-                            .disabled(model.selectedTab?.canGoForward != true)
-                        Spacer(minLength: 0)
-                        GlassSymbolButton(model.selectedTab?.isLoading == true ? "xmark" : "arrow.trianglehead.clockwise.rotate.90",
-                                          label: model.selectedTab?.isLoading == true ? L10n.string("Stop Loading") : L10n.string("Reload"), help: L10n.string("Reload") + "  ⌘R",
-                                          size: BrowserDesign.bottomButtonSize, symbolSize: 10, symbolWeight: .medium) {
-                            if model.selectedTab?.isLoading == true { model.stopLoading() } else { model.reload() }
-                        }
-                    }
-                }
-                .padding(BrowserDesign.inset)
+                sidebarControls(in: geometry.size)
 
                 // Keep a clear drag target without blocking rows or the wheel
                 // in the transparent gaps between the floating controls.
@@ -369,6 +375,8 @@ private struct BrowserSidebar: View {
                                                        blockedGestureID = nil
                                                    })
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    SidebarTooltipDismissalMonitor(isEnabled: tooltip.isTracking, dismiss: tooltip.dismiss)
+                        .frame(width: 0, height: 0)
                     SidebarEdgeAutoScrollDriver(isActive: dragSession?.isSettling == false || incomingIndex != nil,
                                                 onTick: {
                                                     dragTick(viewportHeight: geometry.size.height, tick: $0)
@@ -378,15 +386,22 @@ private struct BrowserSidebar: View {
                 }
                 .allowsHitTesting(false)
             }
-            .onChange(of: model.tabs.map(\.id)) { _, _ in cancelIfModelChanged() }
+            .onChange(of: model.tabs.map(\.id)) { _, _ in cancelIfModelChanged(); tooltip.dismiss() }
             .onChange(of: pinnedIDs) { _, _ in cancelIfModelChanged() }
-            .onChange(of: model.isSidebarVisible) { _, visible in if !visible { cancelDrag() } }
+            .onChange(of: model.isSidebarVisible) { _, visible in if !visible { cancelDrag() }; tooltip.dismiss() }
+            .onChange(of: model.isSidebarCompact) { _, _ in cancelDrag(); tooltip.dismiss() }
+            .onChange(of: controller.tabDragCoordinator?.tabID) { tooltip.dismiss() }
             .onChange(of: controller.isAddressPresented) { _, presented in if presented { cancelDrag() } }
-            .onChange(of: geometry.size) { _, size in cancelDrag(); registerDragEndpoint(size) }
+            .onChange(of: geometry.size) { _, size in cancelDrag(); tooltip.dismiss(); registerDragEndpoint(size) }
             .onAppear { registerDragEndpoint(geometry.size) }
-            .onDisappear { clearDrag(); controller.tabDragCoordinator?.unregister(controller) }
+            .onDisappear { clearDrag(); tooltip.dismiss(); controller.tabDragCoordinator?.unregister(controller) }
         }
         .contextMenu {
+            Button(L10n.string(model.isSidebarCompact ? "Expand Sidebar" : "Collapse Sidebar"), systemImage: "sidebar.left") {
+                model.toggleSidebar()
+            }
+            Button(L10n.string("Hide Sidebar"), systemImage: "rectangle") { model.toggleSidebarHidden() }
+            Divider()
             Button(L10n.string("Open Address…"), systemImage: "magnifyingglass", action: controller.showAddress)
             Button(L10n.string("New Tab"), systemImage: "plus", action: controller.newTab)
             Button(L10n.string("New Window"), systemImage: "macwindow.badge.plus", action: controller.newWindow)
@@ -397,8 +412,44 @@ private struct BrowserSidebar: View {
         }
     }
 
+    /// Keep the same buttons alive while their centers spring between the two layouts.
+    private func sidebarControls(in size: CGSize) -> some View {
+        let compact = model.isSidebarCompact
+        let topLabel = L10n.string(compact ? "Expand Sidebar" : "Collapse Sidebar")
+        return ZStack(alignment: .topLeading) {
+            if !compact {
+                WindowDragArea()
+                    .frame(width: max(0, size.width - 120), height: BrowserDesign.buttonSize)
+                    .position(x: size.width / 2, y: 30)
+            }
+            GlassSymbolButton("sidebar.left", label: topLabel, help: topLabel + "  ⌘/") {
+                model.toggleSidebar()
+            }
+            .position(x: 30, y: 30)
+            GlassSymbolButton("plus", label: L10n.string("New Tab"), help: L10n.string("New Tab") + "  ⌘T", action: controller.newTab)
+                .position(x: compact ? 30 : size.width - 30, y: compact ? 74 : 30)
+            GlassSymbolButton("chevron.left", label: L10n.string("Back"), help: L10n.string("Back") + "  ⌘← / ⌘[",
+                              size: BrowserDesign.bottomButtonSize, symbolSize: 10, symbolWeight: .medium) { model.goBack() }
+                .disabled(model.selectedTab?.canGoBack != true)
+                .position(x: compact ? 30 : 28, y: size.height - 28)
+            GlassSymbolButton("chevron.right", label: L10n.string("Forward"), help: L10n.string("Forward") + "  ⌘→ / ⌘]",
+                              size: BrowserDesign.bottomButtonSize, symbolSize: 10, symbolWeight: .medium) { model.goForward() }
+                .disabled(model.selectedTab?.canGoForward != true)
+                .position(x: compact ? 30 : 68, y: size.height - (compact ? 68 : 28))
+            GlassSymbolButton(model.selectedTab?.isLoading == true ? "xmark" : "arrow.trianglehead.clockwise.rotate.90",
+                              label: model.selectedTab?.isLoading == true ? L10n.string("Stop Loading") : L10n.string("Reload"),
+                              help: model.selectedTab?.isLoading == true ? L10n.string("Stop Loading") : L10n.string("Reload") + "  ⌘R",
+                              size: BrowserDesign.bottomButtonSize, symbolSize: 10, symbolWeight: .medium) {
+                if model.selectedTab?.isLoading == true { model.stopLoading() } else { model.reload() }
+            }
+            .position(x: compact ? 30 : size.width - 28, y: size.height - (compact ? 108 : 28))
+        }
+        .frame(width: size.width, height: size.height)
+    }
+
     private func updateDrag(_ id: UUID, value: DragGesture.Value, viewportHeight: CGFloat, isFinal: Bool = false) {
         guard blockedGestureID != id else { return }
+        tooltip.dismiss()
         if dragSession == nil {
             guard let rect = rowFrames[id], model.tabs.contains(where: { $0.id == id }) else { return }
             let order = model.tabs.map(\.id)
@@ -437,7 +488,7 @@ private struct BrowserSidebar: View {
     private func updateDraftDestination() {
         guard let session = dragSession, !session.isSettling else { return }
         let proposed = SidebarTabDragGeometry.proposedIndex(forRowTop: session.center.y - BrowserDesign.rowHeight / 2,
-                                                            scrollOffset: scrollMetrics.offsetY)
+                                                            scrollOffset: scrollMetrics.offsetY, isCompact: model.isSidebarCompact)
         let order = TabReordering.moving(session.id, in: draftOrder, pinnedIDs: session.pinnedIDs, to: proposed)
         guard order != draftOrder else { return }
         withAnimation(reduceMotion ? nil : BrowserMotion.spring) { draftOrder = order }
@@ -483,7 +534,7 @@ private struct BrowserSidebar: View {
         let token = session.token
         session.isSettling = true
         let rowFrame = SidebarTabDragGeometry.rowFrame(at: destination,
-            sidebarWidth: session.sourceRect.width + BrowserDesign.inset * 2, scrollOffset: scrollMetrics.offsetY)
+            sidebarWidth: session.sourceRect.width + BrowserDesign.inset * 2, scrollOffset: scrollMetrics.offsetY, isCompact: model.isSidebarCompact)
         session.center = CGPoint(x: rowFrame.midX, y: rowFrame.midY)
         NSCursor.arrow.set()
         controller.tabDragCoordinator?.completeTransfer(to: controller, index: destination)
@@ -581,10 +632,11 @@ private struct BrowserSidebar: View {
 
     private func incomingAutoScrollTick(viewportHeight: CGFloat) {
         guard let pointer = controller.tabDragCoordinator?.incomingPointer(in: controller) else { return }
-        let band: CGFloat = 84
+        let topBand: CGFloat = model.isSidebarCompact ? 128 : 84
+        let bottomBand: CGFloat = model.isSidebarCompact ? 160 : 84
         let velocity: CGFloat
-        if pointer.y < band { velocity = -600 * min(1, max(0, (band - pointer.y) / band)) }
-        else if pointer.y > viewportHeight - band { velocity = 600 * min(1, max(0, (pointer.y - viewportHeight + band) / band)) }
+        if pointer.y < topBand { velocity = -600 * min(1, max(0, (topBand - pointer.y) / topBand)) }
+        else if pointer.y > viewportHeight - bottomBand { velocity = 600 * min(1, max(0, (pointer.y - viewportHeight + bottomBand) / bottomBand)) }
         else { lastEdgeScrollUptime = 0; return }
         let now = ProcessInfo.processInfo.systemUptime
         let dt = lastEdgeScrollUptime == 0 ? 1.0 / 60.0 : min(0.05, max(0, now - lastEdgeScrollUptime))
@@ -608,12 +660,13 @@ private struct BrowserSidebar: View {
             lastEdgeScrollUptime = 0
             return
         }
-        let band: CGFloat = 84
+        let topBand: CGFloat = model.isSidebarCompact ? 128 : 84
+        let bottomBand: CGFloat = model.isSidebarCompact ? 160 : 84
         let velocity: CGFloat
-        if session.pointer.y < band {
-            velocity = -600 * min(1, max(0, (band - session.pointer.y) / band))
-        } else if session.pointer.y > viewportHeight - band {
-            velocity = 600 * min(1, max(0, (session.pointer.y - viewportHeight + band) / band))
+        if session.pointer.y < topBand {
+            velocity = -600 * min(1, max(0, (topBand - session.pointer.y) / topBand))
+        } else if session.pointer.y > viewportHeight - bottomBand {
+            velocity = 600 * min(1, max(0, (session.pointer.y - viewportHeight + bottomBand) / bottomBand))
         } else {
             lastEdgeScrollUptime = 0
             return
@@ -655,6 +708,7 @@ private struct BrowserSidebar: View {
 private struct BrowserTabRow: View {
     let tab: BrowserTab
     let selected: Bool
+    let isCompact: Bool
     let select: () -> Void
     let close: () -> Void
     let copy: () -> Bool
@@ -669,12 +723,13 @@ private struct BrowserTabRow: View {
     let moveDown: () -> Void
     let canMoveUp: Bool
     let canMoveDown: Bool
+    let hoverChanged: (Bool) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @State private var hovered = false
     @State private var isLinkCopied = false
     @State private var copyFeedbackToken: UUID?
-    private var showsActions: Bool { hovered || isLinkCopied }
+    private var showsActions: Bool { !isCompact && (hovered || isLinkCopied) }
 
     var body: some View {
         HStack(spacing: 1) {
@@ -699,7 +754,10 @@ private struct BrowserTabRow: View {
                 .animation(reduceMotion ? nil : BrowserMotion.tabSwitch, value: selected)
         }
         .contentShape(Capsule())
-        .onHover { value in withAnimation(reduceMotion ? nil : BrowserMotion.interaction) { hovered = value } }
+        .onHover { value in
+            withAnimation(reduceMotion ? nil : BrowserMotion.interaction) { hovered = value }
+            hoverChanged(value)
+        }
         .task(id: copyFeedbackToken) {
             guard let token = copyFeedbackToken else { return }
             do { try await Task.sleep(for: .seconds(1.2)) }
@@ -711,6 +769,7 @@ private struct BrowserTabRow: View {
             }
         }
         .onDisappear {
+            hoverChanged(false)
             isLinkCopied = false
             copyFeedbackToken = nil
         }
@@ -728,7 +787,7 @@ private struct BrowserTabRow: View {
             Button(L10n.string("Close Tab"), action: close)
             if tab.url != nil { Button(L10n.string("Copy Link"), action: copyLink) }
         }
-        .help(tab.url?.absoluteString ?? L10n.string("New Tab"))
+        .modifier(SidebarTabHelp(isCompact: isCompact, text: tab.url?.absoluteString ?? L10n.string("New Tab")))
         .contextMenu {
             Button(L10n.string("Open Address…"), systemImage: "magnifyingglass") { select(); editAddress() }
             Button(L10n.string("Copy Link"), systemImage: "link", action: copyLink).disabled(tab.url == nil)
@@ -745,6 +804,7 @@ private struct BrowserTabRow: View {
         Button(action: select) {
             HStack(spacing: 7) {
                 SidebarTabFavicon(tab: tab)
+                if !isCompact {
                 Text(tab.displayTitle)
                     .font(.system(size: 12, weight: .regular))
                     .lineLimit(1)
@@ -758,6 +818,7 @@ private struct BrowserTabRow: View {
                         .frame(width: 10, height: 12)
                         .accessibilityHidden(true)
                 }
+                }
             }
             .padding(.leading, 12)
             .padding(.trailing, showsActions ? 8 : 12)
@@ -767,7 +828,7 @@ private struct BrowserTabRow: View {
         }
         .buttonStyle(.plain)
         .modifier(SidebarTabDragGesture(onChanged: dragChanged, onEnded: dragEnded, onCancelled: dragCancelled))
-        .simultaneousGesture(TapGesture(count: 2).onEnded { select(); editAddress() })
+        .simultaneousGesture(TapGesture(count: 2).onEnded { if !isCompact { select(); editAddress() } })
         .accessibilityLabel(tab.displayTitle)
     }
 

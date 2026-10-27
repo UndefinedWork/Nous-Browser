@@ -22,29 +22,42 @@ enum SidebarTabDragGeometry {
     static let coordinateSpace = "nous-browser-sidebar-viewport"
     static let contentInset: CGFloat = BrowserDesign.topContentInset
     static let bottomContentInset: CGFloat = BrowserDesign.bottomContentInset
+    // Pico 391:485 stacks the two top controls and three bottom controls.
+    static let compactContentInset: CGFloat = 104
+    static let compactBottomContentInset: CGFloat = 136
     static let rowSpacing: CGFloat = 1
     static var stride: CGFloat { BrowserDesign.rowHeight + rowSpacing }
 
-    static func rowFrame(at index: Int, sidebarWidth: CGFloat, scrollOffset: CGFloat) -> CGRect {
+    static func topInset(isCompact: Bool) -> CGFloat {
+        isCompact ? compactContentInset : contentInset
+    }
+
+    static func bottomInset(isCompact: Bool) -> CGFloat {
+        isCompact ? compactBottomContentInset : bottomContentInset
+    }
+
+    static func rowFrame(at index: Int, sidebarWidth: CGFloat, scrollOffset: CGFloat,
+                         isCompact: Bool = false) -> CGRect {
         CGRect(x: BrowserDesign.inset,
-               y: contentInset + CGFloat(index) * stride - scrollOffset,
+               y: topInset(isCompact: isCompact) + CGFloat(index) * stride - scrollOffset,
                width: max(0, sidebarWidth - BrowserDesign.inset * 2),
                height: BrowserDesign.rowHeight)
     }
 
-    static func proposedIndex(forRowTop rowTop: CGFloat, scrollOffset: CGFloat) -> Int {
-        let proposed = (rowTop + scrollOffset - contentInset) / stride
+    static func proposedIndex(forRowTop rowTop: CGFloat, scrollOffset: CGFloat,
+                              isCompact: Bool = false) -> Int {
+        let proposed = (rowTop + scrollOffset - topInset(isCompact: isCompact)) / stride
         guard proposed.isFinite else { return 0 }
         return Int(exactly: proposed.rounded()) ?? 0
     }
 
-    static func containsDropPoint(_ point: CGPoint, viewport: CGSize) -> Bool {
+    static func containsDropPoint(_ point: CGPoint, viewport: CGSize, isCompact: Bool = false) -> Bool {
         guard point.x.isFinite, point.y.isFinite,
               viewport.width.isFinite, viewport.height.isFinite,
               viewport.width > 0, viewport.height > 0 else { return false }
         return CGRect(origin: .zero, size: viewport).insetBy(dx: 6, dy: 12).contains(point)
-            && point.y >= contentInset - 8
-            && point.y <= viewport.height - bottomContentInset + 8
+            && point.y >= topInset(isCompact: isCompact) - 8
+            && point.y <= viewport.height - bottomInset(isCompact: isCompact) + 8
     }
 
     static func isOutsideWindow(_ point: NSPoint, frame: NSRect) -> Bool {
@@ -161,34 +174,44 @@ struct SidebarTabFavicon: View {
 struct SidebarFloatingTab: View {
     let tab: BrowserTab
     let isSettling: Bool
+    var isCompact: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @State private var lifted = false
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: isCompact ? 0 : 7) {
             SidebarTabFavicon(tab: tab)
-            Text(tab.displayTitle)
-                .font(.system(size: 12, weight: .regular))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: 16)
-            if tab.isPinned {
-                Image(systemName: "pin")
-                    .font(.system(size: 10, weight: .regular))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 10, height: 12)
+            if !isCompact {
+                Text(tab.displayTitle)
+                    .font(.system(size: 12, weight: .regular))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(height: 16)
+                    .transition(.opacity)
+                if tab.isPinned {
+                    Image(systemName: "pin")
+                        .font(.system(size: 10, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 10, height: 12)
+                        .transition(.opacity)
+                }
             }
         }
         .foregroundStyle(colorScheme == .dark ? Color.primary : Color(white: 0.176))
         .padding(.horizontal, 12)
+        // Both presentations place the favicon 18 pt from the leading edge.
+        // Keep that anchor while the native drag panel springs to a new width.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: BrowserDesign.rowHeight)
+        .clipped()
         .background((colorScheme == .dark ? Color(white: 0.22) : Color.white).opacity(0.96), in: Capsule())
         .shadow(color: .black.opacity(isSettling || !lifted ? (colorScheme == .dark ? 0.08 : 0.04) : (colorScheme == .dark ? 0.22 : 0.13)), radius: isSettling || !lifted ? 2 : 10, y: isSettling || !lifted ? 1 : 4)
         .scaleEffect(reduceMotion || isSettling || !lifted ? 1 : 1.025)
         .animation(reduceMotion ? nil : BrowserMotion.interaction, value: lifted)
         .animation(reduceMotion ? nil : BrowserMotion.interaction, value: isSettling)
+        .animation(reduceMotion ? nil : BrowserMotion.spring, value: isCompact)
         .onAppear { lifted = true }
         .allowsHitTesting(false)
         .accessibilityHidden(true)

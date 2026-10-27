@@ -150,3 +150,9 @@
 "Connection Configuration" = "接続設定";
 "Recent Activity" = "最近のアクティビティ";
 "No agent activity yet." = "AI エージェントのアクティビティはまだありません。";
+
+/* Sidebar presentation */
+"Collapse Sidebar" = "サイドバーを折りたたむ";
+"Expand Sidebar" = "サイドバーを展開";
+"Expand or Collapse Sidebar" = "サイドバーを展開／折りたたむ";
+"Hide or Show Sidebar" = "サイドバーを表示／非表示";

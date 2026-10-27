@@ -149,3 +149,9 @@
 "Connection Configuration" = "Verbindungskonfiguration";
 "Recent Activity" = "Letzte Aktivität";
 "No agent activity yet." = "Noch keine Agentenaktivität.";
+
+/* Sidebar presentation */
+"Collapse Sidebar" = "Seitenleiste einklappen";
+"Expand Sidebar" = "Seitenleiste ausklappen";
+"Expand or Collapse Sidebar" = "Seitenleiste aus- oder einklappen";
+"Hide or Show Sidebar" = "Seitenleiste aus- oder einblenden";

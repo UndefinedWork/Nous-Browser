@@ -150,3 +150,9 @@
 "Connection Configuration" = "연결 설정";
 "Recent Activity" = "최근 활동";
 "No agent activity yet." = "아직 AI 에이전트 활동이 없습니다.";
+
+/* Sidebar presentation */
+"Collapse Sidebar" = "사이드바 축소";
+"Expand Sidebar" = "사이드바 확장";
+"Expand or Collapse Sidebar" = "사이드바 확장 또는 축소";
+"Hide or Show Sidebar" = "사이드바 가리기 또는 보기";

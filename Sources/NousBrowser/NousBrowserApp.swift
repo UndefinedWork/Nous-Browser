@@ -227,6 +227,9 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate {
 struct BrowserCommands: Commands {
     @Bindable var windows: BrowserWindowManager
     private var controller: BrowserController? { windows.keyController }
+    private var sidebarAnimation: Animation? {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : BrowserMotion.spring
+    }
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button(L10n.string("New Tab")) {
@@ -263,7 +266,7 @@ struct BrowserCommands: Commands {
             Button(L10n.string("Reload Without Cache")) { controller?.model.reload(bypassingCache: true) }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
                 .disabled(controller?.model.selectedTab?.hasWebContent != true)
-            Button(L10n.string("Stop Loading")) { controller?.model.stopLoading() }.keyboardShortcut(".")
+            Button(L10n.string("Stop Loading")) { controller?.model.stopLoading() }
                 .disabled(controller?.model.selectedTab?.isLoading != true)
             Divider()
             Button(L10n.string("Copy Current Link")) { controller?.copyURL() }.keyboardShortcut("c", modifiers: [.command, .shift])
@@ -275,9 +278,14 @@ struct BrowserCommands: Commands {
                 .disabled(controller?.passwords.canFill != true)
         }
         CommandGroup(after: .sidebar) {
-            Button(controller?.model.isSidebarVisible == true ? L10n.string("Hide Sidebar") : L10n.string("Show Sidebar")) {
-                withAnimation(BrowserMotion.spring) { controller?.model.toggleSidebar() }
+            Button(L10n.string(controller?.model.isSidebarVisible == true && controller?.model.isSidebarCompact == false
+                               ? "Collapse Sidebar" : "Expand Sidebar")) {
+                withAnimation(sidebarAnimation) { controller?.model.toggleSidebar() }
             }.keyboardShortcut("/", modifiers: .command)
+                .disabled(controller == nil)
+            Button(L10n.string(controller?.model.isSidebarVisible == true ? "Hide Sidebar" : "Show Sidebar")) {
+                withAnimation(sidebarAnimation) { controller?.model.toggleSidebarHidden() }
+            }.keyboardShortcut(".", modifiers: .command)
                 .disabled(controller == nil)
             Divider()
             Button(L10n.string("Next Tab")) { controller?.selectNextTab() }
