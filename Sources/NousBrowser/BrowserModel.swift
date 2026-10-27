@@ -750,7 +750,7 @@ final class BrowserTab: NSObject, Identifiable {
 
     func load(_ url: URL, cachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy) {
         // Cancel an older identity lookup before a new address starts loading.
-        // The main-frame navigation policy resolves a first Search identity.
+        // The main-frame navigation policy resolves a first compatible-site identity.
         userAgentPolicy?.applyKnownIdentity(for: url)
         let wasBlankTab = !hasWebContent && self.url == nil
         let hadPlaceholderTitle = ["New Tab", "新标签页", "新標籤頁", L10n.string("New Tab")].contains(title)
@@ -937,8 +937,8 @@ extension BrowserTab: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!) {
         guard webView === self.webView else { return }
-        // A redirect can leave Search without a new navigation-action callback.
-        // Restore native identity before committing the destination document.
+        // A redirect can cross identity profiles without a new action callback.
+        // Apply the destination profile before committing its document.
         userAgentPolicy?.applyKnownIdentity(for: webView.url)
     }
 

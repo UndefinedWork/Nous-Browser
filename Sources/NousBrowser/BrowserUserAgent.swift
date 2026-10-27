@@ -32,17 +32,17 @@ enum BrowserUserAgent {
         return ["", "/", "/webhp", "/search"].contains(path)
     }
 
-    static var supportsModernSheetsCompatibility: Bool {
+    static var supportsModernGoogleEditorsCompatibility: Bool {
         if #available(macOS 26.4, *) { return true }
         return false
     }
 
     static var compatibilityVersion: String {
-        supportsModernSheetsCompatibility ? "26.4" : "26.0"
+        supportsModernGoogleEditorsCompatibility ? "26.4" : "26.0"
     }
 
-    static func needsGoogleSheetsCompatibility(_ url: URL?, supportsModernSheets: Bool = supportsModernSheetsCompatibility) -> Bool {
-        guard supportsModernSheets, let url,
+    static func needsGoogleEditorsCompatibility(_ url: URL?, supportsModernEditors: Bool = supportsModernGoogleEditorsCompatibility) -> Bool {
+        guard supportsModernEditors, let url,
               ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
               url.user == nil, url.password == nil,
               url.port == nil || url.port == (url.scheme?.lowercased() == "https" ? 443 : 80),
@@ -50,14 +50,19 @@ enum BrowserUserAgent {
               let decodedPath = path.removingPercentEncoding,
               !decodedPath.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) else { return false }
         switch url.host?.lowercased() {
-        case "docs.google.com": return path == "/spreadsheets" || path.hasPrefix("/spreadsheets/")
-        case "sheets.google.com": return true
+        case "docs.google.com":
+            // Docs, Slides and Sheets share Google's editor browser detection.
+            // Keep auth, Drive, Forms and unrelated Google paths native.
+            return ["/document", "/presentation", "/spreadsheets"].contains {
+                path == $0 || path.hasPrefix($0 + "/")
+            }
+        case "sheets.google.com", "slides.google.com": return true
         default: return false
         }
     }
 
     static func needsGoogleCompatibility(_ url: URL?) -> Bool {
-        needsGoogleSearchCompatibility(url) || needsGoogleSheetsCompatibility(url)
+        needsGoogleSearchCompatibility(url) || needsGoogleEditorsCompatibility(url)
     }
 
     private(set) static var cachedCompatibilityUserAgent: String?
@@ -75,7 +80,7 @@ enum BrowserUserAgent {
             let probe = WKWebView(frame: .zero, configuration: configuration)
             defer { probe.stopLoading() }
             guard let native = try? await probe.evaluateJavaScript("navigator.userAgent") as? String else { return nil }
-            return googleSearchUserAgent(from: native)
+            return googleCompatibilityUserAgent(from: native)
         }
         probeTask = task
         let result = await task.value
@@ -89,8 +94,8 @@ enum BrowserUserAgent {
     /// below Safari 26.4. Cocoa WKWebView can report outerWidth=0, reducing a
     /// Retina canvas to 0.5x. On macOS 26.4+ DPR already includes page zoom;
     /// advertise that capability floor, without claiming newer Safari APIs.
-    /// Older systems retain the Search-only profile and native Sheets identity.
-    static func googleSearchUserAgent(from native: String) -> String? {
+    /// Older systems retain the Search-only profile and native editor identity.
+    static func googleCompatibilityUserAgent(from native: String) -> String? {
         guard let engine = native.split(separator: " ").first(where: { $0.hasPrefix("AppleWebKit/") })?
             .dropFirst("AppleWebKit/".count), !engine.isEmpty,
               engine.allSatisfy({ $0.isNumber || $0 == "." }) else { return nil }
@@ -100,7 +105,7 @@ enum BrowserUserAgent {
     }
 
     /// Per-view decisions are cancellable independently of the shared probe.
-    /// Native navigation stays synchronous; only the first Search decision
+    /// Native navigation stays synchronous; only the first compatible-site decision
     /// waits for its real compatibility identity.
     @MainActor final class NavigationPolicy {
         private weak var webView: WKWebView?

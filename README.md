@@ -14,6 +14,7 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 - **窗口缩放**：双击侧边栏顶部空白区域铺满当前桌面的可用空间，再次双击恢复原大小，保留菜单栏与 Dock 的空间。
 - **原生外观**：Liquid Glass、Spring 弹性过渡和 SF Symbols；侧边栏与网页隐藏滚动条，仍可正常滚动。
 - **保留浏览状态**：恢复标签页、顺序和侧边栏状态；通过 WebKit 持久化网站数据保留网站自身的登录会话。
+- **Google 编辑器兼容**：在 macOS 26.4 及以上，Google Docs、Slides、Sheets 使用统一的站点兼容身份，改善浏览器版本识别；其他网站保留原生 WebKit 身份。
 - **密码导入与填写**：手动导入 Apple「密码」或 Chrome 导出的 CSV，经设备验证后填写支持的 HTTPS 登录表单。
 - **跟随系统**：界面语言和外观默认跟随 macOS，支持浅色、深色以及 11 种界面语言。
 - **浏览器设置**：选择 Google、Bing、DuckDuckGo 或百度作为默认搜索引擎；配置 ⌘L 快捷访问的网站及顺序。
@@ -33,7 +34,7 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 - 当前首个预编译包为 **Apple Silicon** 版本；Intel Mac 可在满足系统与开发环境要求时从源码构建。
 - 从源码构建需要 **Xcode 26 或更新版本、Swift 6.2 或更新版本**。
 
-当前源码版本：**1.1.1（Build 41）**。预编译安装包的构建号见对应 Release。
+当前源码版本：**1.1.2（Build 42）**。预编译安装包的构建号见对应 Release。
 
 ## 下载与安装
 
@@ -143,7 +144,7 @@ open "build/Nous Browser.app"
 
 ## 测试
 
-本次发布验证记录：[1.1.1（Build 41）](Docs/QA-1.1.1.md)。[快捷键核对与待补功能](Docs/KeyboardShortcuts.md)。
+本次发布验证记录：[1.1.2（Build 42）](Docs/QA-1.1.2.md)。[快捷键核对与待补功能](Docs/KeyboardShortcuts.md)。
 
 ```sh
 swift test
