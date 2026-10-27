@@ -517,8 +517,8 @@ final class BrowserTab: NSObject, Identifiable {
     @ObservationIgnored private var lastTerminationReload: Date?
     @ObservationIgnored private var faviconTask: Task<Void, Never>?
     @ObservationIgnored private var faviconPageURL: URL?
-    @ObservationIgnored private var faviconOrigin: String?
     @ObservationIgnored private var faviconRequestID = UUID()
+    @ObservationIgnored private var faviconObservation: BrowserFaviconObservation.Attachment?
     @ObservationIgnored private var passwordAutofill: BrowserPasswordAutofill.Attachment?
     @ObservationIgnored private var pageNavigationShortcuts: BrowserPageNavigationShortcuts.Attachment?
     @ObservationIgnored private var userAgentPolicy: BrowserUserAgent.NavigationPolicy?
@@ -556,11 +556,16 @@ final class BrowserTab: NSObject, Identifiable {
         BrowserUserAgent.configure(config)
         BrowserPasswordAutofill.install(configuration: config)
         BrowserPageNavigationShortcuts.install(in: config)
+        BrowserFaviconObservation.install(in: config)
         return BrowserWebView(frame: .zero, configuration: config)
     }
 
     private func attach(_ webView: WKWebView) {
         userAgentPolicy = BrowserUserAgent.NavigationPolicy(webView: webView)
+        faviconObservation = BrowserFaviconObservation.attach(to: webView) { [weak self, weak webView] snapshot in
+            guard let self, self.webView === webView, self.url == snapshot.pageURL else { return }
+            self.updateFavicon(snapshot)
+        }
         if let browserView = webView as? BrowserWebView {
             browserView.onOpenLinkInNewTab = { [weak self, weak webView] url in
                 guard let self, self.webView === webView else { return }
@@ -620,7 +625,12 @@ final class BrowserTab: NSObject, Identifiable {
                                 self.owner?.recordVisit(url, title: self.title)
                             }
                         }
-                        if self.faviconPageURL != url { self.refreshFavicon(for: url) }
+                        if self.faviconPageURL != url {
+                            self.refreshFavicon(for: url)
+                            // History API changes do not produce didFinish. Ask
+                            // the live document for its icon after an SPA route changes.
+                            if !view.isLoading { self.faviconObservation?.refresh() }
+                        }
                     }
                     self.owner?.scheduleSave()
                 }
@@ -641,6 +651,9 @@ final class BrowserTab: NSObject, Identifiable {
     }
 
     private func detachWebView() {
+        cancelFaviconLoading()
+        faviconObservation?.invalidate()
+        faviconObservation = nil
         userAgentPolicy?.invalidate()
         userAgentPolicy = nil
         (webView as? BrowserWebView)?.invalidateContextMenu()
@@ -781,23 +794,21 @@ final class BrowserTab: NSObject, Identifiable {
         }
     }
 
-    private func refreshFavicon(for pageURL: URL, candidates: [URL] = []) {
+    private func refreshFavicon(for pageURL: URL) {
         cancelFaviconLoading()
+        let changedPage = faviconPageURL != pageURL
         faviconPageURL = pageURL
-        guard let origin = Self.iconOrigin(for: pageURL) else {
-            faviconOrigin = nil
+        guard Self.iconOrigin(for: pageURL) != nil else {
             favicon = nil
             return
         }
         let cached = FaviconStore.shared.cachedImage(for: pageURL)
-        if origin != faviconOrigin { favicon = cached }
-        else if favicon == nil { favicon = cached }
-        faviconOrigin = origin
+        if changedPage || favicon == nil { favicon = cached }
         let requestID = faviconRequestID
         faviconTask = Task { [weak self] in
             // Avoid starting work for tabs already discarded before this task ran.
             guard self != nil, !Task.isCancelled else { return }
-            let image = await FaviconStore.shared.image(for: pageURL, candidates: candidates)
+            let image = await FaviconStore.shared.image(for: pageURL)
             guard !Task.isCancelled, let self, self.faviconRequestID == requestID,
                   self.url == pageURL else { return }
             if let image { self.favicon = image }
@@ -810,46 +821,35 @@ final class BrowserTab: NSObject, Identifiable {
         return "\(scheme)://\(host):\(url.port ?? (scheme == "https" ? 443 : 80))"
     }
 
-    private func discoverFavicon() {
-        guard let pageURL = webView.url, Self.iconOrigin(for: pageURL) != nil,
-              url == pageURL else { return }
+    private func updateFavicon(_ snapshot: BrowserFaviconObservation.Snapshot) {
+        let pageURL = snapshot.pageURL
+        guard webView.url == pageURL, url == pageURL,
+              Self.iconOrigin(for: pageURL) != nil, let observer = faviconObservation else { return }
+        cancelFaviconLoading()
+        faviconPageURL = pageURL
         let requestID = faviconRequestID
-        // Query the main document only. href resolves relative URLs and <base>;
-        // iframe icons cannot replace the top-level page's identity.
-        let script = #"""
-        (() => {
-            const candidates = [];
-            for (const link of document.querySelectorAll('link[rel]')) {
-                const rel = (link.getAttribute('rel') || '').toLowerCase().split(/\s+/);
-                const icon = rel.includes('icon');
-                const touch = rel.includes('apple-touch-icon') || rel.includes('apple-touch-icon-precomposed');
-                if (!icon && !touch) continue;
-                const href = link.href;
-                if (!href || !/^(https?:|data:)/i.test(href)) continue;
-                const type = (link.getAttribute('type') || '').toLowerCase();
-                const sizes = (link.getAttribute('sizes') || '').toLowerCase();
-                let score = icon ? 1000 : 100;
-                if (type.includes('svg')) score += 120;
-                else if (type.includes('png')) score += 80;
-                else if (type.includes('icon')) score += 60;
-                if (sizes.includes('any')) score += 100;
-                for (const match of sizes.matchAll(/(\d+)x(\d+)/g)) {
-                    const edge = Math.min(Number(match[1]), Number(match[2]));
-                    if (edge > 0) score += Math.max(0, 90 - Math.abs(Math.log2(edge / 32)) * 15);
+        faviconTask = Task { [weak self] in
+            guard !Task.isCancelled, self?.faviconRequestID == requestID, observer.isCurrent(snapshot) else { return }
+            for candidate in snapshot.candidates {
+                guard !Task.isCancelled, self?.faviconRequestID == requestID, observer.isCurrent(snapshot) else { return }
+                // WebKit renders document-generated SVG/emoji and blob icons,
+                // and uses the page's authenticated image-loading context.
+                let rendered = await observer.rasterize(candidate, snapshot: snapshot)
+                guard !Task.isCancelled, self?.faviconRequestID == requestID, observer.isCurrent(snapshot) else { return }
+                if let rendered, let image = FaviconStore.shared.storePageImage(rendered, for: pageURL, sourceURL: candidate) {
+                    self?.favicon = image
+                    return
                 }
-                candidates.push({ href, score });
+                // Cross-origin images may taint the canvas. Download that exact
+                // declared candidate before considering the next or a site fallback.
+                let image = await FaviconStore.shared.image(for: pageURL, candidates: [candidate], allowRootFallback: false)
+                guard !Task.isCancelled, self?.faviconRequestID == requestID, observer.isCurrent(snapshot) else { return }
+                if let image { self?.favicon = image; return }
             }
-            candidates.sort((a, b) => b.score - a.score);
-            return [...new Set(candidates.map(candidate => candidate.href))].slice(0, 8);
-        })();
-        """#
-        webView.evaluateJavaScript(script, in: nil, in: .defaultClient) { [weak self] result in
-            guard let self, self.url == pageURL, self.webView.url == pageURL,
-                  self.faviconRequestID == requestID,
-                  case .success(let value) = result, let addresses = value as? [String] else { return }
-            let candidates = addresses.compactMap(URL.init(string:))
-            guard !candidates.isEmpty else { return }
-            self.refreshFavicon(for: pageURL, candidates: candidates)
+            guard !Task.isCancelled, self?.faviconRequestID == requestID, observer.isCurrent(snapshot) else { return }
+            let image = await FaviconStore.shared.image(for: pageURL, usePageCache: false)
+            guard !Task.isCancelled, self?.faviconRequestID == requestID, observer.isCurrent(snapshot) else { return }
+            self?.favicon = image
         }
     }
 
@@ -872,7 +872,7 @@ extension BrowserTab: WKNavigationDelegate {
         guard webView === self.webView else { return }
         errorDescription = nil
         if let url = webView.url { owner?.recordVisit(url, title: webView.title ?? title) }
-        discoverFavicon()
+        faviconObservation?.refresh()
         owner?.scheduleSave()
     }
 

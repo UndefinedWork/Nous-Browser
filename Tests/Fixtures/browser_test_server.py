@@ -458,6 +458,32 @@ class FixtureHandler(BaseHTTPRequestHandler):
                 '<p><a href="/favicon-test">Return to primary favicon page</a></p></section>',
                 head='<link id="fixture-favicon" rel="icon" type="image/png" sizes="32x32" href="/favicon-icons/secondary.png">',
             )
+        elif route == "/favicon-dynamic":
+            self.send_html(
+                "Dynamic Document Icon",
+                '''<section><h2 id="document-icon">⭐</h2>
+                <p>A document updates its favicon after the page load. Its tab must show the star, not the original blue F.</p>
+                <button id="star" onclick="setIcon('⭐')">Star icon</button>
+                <button id="moon" onclick="setIcon('🌙')">Moon icon</button>
+                <button id="blob" onclick="setIcon('🌿', true)">Blob leaf icon</button>
+                <button id="remove" onclick="document.querySelector('#fixture-favicon').remove();document.querySelector('#document-icon').textContent='Default blue F'">Remove document icon</button>
+                <button id="route" onclick="history.pushState({}, '', '/favicon-dynamic#second');setIcon('💜');document.title='Second Document'">SPA second document</button>
+                <p><a href="/favicon-test-second" target="_blank">Open another document on this site</a></p>
+                <output id="icon-status">Waiting for document data…</output></section>
+                <script>
+                function setIcon(emoji, blob=false) {
+                    let link = document.querySelector('#fixture-favicon');
+                    if (!link) { link=document.createElement('link');link.id='fixture-favicon';link.rel='icon';document.head.append(link); }
+                    const svg='<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><text y="54" font-size="56">'+emoji+'</text></svg>';
+                    link.type='image/svg+xml';
+                    link.href=blob?URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'})):'data:image/svg+xml,'+encodeURIComponent(svg);
+                    document.querySelector('#document-icon').textContent=emoji;
+                    document.querySelector('#icon-status').textContent='Current document favicon: '+emoji;
+                }
+                window.addEventListener('load',()=>setTimeout(()=>setIcon('⭐'),700));
+                </script>''',
+                head='<link rel="icon" type="image/png" href="/favicon-icons/primary.png">',
+            )
         elif route in FAVICON_FIXTURES:
             payload = FAVICON_FIXTURES[route]
             self.send_response(200)
