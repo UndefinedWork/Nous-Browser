@@ -23,7 +23,7 @@ enum BrowserTextInputCompatibility {
         const url = new URL(location.href);
         if (url.protocol !== 'https:' || url.username || url.password ||
             (url.port && url.port !== '443') ||
-            !['slides.zoom.us', 'slides.zoom.com', 'present.zoom.us'].includes(url.hostname)) return;
+            !\#(ZoomSlidesCompatibility.javaScriptHosts).includes(url.hostname)) return;
 
         let confirmingReturn = null;
         const reset = () => { confirmingReturn = null; };

@@ -26,9 +26,11 @@ struct BrowserTextInputCompatibilityTests {
         #expect(!listener.isForMainFrameOnly)
     }
 
-    @Test func lateLegacyCommitDoesNotBecomeCanvasNewlineAndNextReturnStillWorks() async throws {
+    @Test(arguments: ["https://slides.zoom.us/p/fixture", "https://dg01slides.zoom.us/p/fixture",
+                      "https://eu02slides.zoom.us/p/fixture", "https://sg01present.zoom.us/p/fixture"])
+    func lateLegacyCommitDoesNotBecomeCanvasNewlineAndNextReturnStillWorks(address: String) async throws {
         for guarded in [false, true] {
-            let view = try await makeView(guarded: guarded)
+            let view = try await makeView(guarded: guarded, address: address)
             defer { view.stopLoading() }
             let result = try await evaluate(view, #"""
             (() => {
@@ -200,9 +202,15 @@ struct BrowserTextInputCompatibilityTests {
             ("https://slides.zoom.us/p/fixture", true),
             ("https://slides.zoom.com/", true),
             ("https://present.zoom.us:443/", true),
+            ("https://DG01SLIDES.ZOOM.US:443/p/fixture", true),
+            ("https://dg01present.zoom.us/p/fixture", true),
+            ("https://uk01slides.zoom.us/p/fixture", true),
             ("https://zoom.us/", false),
             ("https://docs.zoom.us/", false),
             ("https://slides.zoom.us.evil.test/", false),
+            ("https://dg01slides.zoom.us.evil.test/", false),
+            ("https://dg01slides.zoom.us:8443/", false),
+            ("http://dg01slides.zoom.us/", false),
             ("https://slides.zoom.us:8443/", false),
             ("http://slides.zoom.us/", false)
         ]
@@ -211,6 +219,24 @@ struct BrowserTextInputCompatibilityTests {
             defer { view.stopLoading() }
             let result = try await evaluate(view, "send('canvas','keydown',{key:'Enter',code:'Enter',keyCode:229}); ({count:events.length})")
             #expect(result["count"] as? Int == (protected ? 0 : 1), Comment(rawValue: address))
+        }
+    }
+
+    @Test func everyPublishedSlidesHostEnablesBothIdentityAndIMEGuard() async throws {
+        for host in ZoomSlidesCompatibility.hosts {
+            let address = "https://\(host)/p/fixture"
+            #expect(BrowserUserAgent.needsZoomSlidesCompatibility(URL(string: address)))
+            let view = try await makeView(address: address)
+            defer { view.stopLoading() }
+            let result = try await evaluate(view, """
+                send('canvas','keydown',{key:'Enter',code:'Enter',keyCode:229});
+                send('canvas','keyup',{key:'Enter',code:'Enter',keyCode:13});
+                const committed = events.length;
+                send('canvas','keydown',{key:'Enter',code:'Enter',keyCode:13});
+                ({committed, next:events.length});
+                """)
+            #expect(result["committed"] as? Int == 0, Comment(rawValue: host))
+            #expect(result["next"] as? Int == 1, Comment(rawValue: host))
         }
     }
 

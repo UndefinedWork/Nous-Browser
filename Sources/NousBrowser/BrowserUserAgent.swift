@@ -72,16 +72,11 @@ enum BrowserUserAgent {
     }
 
     static func needsZoomSlidesCompatibility(_ url: URL?) -> Bool {
-        guard let url, url.scheme?.lowercased() == "https",
-              url.user == nil, url.password == nil,
-              url.port == nil || url.port == 443,
-              let host = url.host?.lowercased() else { return false }
         // Slides' canvas editor suppresses the Enter used to confirm an IME
         // composition only when its UA detector recognizes Safari. A bare
         // WKWebView UA misses that branch and the same Enter adds a newline.
-        // The .com and present aliases redirect to slides.zoom.us. Keep login,
-        // other Zoom products and unverified regional hosts on the native UA.
-        return ["slides.zoom.us", "slides.zoom.com", "present.zoom.us"].contains(host)
+        // Regional redirects must use the same scope as the IME guard.
+        return ZoomSlidesCompatibility.matches(url)
     }
 
     static func needsCompatibility(_ url: URL?) -> Bool {

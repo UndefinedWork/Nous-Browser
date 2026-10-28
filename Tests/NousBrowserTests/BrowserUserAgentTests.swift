@@ -185,7 +185,9 @@ struct BrowserUserAgentTests {
         for address in ["https://slides.zoom.us", "https://slides.zoom.us/",
                         "https://SLIDES.ZOOM.US/p/fixture/edit?mode=edit#slide=1",
                         "https://slides.zoom.us:443/d/fixture", "https://slides.zoom.com/",
-                        "https://slides.zoom.com:443/p/fixture", "https://present.zoom.us/"] {
+                        "https://slides.zoom.com:443/p/fixture", "https://present.zoom.us/",
+                        "https://dg01slides.zoom.us/p/fixture", "https://us01slides.zoom.us/",
+                        "https://eu02slides.zoom.us/", "https://dg01present.zoom.us/"] {
             let url = try #require(URL(string: address))
             #expect(BrowserUserAgent.needsZoomSlidesCompatibility(url))
             #expect(BrowserUserAgent.needsCompatibility(url))
@@ -197,7 +199,9 @@ struct BrowserUserAgentTests {
                         "https://user@slides.zoom.us/", "https://user:password@slides.zoom.com/",
                         "https://@present.zoom.us/", "https://slides.zoom.us.evil.test/",
                         "https://evilslides.zoom.us/", "https://www.slides.zoom.us/",
-                        "https://us01slides.zoom.us/", "https://slides.zoom.us./",
+                        "https://unknownslides.zoom.us/", "https://slides.zoom.us./",
+                        "https://dg01slides.zoom.us.evil.test/", "https://dg01slides.zoom.us:8443/",
+                        "https://user@dg01slides.zoom.us/", "http://dg01slides.zoom.us/",
                         "https://zoom.us/signin", "https://zoom.com/", "https://accounts.zoom.us/",
                         "https://docs.zoom.us/", "https://canvas.zoom.us/", "https://sheets.zoom.us/",
                         "https://present.zoom.com/", "https://st1.zoom.us/zoom-docs/",
@@ -278,6 +282,9 @@ struct BrowserUserAgentTests {
         let slidesSafariDetector = #"/Version\/[0-9\._]+.*Safari/.test(navigator.userAgent) || /AppleWebKit\/.+Zoom/i.test(navigator.userAgent)"#
         let destinations = [
             ("https://slides.zoom.us/p/fixture", true),
+            ("https://dg01slides.zoom.us/p/fixture", true),
+            ("https://eu02slides.zoom.us/p/fixture", true),
+            ("https://dg01present.zoom.us/p/fixture", true),
             ("https://zoom.us/signin", false),
             ("https://slides.zoom.com/", true),
             ("https://www.google.com/search?q=fixture", true),
