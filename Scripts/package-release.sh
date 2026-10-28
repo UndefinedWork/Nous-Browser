@@ -4,7 +4,7 @@ set -euo pipefail
 # Package an already-built app. This script never builds, installs, or launches it.
 PROJECT_DIR="${0:A:h:h}"
 APP_NAME="Nous Browser.app"
-APP_DIR="$PROJECT_DIR/build/$APP_NAME"
+APP_DIR="${NOUS_BUILD_APP_DIR:-$PROJECT_DIR/build/$APP_NAME}"
 SOURCE_INFO="$PROJECT_DIR/Resources/Info.plist"
 DIST_DIR="$PROJECT_DIR/dist"
 

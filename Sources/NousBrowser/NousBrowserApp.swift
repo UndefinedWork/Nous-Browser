@@ -138,6 +138,9 @@ final class BrowserController {
     func closeTab() {
         guard let id = model.selectedTabID else { return }
         withAnimation(BrowserMotion.spring) { model.closeTab(id) }
+        // The address palette belongs to the tab being closed. Restore focus
+        // only after the model has selected the remaining tab.
+        if isAddressPresented { dismissAddress() }
     }
 
     @discardableResult

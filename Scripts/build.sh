@@ -3,7 +3,7 @@ set -euo pipefail
 
 PROJECT_DIR="${0:A:h:h}"
 BUILD_CONFIGURATION="${CONFIGURATION:-release}"
-APP_DIR="$PROJECT_DIR/build/Nous Browser.app"
+APP_DIR="${NOUS_BUILD_APP_DIR:-$PROJECT_DIR/build/Nous Browser.app}"
 
 cd "$PROJECT_DIR"
 swift build --configuration "$BUILD_CONFIGURATION"
@@ -14,6 +14,7 @@ STAGED_APP_DIR="$STAGING_DIR/Nous Browser.app"
 PREVIOUS_APP_DIR="$STAGING_DIR/Nous Browser.previous.app"
 ICON_WORK_DIR="$STAGING_DIR/app-icon"
 
+mkdir -p "${APP_DIR:h}"
 mkdir -p "$STAGED_APP_DIR/Contents/MacOS" "$STAGED_APP_DIR/Contents/Resources" "$ICON_WORK_DIR" "$PROJECT_DIR/build"
 mkdir -p "$STAGED_APP_DIR/Contents/Frameworks"
 # Preserve Sparkle's signed nested helpers and framework symlinks.

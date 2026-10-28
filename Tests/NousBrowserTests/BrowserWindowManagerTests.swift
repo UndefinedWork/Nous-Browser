@@ -41,6 +41,39 @@ struct BrowserWindowManagerTests {
                        defaultsDomain: defaultsDomain, manager: manager)
     }
 
+    @Test func closingNewTabAlsoDismissesItsAddressPalette() throws {
+        let fixture = try fixture()
+        defer { fixture.cleanUp() }
+        fixture.manager.restoreWindows()
+        let context = try #require(fixture.manager.activeContext)
+        let controller = context.controller
+        let originalID = controller.model.selectedTabID
+        controller.newTab()
+        #expect(controller.isAddressPresented)
+        #expect(controller.model.tabs.count == 2)
+        controller.closeTab()
+        #expect(!controller.isAddressPresented)
+        #expect(controller.model.tabs.count == 1)
+        #expect(controller.model.selectedTabID == originalID)
+        // A subsequent new tab must still open a fresh palette normally.
+        controller.newTab()
+        #expect(controller.isAddressPresented)
+        #expect(controller.addressText.isEmpty)
+    }
+
+    @Test func closingLastTabWithAddressPaletteStillClosesOnlyItsWindow() throws {
+        let fixture = try fixture()
+        defer { fixture.cleanUp() }
+        fixture.manager.restoreWindows()
+        let first = try #require(fixture.manager.activeContext)
+        let other = try #require(fixture.manager.newWindow())
+        first.controller.showAddress()
+        first.controller.closeTab()
+        #expect(!first.controller.isAddressPresented)
+        #expect(fixture.manager.windows.count == 1)
+        #expect(fixture.manager.windows.first === other)
+    }
+
     @Test func windowsOwnTheirTabsAndTransientUIWhileSharingAppearanceAndWebsiteStore() throws {
         let fixture = try fixture()
         defer { fixture.cleanUp() }
