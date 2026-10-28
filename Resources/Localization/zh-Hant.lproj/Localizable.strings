@@ -156,3 +156,19 @@
 "Expand Sidebar" = "展開側邊欄";
 "Expand or Collapse Sidebar" = "展開或縮窄側邊欄";
 "Hide or Show Sidebar" = "隱藏或顯示側邊欄";
+
+"Could not copy image" = "無法複製圖片";
+
+"Try downloading the image and opening it again." = "請嘗試下載圖片後重新開啟。";
+"Check for Updates…" = "檢查更新…";
+"Checking for updates…" = "正在檢查更新…";
+"Update available" = "有可用更新";
+"Downloading update…" = "正在下載更新…";
+"Installing and restarting…" = "正在安裝並重新啟動…";
+"Update unavailable" = "更新無法使用";
+"This update cannot be installed automatically." = "此更新無法自動安裝。";
+"Download the update, then restart Nous Browser. Save any work in webpages first." = "下載更新並重新啟動 Nous Browser。請先儲存網頁中的工作。";
+"Update and Restart" = "更新並重新啟動";
+"Later" = "稍後";
+"No update available" = "目前沒有可用更新";
+"Unable to update" = "無法更新";

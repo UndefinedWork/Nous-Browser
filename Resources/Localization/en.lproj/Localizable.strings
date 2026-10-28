@@ -156,3 +156,19 @@
 "Expand Sidebar" = "Expand Sidebar";
 "Expand or Collapse Sidebar" = "Expand or Collapse Sidebar";
 "Hide or Show Sidebar" = "Hide or Show Sidebar";
+
+"Could not copy image" = "Could not copy image";
+
+"Try downloading the image and opening it again." = "Try downloading the image and opening it again.";
+"Check for Updates…" = "Check for Updates…";
+"Checking for updates…" = "Checking for updates…";
+"Update available" = "Update available";
+"Downloading update…" = "Downloading update…";
+"Installing and restarting…" = "Installing and restarting…";
+"Update unavailable" = "Update unavailable";
+"This update cannot be installed automatically." = "This update cannot be installed automatically.";
+"Download the update, then restart Nous Browser. Save any work in webpages first." = "Download the update, then restart Nous Browser. Save any work in webpages first.";
+"Update and Restart" = "Update and Restart";
+"Later" = "Later";
+"No update available" = "No update available";
+"Unable to update" = "Unable to update";

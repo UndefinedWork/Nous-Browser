@@ -155,3 +155,19 @@
 "Expand Sidebar" = "Развернуть боковую панель";
 "Expand or Collapse Sidebar" = "Развернуть или свернуть боковую панель";
 "Hide or Show Sidebar" = "Скрыть или показать боковую панель";
+
+"Could not copy image" = "Не удалось скопировать изображение";
+
+"Try downloading the image and opening it again." = "Попробуйте скачать изображение и открыть его снова.";
+"Check for Updates…" = "Проверить обновления…";
+"Checking for updates…" = "Проверка обновлений…";
+"Update available" = "Доступно обновление";
+"Downloading update…" = "Загрузка обновления…";
+"Installing and restarting…" = "Установка и перезапуск…";
+"Update unavailable" = "Обновление недоступно";
+"This update cannot be installed automatically." = "Это обновление нельзя установить автоматически.";
+"Download the update, then restart Nous Browser. Save any work in webpages first." = "Загрузить обновление и перезапустить Nous Browser. Сначала сохраните работу на веб-страницах.";
+"Update and Restart" = "Обновить и перезапустить";
+"Later" = "Позже";
+"No update available" = "Нет доступных обновлений";
+"Unable to update" = "Не удалось обновить";

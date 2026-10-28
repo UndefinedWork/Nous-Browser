@@ -19,9 +19,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.1.6</string>
+	<string>1.1.9</string>
 	<key>CFBundleVersion</key>
-	<string>46</string>
+	<string>49</string>
 	<key>ATSApplicationFontsPath</key>
 	<string>Fonts</string>
 	<key>LSMinimumSystemVersion</key>
@@ -96,5 +96,21 @@
 		<string>it</string>
 		<string>ru</string>
 	</array>
+	<key>NousDistributionChannel</key>
+	<string>github</string>
+	<key>SUFeedURL</key>
+	<string>https://github.com/UndefinedWork/Nous-Browser/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>QCOwb6Q4i79beYb6aJziojzB00XbgP2auaR+BEComkY=</string>
+	<key>SURequireSignedFeed</key>
+	<true/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>14400</integer>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
 </dict>
 </plist>

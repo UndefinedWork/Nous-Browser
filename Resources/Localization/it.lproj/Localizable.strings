@@ -155,3 +155,19 @@
 "Expand Sidebar" = "Espandi barra laterale";
 "Expand or Collapse Sidebar" = "Espandi o comprimi barra laterale";
 "Hide or Show Sidebar" = "Nascondi o mostra barra laterale";
+
+"Could not copy image" = "Impossibile copiare l’immagine";
+
+"Try downloading the image and opening it again." = "Prova a scaricare l’immagine e ad aprirla di nuovo.";
+"Check for Updates…" = "Cerca aggiornamenti…";
+"Checking for updates…" = "Ricerca aggiornamenti…";
+"Update available" = "Aggiornamento disponibile";
+"Downloading update…" = "Download aggiornamento…";
+"Installing and restarting…" = "Installazione e riavvio…";
+"Update unavailable" = "Aggiornamento non disponibile";
+"This update cannot be installed automatically." = "Questo aggiornamento non può essere installato automaticamente.";
+"Download the update, then restart Nous Browser. Save any work in webpages first." = "Scarica l’aggiornamento e riavvia Nous Browser. Salva prima il lavoro nelle pagine web.";
+"Update and Restart" = "Aggiorna e riavvia";
+"Later" = "Più tardi";
+"No update available" = "Nessun aggiornamento disponibile";
+"Unable to update" = "Impossibile aggiornare";

@@ -34,6 +34,7 @@ struct BrowserShell: View {
     @State private var isResizingSidebar = false
     @State private var isHoveringDivider = false
     @State private var tabTooltip = SidebarTabTooltipState()
+    @State private var updateTooltipVisible = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -54,7 +55,7 @@ struct BrowserShell: View {
                     .overlay((colorScheme == .dark ? BrowserDesign.darkWindowBacking : BrowserDesign.lightWindowBacking)
                         .opacity(BrowserDesign.windowBackingOpacity))
 
-                BrowserSidebar(controller: controller, tooltip: tabTooltip)
+                BrowserSidebar(controller: controller, tooltip: tabTooltip, updateHover: { updateTooltipVisible = $0 })
                     .frame(width: sidebarWidth)
                     .offset(x: model.isSidebarVisible ? 0 : -sidebarWidth)
                     .opacity(model.isSidebarVisible ? 1 : 0)
@@ -115,6 +116,18 @@ struct BrowserShell: View {
                         .zIndex(1.5)
                 }
 
+                if updateTooltipVisible, model.isSidebarVisible, BrowserUpdater.shared.showsButton,
+                   !controller.isAddressPresented {
+                    SidebarTabTooltip(title: BrowserUpdater.shared.status)
+                        .fixedSize()
+                        .position(x: model.isSidebarCompact ? 52 + 64 : sidebarWidth - 68,
+                                  y: geometry.size.height - (model.isSidebarCompact ? 148 : 64))
+                        .transition(.scale(scale: 0.94).combined(with: .opacity))
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                        .zIndex(1.6)
+                }
+
                 if controller.isAddressPresented {
                     Color.black.opacity(colorScheme == .dark ? 0.18 : 0.08)
                         .contentShape(Rectangle())
@@ -145,6 +158,7 @@ struct BrowserShell: View {
             .animation(reduceMotion || isResizingSidebar ? nil : BrowserMotion.spring, value: sidebarWidth)
             .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.isSidebarVisible)
             .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.isSidebarCompact)
+            .animation(reduceMotion ? nil : BrowserMotion.spring, value: BrowserUpdater.shared.showsButton)
             .animation(reduceMotion ? nil : BrowserMotion.spring, value: controller.isAddressPresented)
             .animation(reduceMotion ? nil : BrowserMotion.tabSwitch, value: model.selectedTabID)
         }
@@ -156,8 +170,8 @@ struct BrowserShell: View {
             else if model.selectedTab?.isLoading == true { model.stopLoading() }
         }
         .onChange(of: model.selectedTabID) { controller.find.pageDidChange() }
-        .onChange(of: model.isSidebarVisible) { tabTooltip.dismiss() }
-        .onChange(of: model.isSidebarCompact) { tabTooltip.dismiss() }
+        .onChange(of: model.isSidebarVisible) { tabTooltip.dismiss(); updateTooltipVisible = false }
+        .onChange(of: model.isSidebarCompact) { tabTooltip.dismiss(); updateTooltipVisible = false }
         .onChange(of: model.selectedTabID) { tabTooltip.dismiss() }
         .onChange(of: controller.isAddressPresented) { tabTooltip.dismiss() }
         .onChange(of: model.selectedTab?.url) { controller.find.pageDidChange() }
@@ -216,6 +230,7 @@ struct BrowserShell: View {
 private struct BrowserSidebar: View {
     let controller: BrowserController
     let tooltip: SidebarTabTooltipState
+    var updateHover: (Bool) -> Void = { _ in }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var model: BrowserModel { controller.model }
     @State private var draftOrder: [UUID] = []
@@ -301,7 +316,7 @@ private struct BrowserSidebar: View {
                     }
                     .padding(.horizontal, BrowserDesign.inset)
                     .padding(.top, SidebarTabDragGeometry.topInset(isCompact: model.isSidebarCompact))
-                    .padding(.bottom, SidebarTabDragGeometry.bottomInset(isCompact: model.isSidebarCompact))
+                    .padding(.bottom, SidebarTabDragGeometry.bottomInset(isCompact: model.isSidebarCompact) + (model.isSidebarCompact && BrowserUpdater.shared.showsButton ? 40 : 0))
                     // Rows sit above this background, so a row press can only drag
                     // the tab; the empty list area below the rows moves the window.
                     .frame(minHeight: geometry.size.height, alignment: .top)
@@ -336,7 +351,7 @@ private struct BrowserSidebar: View {
                                      buttonCenters: model.isSidebarCompact ? [30] : [BrowserDesign.inset + BrowserDesign.bottomButtonSize / 2,
                                                      BrowserDesign.inset + BrowserDesign.bottomButtonSize * 1.5 + BrowserDesign.bottomButtonSpacing,
                                                      geometry.size.width - BrowserDesign.inset - BrowserDesign.bottomButtonSize / 2],
-                                     height: model.isSidebarCompact ? 168 : 88,
+                                     height: model.isSidebarCompact ? (BrowserUpdater.shared.showsButton ? 208 : 168) : 88,
                                      controlCenterFromEdge: model.isSidebarCompact ? 68 : BrowserDesign.inset + BrowserDesign.bottomButtonSize / 2)
                 }
                 // Continue the glass behind the page's corner cutouts without
@@ -436,6 +451,11 @@ private struct BrowserSidebar: View {
                               size: BrowserDesign.bottomButtonSize, symbolSize: 10, symbolWeight: .medium) { model.goForward() }
                 .disabled(model.selectedTab?.canGoForward != true)
                 .position(x: compact ? 30 : 68, y: size.height - (compact ? 68 : 28))
+            if BrowserUpdater.shared.showsButton {
+                BrowserUpdateButton(updater: .shared, hover: updateHover)
+                    .position(x: compact ? 30 : size.width - 68, y: size.height - (compact ? 148 : 28))
+                    .transition(.scale(scale: 0.75).combined(with: .opacity))
+            }
             GlassSymbolButton(model.selectedTab?.isLoading == true ? "xmark" : "arrow.trianglehead.clockwise.rotate.90",
                               label: model.selectedTab?.isLoading == true ? L10n.string("Stop Loading") : L10n.string("Reload"),
                               help: model.selectedTab?.isLoading == true ? L10n.string("Stop Loading") : L10n.string("Reload") + "  ⌘R",

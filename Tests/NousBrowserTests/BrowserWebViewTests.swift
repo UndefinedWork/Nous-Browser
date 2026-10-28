@@ -7,6 +7,82 @@ import WebKit
 @Suite("Native webpage link and search context menus", .serialized)
 @MainActor
 struct BrowserWebViewTests {
+    @Test func imageCopyForwardsOriginalSenderAndRecoversOnlyWhenNativeCopyDoesNothing() async throws {
+        _ = NSApplication.shared
+        let board = NSPasteboard(name: .init(UUID().uuidString))
+        defer { board.releaseGlobally() }
+        let spy = ImageCopySpy()
+        let item = NSMenuItem(title: "Copy Image", action: #selector(ImageCopySpy.copy(_:)), keyEquivalent: "")
+        item.target = spy
+        let nativeContext = NSObject()
+        item.representedObject = nativeContext
+        let url = try #require(URL(string: "https://image.example/icon.svg"))
+        var recovered: [URL] = []
+        let action = BrowserWebView.ImageCopyAction(item: item, imageURL: url, pasteboard: board,
+            isValid: { true }, recover: { source, count, _ in
+                #expect(count == board.changeCount)
+                recovered.append(source)
+            })
+        item.representedObject = action
+        item.target = action
+        action.copyImage(item)
+        #expect(spy.calls == 1)
+        #expect(spy.representedObject === nativeContext)
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(recovered == [url])
+
+        // A successful native copy keeps its formats and needs no fallback.
+        recovered = []
+        spy.write = { board.clearContents(); board.setString("native", forType: .string) }
+        action.copyImage(item)
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(recovered.isEmpty)
+        #expect(board.string(forType: .string) == "native")
+
+        // Nor may a delayed fallback replace the user's next copy.
+        spy.write = nil
+        action.copyImage(item)
+        board.clearContents()
+        board.setString("next copy", forType: .string)
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(recovered.isEmpty)
+        #expect(board.string(forType: .string) == "next copy")
+
+        // Two no-op native copies can share a change count; the latest click wins.
+        let secondURL = try #require(URL(string: "https://image.example/second.svg"))
+        action.copyImage(item)
+        action.imageURL = secondURL
+        action.copyImage(item)
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(recovered == [secondURL])
+    }
+
+    @Test func imageCopyMenuKeepsOtherCopyActionsAndUsesLatestTrustedImage() throws {
+        let view = makeView()
+        defer { view.invalidateContextMenu() }
+        let menu = NSMenu()
+        let spy = ImageCopySpy()
+        let image = menu.addItem(withTitle: "复制图像", action: #selector(ImageCopySpy.copy(_:)), keyEquivalent: "")
+        image.target = spy
+        let link = menu.addItem(withTitle: "Copy Link", action: #selector(ImageCopySpy.copy(_:)), keyEquivalent: "")
+        link.target = spy
+        let copy = menu.addItem(withTitle: "Copy", action: #selector(ImageCopySpy.copy(_:)), keyEquivalent: "")
+        copy.target = spy
+        let subject = menu.addItem(withTitle: "Copy Subject", action: #selector(ImageCopySpy.copy(_:)), keyEquivalent: "")
+        subject.target = spy
+        view.rewriteImageCopyItems(in: menu, imageURL: nil, nativeTitle: "复制图像")
+        let target = try #require(image.target as? BrowserWebView.ImageCopyAction)
+        let latest = try #require(URL(string: "https://image.example/current.svg"))
+        view.rewriteImageCopyItems(in: menu, imageURL: latest)
+        #expect(image.target === target)
+        #expect(target.imageURL == latest)
+        #expect(link.target === spy && copy.target === spy && subject.target === spy)
+        #expect(link.representedObject == nil && copy.representedObject == nil && subject.representedObject == nil)
+        view.invalidateContextMenu()
+        try invoke(image)
+        #expect(spy.calls == 0)
+    }
+
     @Test func validatesTheClickedFrameRatherThanTheTopLevelOrigin() throws {
         let body: [String: Any] = ["href": "https://destination.example/path?q=one#two",
                                    "documentURL": "https://frame.example:8443/sub/page"]
@@ -297,7 +373,10 @@ struct BrowserWebViewTests {
         #expect(first.configuration.websiteDataStore === store)
         #expect(second.configuration.websiteDataStore === store)
         #expect(first.configuration.userContentController === second.configuration.userContentController)
-        #expect(configuration.userContentController.userScripts.count == 2)
+        #expect(configuration.userContentController.userScripts.count == 3)
+        #expect(configuration.userContentController.userScripts.filter {
+            $0.source.contains("nous-browser-slides-ime-return-v1")
+        }.count == 1)
         #expect(configuration.preferences.minimumFontSize == 17)
         let listener = try #require(configuration.userContentController.userScripts.first { $0.source.contains("nous-browser-link-context-menu-v1") })
         #expect(listener.injectionTime == .atDocumentStart)
@@ -594,4 +673,16 @@ struct BrowserWebViewTests {
 private final class NativeActionSpy: NSObject {
     var calls = 0
     @objc func invoke(_ item: NSMenuItem) { calls += 1 }
+}
+
+@MainActor
+private final class ImageCopySpy: NSObject {
+    var calls = 0
+    var representedObject: AnyObject?
+    var write: (() -> Void)?
+    @objc func copy(_ item: NSMenuItem) {
+        calls += 1
+        representedObject = item.representedObject as AnyObject?
+        write?()
+    }
 }

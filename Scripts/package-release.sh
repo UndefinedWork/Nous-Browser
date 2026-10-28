@@ -176,3 +176,6 @@ for asset in "$ASSET_BASENAME.dmg" "$ASSET_BASENAME.zip" SHA256SUMS.txt; do
     /usr/bin/stat -f '%N — %z bytes' "$DIST_DIR/$asset"
 done
 /bin/cat "$DIST_DIR/SHA256SUMS.txt"
+
+# Every release also carries its authenticated updater feed.
+zsh "$PROJECT_DIR/Scripts/generate-update-feed.sh"

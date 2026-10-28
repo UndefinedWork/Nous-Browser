@@ -156,3 +156,19 @@
 "Expand Sidebar" = "サイドバーを展開";
 "Expand or Collapse Sidebar" = "サイドバーを展開／折りたたむ";
 "Hide or Show Sidebar" = "サイドバーを表示／非表示";
+
+"Could not copy image" = "画像をコピーできませんでした";
+
+"Try downloading the image and opening it again." = "画像をダウンロードして、もう一度開いてください。";
+"Check for Updates…" = "アップデートを確認…";
+"Checking for updates…" = "アップデートを確認中…";
+"Update available" = "アップデートがあります";
+"Downloading update…" = "アップデートをダウンロード中…";
+"Installing and restarting…" = "インストールして再起動中…";
+"Update unavailable" = "アップデートできません";
+"This update cannot be installed automatically." = "このアップデートは自動でインストールできません。";
+"Download the update, then restart Nous Browser. Save any work in webpages first." = "アップデートをダウンロードして Nous Browser を再起動します。先にウェブページでの作業を保存してください。";
+"Update and Restart" = "更新して再起動";
+"Later" = "あとで";
+"No update available" = "アップデートはありません";
+"Unable to update" = "更新できません";

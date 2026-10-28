@@ -155,3 +155,19 @@
 "Expand Sidebar" = "Développer la barre latérale";
 "Expand or Collapse Sidebar" = "Développer ou réduire la barre latérale";
 "Hide or Show Sidebar" = "Masquer ou afficher la barre latérale";
+
+"Could not copy image" = "Impossible de copier l’image";
+
+"Try downloading the image and opening it again." = "Essayez de télécharger l’image et de la rouvrir.";
+"Check for Updates…" = "Rechercher des mises à jour…";
+"Checking for updates…" = "Recherche de mises à jour…";
+"Update available" = "Mise à jour disponible";
+"Downloading update…" = "Téléchargement de la mise à jour…";
+"Installing and restarting…" = "Installation et redémarrage…";
+"Update unavailable" = "Mise à jour indisponible";
+"This update cannot be installed automatically." = "Cette mise à jour ne peut pas être installée automatiquement.";
+"Download the update, then restart Nous Browser. Save any work in webpages first." = "Téléchargez la mise à jour et redémarrez Nous Browser. Enregistrez d’abord votre travail dans les pages web.";
+"Update and Restart" = "Mettre à jour et redémarrer";
+"Later" = "Plus tard";
+"No update available" = "Aucune mise à jour disponible";
+"Unable to update" = "Mise à jour impossible";

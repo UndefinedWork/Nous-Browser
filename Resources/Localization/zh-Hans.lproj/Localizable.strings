@@ -156,3 +156,19 @@
 "Expand Sidebar" = "展开侧边栏";
 "Expand or Collapse Sidebar" = "展开或收窄侧边栏";
 "Hide or Show Sidebar" = "隐藏或显示侧边栏";
+
+"Could not copy image" = "无法复制图片";
+
+"Try downloading the image and opening it again." = "请尝试下载图片后重新打开。";
+"Check for Updates…" = "检查更新…";
+"Checking for updates…" = "正在检查更新…";
+"Update available" = "有可用更新";
+"Downloading update…" = "正在下载更新…";
+"Installing and restarting…" = "正在安装并重启…";
+"Update unavailable" = "更新不可用";
+"This update cannot be installed automatically." = "此更新无法自动安装。";
+"Download the update, then restart Nous Browser. Save any work in webpages first." = "下载更新并重启 Nous Browser。请先保存网页中的工作。";
+"Update and Restart" = "更新并重启";
+"Later" = "稍后";
+"No update available" = "暂无可用更新";
+"Unable to update" = "无法更新";

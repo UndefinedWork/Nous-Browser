@@ -155,3 +155,19 @@
 "Expand Sidebar" = "Seitenleiste ausklappen";
 "Expand or Collapse Sidebar" = "Seitenleiste aus- oder einklappen";
 "Hide or Show Sidebar" = "Seitenleiste aus- oder einblenden";
+
+"Could not copy image" = "Bild konnte nicht kopiert werden";
+
+"Try downloading the image and opening it again." = "Lade das Bild herunter und öffne es erneut.";
+"Check for Updates…" = "Nach Updates suchen…";
+"Checking for updates…" = "Suche nach Updates…";
+"Update available" = "Update verfügbar";
+"Downloading update…" = "Update wird geladen…";
+"Installing and restarting…" = "Installation und Neustart…";
+"Update unavailable" = "Update nicht verfügbar";
+"This update cannot be installed automatically." = "Dieses Update kann nicht automatisch installiert werden.";
+"Download the update, then restart Nous Browser. Save any work in webpages first." = "Update laden und Nous Browser neu starten. Speichere zuerst deine Arbeit auf Webseiten.";
+"Update and Restart" = "Aktualisieren und neu starten";
+"Later" = "Später";
+"No update available" = "Kein Update verfügbar";
+"Unable to update" = "Update fehlgeschlagen";

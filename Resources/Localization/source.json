@@ -149,7 +149,21 @@
     "Configuration Copied",
     "Connection Configuration",
     "Recent Activity",
-    "No agent activity yet."
+    "No agent activity yet.",
+    "Could not copy image",
+    "Try downloading the image and opening it again.",
+    "Check for Updates…",
+    "Checking for updates…",
+    "Update available",
+    "Downloading update…",
+    "Installing and restarting…",
+    "Update unavailable",
+    "This update cannot be installed automatically.",
+    "Download the update, then restart Nous Browser. Save any work in webpages first.",
+    "Update and Restart",
+    "Later",
+    "No update available",
+    "Unable to update"
   ],
   "infoPlist": {
     "NSCameraUsageDescription": "Allow camera access on websites you authorize, such as video meetings.",

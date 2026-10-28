@@ -9,11 +9,13 @@ let package = Package(
         .executable(name: "NousBrowserMCP", targets: ["NousMCP"])
     ],
     dependencies: [
-        .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", exact: "0.12.1")
+        .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", exact: "0.12.1"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1")
     ],
     targets: [
         .target(name: "NousAutomation", path: "Sources/NousAutomation"),
-        .executableTarget(name: "NousBrowser", dependencies: ["NousAutomation"], path: "Sources/NousBrowser"),
+        .executableTarget(name: "NousBrowser", dependencies: ["NousAutomation", .product(name: "Sparkle", package: "Sparkle")], path: "Sources/NousBrowser",
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]) ]),
         .executableTarget(
             name: "NousMCP",
             dependencies: ["NousAutomation", .product(name: "MCP", package: "swift-sdk")],

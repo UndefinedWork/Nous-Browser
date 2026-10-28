@@ -49,6 +49,7 @@ final class BrowserWebView: WKWebView {
     /// Safe for inherited popup configurations: retain their data store,
     /// preferences and controller, and install the listener only once.
     static func configure(_ configuration: WKWebViewConfiguration) {
+        BrowserTextInputCompatibility.configure(configuration)
         let controller = configuration.userContentController
         guard !controller.userScripts.contains(where: { $0.source.contains(scriptMarker) }) else { return }
         controller.addUserScript(WKUserScript(source: contextMenuSource, injectionTime: .atDocumentStart,
@@ -58,6 +59,7 @@ final class BrowserWebView: WKWebView {
     /// Called when this particular WebKit instance is discarded or hibernated.
     func invalidateContextMenu() {
         isContextMenuActive = false
+        BrowserImageClipboard.shared.cancel(for: self)
         clearContextLink()
         onOpenLinkInNewTab = nil
         onOpenLinkInNewWindow = nil
@@ -86,8 +88,12 @@ final class BrowserWebView: WKWebView {
         // frame's trusted context message has not arrived yet.
         rewriteSearchItems(in: menu, selection: selection, websiteLink: link)
         rewriteDownloadItems(in: menu, requests: downloads)
+        rewriteImageCopyItems(in: menu, imageURL: downloads[.image]?.url)
         if let link { rewriteLinkItems(in: menu, link: link) }
-        if menu.items.contains(where: { ($0.target as? DownloadAction)?.request == nil && $0.target is DownloadAction }) {
+        if menu.items.contains(where: {
+            (($0.target as? DownloadAction)?.request == nil && $0.target is DownloadAction) ||
+            (($0.target as? ImageCopyAction)?.imageURL == nil && $0.target is ImageCopyAction)
+        }) {
             requestDownloadHitTest(in: menu, event: event)
         }
     }
@@ -201,6 +207,7 @@ final class BrowserWebView: WKWebView {
                 if let link { rewriteLinkItems(in: menu, link: link) }
             rewriteSearchItems(in: menu, selection: selection, websiteLink: link)
             rewriteDownloadItems(in: menu, requests: downloads.merging(openMenu.hitTestDownloads) { captured, _ in captured })
+            rewriteImageCopyItems(in: menu, imageURL: downloads[.image]?.url ?? openMenu.hitTestDownloads[.image]?.url)
         }
     }
 
@@ -230,6 +237,92 @@ final class BrowserWebView: WKWebView {
                 $0.matches(pageURL: pageURL, screenPoint: current.screenPoint) ? $0.requests : nil
             } ?? [:]
             self.rewriteDownloadItems(in: menu, requests: captured.merging(fallback) { trusted, _ in trusted })
+            self.rewriteImageCopyItems(in: menu, imageURL: captured[.image]?.url ?? fallback[.image]?.url)
+        }
+    }
+
+    /// WebKit can leave the pasteboard unchanged for SVG images. Keep its
+    /// original action intact, then recover the actual clicked resource only
+    /// if it did not write anything. Ordinary Copy and Copy Link are untouched.
+    func rewriteImageCopyItems(in menu: NSMenu, imageURL: URL?, nativeTitle: String? = nil,
+                              pasteboard: NSPasteboard = .general) {
+        let title = nativeTitle ?? Bundle(identifier: "com.apple.WebCore")?
+            .localizedString(forKey: "Copy Image", value: "Copy Image", table: nil) ?? "Copy Image"
+        for item in menu.items where item.submenu == nil {
+            if let existing = item.target as? ImageCopyAction,
+               item.representedObject as? ImageCopyAction === existing {
+                existing.imageURL = imageURL
+                continue
+            }
+            guard item.identifier?.rawValue == "WKMenuItemIdentifierCopyImage" ||
+                    item.title == title || item.title == "Copy Image",
+                  item.action != nil else { continue }
+            let pageURL = url
+            let action = ImageCopyAction(item: item, imageURL: imageURL, pasteboard: pasteboard,
+                isValid: { [weak self] in self?.isContextMenuActive == true && self?.url == pageURL },
+                recover: { [weak self] imageURL, expectedCount, attempt in
+                    guard let self else { return }
+                    BrowserImageClipboard.shared.copyImage(from: imageURL, in: self, pasteboard: pasteboard,
+                        expectedChangeCount: expectedCount,
+                        isValid: { [weak self] in
+                            self?.isContextMenuActive == true && self?.url == pageURL &&
+                                ImageCopyAction.isCurrent(attempt, on: pasteboard)
+                        }) {
+                            [weak self] result in
+                            guard case .failure = result, pasteboard.changeCount == expectedCount,
+                                  ImageCopyAction.isCurrent(attempt, on: pasteboard),
+                                  self?.isContextMenuActive == true, self?.url == pageURL,
+                                  let window = self?.window, window.attachedSheet == nil else { return }
+                            let alert = NSAlert()
+                            alert.messageText = L10n.string("Could not copy image")
+                            alert.informativeText = L10n.string("Try downloading the image and opening it again.")
+                            alert.addButton(withTitle: L10n.string("OK"))
+                            alert.beginSheetModal(for: window)
+                        }
+                })
+            item.representedObject = action
+            item.target = action
+            item.action = #selector(ImageCopyAction.copyImage(_:))
+        }
+    }
+
+    @MainActor final class ImageCopyAction: NSObject {
+        private static var latestAttempts: [NSPasteboard.Name: UUID] = [:]
+        var imageURL: URL?
+        private let originalItem: NSMenuItem
+        private let originalTarget: AnyObject?
+        private let pasteboard: NSPasteboard
+        private let isValid: () -> Bool
+        private let recover: (URL, Int, UUID) -> Void
+
+        init(item: NSMenuItem, imageURL: URL?, pasteboard: NSPasteboard,
+             isValid: @escaping () -> Bool, recover: @escaping (URL, Int, UUID) -> Void) {
+            originalItem = item.copy() as! NSMenuItem
+            originalTarget = item.target
+            self.imageURL = imageURL
+            self.pasteboard = pasteboard
+            self.isValid = isValid
+            self.recover = recover
+        }
+
+        @objc func copyImage(_ sender: NSMenuItem) {
+            guard isValid(), let selector = originalItem.action else { return }
+            let attempt = UUID()
+            Self.latestAttempts[pasteboard.name] = attempt
+            let expectedCount = pasteboard.changeCount
+            // The sender must retain WebKit's original representedObject.
+            NSApp.sendAction(selector, to: originalTarget, from: originalItem)
+            guard let imageURL else { return }
+            Task { @MainActor [self] in
+                try? await Task.sleep(for: .milliseconds(250))
+                guard isValid(), Self.isCurrent(attempt, on: pasteboard),
+                      pasteboard.changeCount == expectedCount else { return }
+                recover(imageURL, expectedCount, attempt)
+            }
+        }
+
+        static func isCurrent(_ attempt: UUID, on pasteboard: NSPasteboard) -> Bool {
+            latestAttempts[pasteboard.name] == attempt
         }
     }
 

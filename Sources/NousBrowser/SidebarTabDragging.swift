@@ -51,13 +51,13 @@ enum SidebarTabDragGeometry {
         return Int(exactly: proposed.rounded()) ?? 0
     }
 
-    static func containsDropPoint(_ point: CGPoint, viewport: CGSize, isCompact: Bool = false) -> Bool {
+    static func containsDropPoint(_ point: CGPoint, viewport: CGSize, isCompact: Bool = false, additionalBottomInset: CGFloat = 0) -> Bool {
         guard point.x.isFinite, point.y.isFinite,
               viewport.width.isFinite, viewport.height.isFinite,
               viewport.width > 0, viewport.height > 0 else { return false }
         return CGRect(origin: .zero, size: viewport).insetBy(dx: 6, dy: 12).contains(point)
             && point.y >= topInset(isCompact: isCompact) - 8
-            && point.y <= viewport.height - bottomInset(isCompact: isCompact) + 8
+            && point.y <= viewport.height - bottomInset(isCompact: isCompact) - additionalBottomInset + 8
     }
 
     static func isOutsideWindow(_ point: NSPoint, frame: NSRect) -> Bool {

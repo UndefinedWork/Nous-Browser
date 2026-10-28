@@ -195,7 +195,8 @@ final class BrowserTabDragCoordinator {
                   !controller.isAddressPresented,
                   let local = endpoint.reference.sidebarPoint(forScreenPoint: point),
                   SidebarTabDragGeometry.containsDropPoint(local, viewport: endpoint.viewport,
-                                                           isCompact: controller.model.isSidebarCompact) else { continue }
+                                                           isCompact: controller.model.isSidebarCompact,
+                      additionalBottomInset: controller.model.isSidebarCompact && BrowserUpdater.shared.showsButton ? 40 : 0) else { continue }
             let raw = SidebarTabDragGeometry.proposedIndex(forRowTop: local.y - grabOffset.y,
                                                           scrollOffset: endpoint.metrics.offsetY,
                                                           isCompact: controller.model.isSidebarCompact)

@@ -15,6 +15,11 @@ PREVIOUS_APP_DIR="$STAGING_DIR/Nous Browser.previous.app"
 ICON_WORK_DIR="$STAGING_DIR/app-icon"
 
 mkdir -p "$STAGED_APP_DIR/Contents/MacOS" "$STAGED_APP_DIR/Contents/Resources" "$ICON_WORK_DIR" "$PROJECT_DIR/build"
+mkdir -p "$STAGED_APP_DIR/Contents/Frameworks"
+# Preserve Sparkle's signed nested helpers and framework symlinks.
+SPARKLE_FRAMEWORK="$PROJECT_DIR/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
+[[ -d "$SPARKLE_FRAMEWORK" ]] || { print -u2 "Sparkle framework missing"; exit 1; }
+ditto "$SPARKLE_FRAMEWORK" "$STAGED_APP_DIR/Contents/Frameworks/Sparkle.framework"
 cp "$BIN_DIR/NousBrowser" "$STAGED_APP_DIR/Contents/MacOS/NousBrowser"
 cp "$BIN_DIR/NousBrowserMCP" "$STAGED_APP_DIR/Contents/MacOS/NousBrowserMCP"
 cp "$PROJECT_DIR/Resources/Info.plist" "$STAGED_APP_DIR/Contents/Info.plist"

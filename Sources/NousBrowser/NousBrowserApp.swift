@@ -199,6 +199,7 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate {
         windowManager.appearance.apply()
         windowManager.restoreWindows()
         automation.startIfEnabled()
+        BrowserUpdater.shared.start()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -231,6 +232,11 @@ struct BrowserCommands: Commands {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : BrowserMotion.spring
     }
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            if BrowserUpdater.shared.isEnabled {
+                Button(L10n.string("Check for Updates…")) { BrowserUpdater.shared.checkForUpdates() }
+            }
+        }
         CommandGroup(replacing: .newItem) {
             Button(L10n.string("New Tab")) {
                 windows.newTab()
