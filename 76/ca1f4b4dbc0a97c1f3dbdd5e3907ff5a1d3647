@@ -1,0 +1,37 @@
+README.md
+  s_3d6e78ea1e9f59::t_000eedf8a5e390 42
+Tests/NousBrowserTests/BrowserUserAgentTests.swift
+  s_3d6e78ea1e9f59::t_08b95aaf569872 188-190,202-204,285-287
+Sources/NousBrowser/BrowserUserAgent.swift
+  s_3d6e78ea1e9f59::t_08b95aaf569872 78-79
+Tests/NousBrowserTests/BrowserTextInputCompatibilityTests.swift
+  s_3d6e78ea1e9f59::t_08b95aaf569872 205-207,211-213,225-226,228-239
+  s_3d6e78ea1e9f59::t_8414a484f6bddb 29-31,33
+  s_3d6e78ea1e9f59::t_c9b82ac21997de 227
+  s_3d6e78ea1e9f59::t_8643f7326cdd81 240-242
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_000eedf8a5e390 22,24
+Sources/NousBrowser/ZoomSlidesCompatibility.swift
+  s_3d6e78ea1e9f59::t_08b95aaf569872 1-30
+Docs/QA-Regional-Slides-1.1.11.md
+  s_3d6e78ea1e9f59::t_000eedf8a5e390 1-57
+  s_3d6e78ea1e9f59::t_6442c154052b3d 58-73
+Sources/NousBrowser/BrowserTextInputCompatibility.swift
+  s_3d6e78ea1e9f59::t_08b95aaf569872 26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "76ca1f4b4dbc0a97c1f3dbdd5e3907ff5a1d3647",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
