@@ -1,0 +1,124 @@
+Resources/Localization/ja.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_deba0595efd410 159-162
+  s_3d6e78ea1e9f59::t_69a01ea39d9b29 163-174
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_d96494a0f15a70 104
+  s_3d6e78ea1e9f59::t_84473fa9f4079f 22,24,99-103,105-112
+  s_3d6e78ea1e9f59::t_5c240c6429ec35 113-114
+Resources/Localization/pt-BR.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_69a01ea39d9b29 162-173
+  s_3d6e78ea1e9f59::t_deba0595efd410 158-161
+Resources/Localization/fr.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_69a01ea39d9b29 162-173
+  s_3d6e78ea1e9f59::t_deba0595efd410 158-161
+Sources/NousBrowser/BrowserImageClipboard.swift
+  s_3d6e78ea1e9f59::t_9f433f533dc204 237,240
+  s_3d6e78ea1e9f59::t_bde4eeb0389d85 1-26,28-85,90-236,238-239,241-252,254-288
+  s_3d6e78ea1e9f59::t_2259afc993b8c5 86-89
+  s_3d6e78ea1e9f59::t_7847e946d340b1 27,253
+Resources/Localization/en.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_deba0595efd410 159-162
+  s_3d6e78ea1e9f59::t_69a01ea39d9b29 163-174
+Resources/Localization/es.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_69a01ea39d9b29 162-173
+  s_3d6e78ea1e9f59::t_deba0595efd410 158-161
+Resources/Localization/zh-Hans.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_deba0595efd410 159-162
+  s_3d6e78ea1e9f59::t_69a01ea39d9b29 163-174
+Resources/Localization/it.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_deba0595efd410 158-161
+  s_3d6e78ea1e9f59::t_69a01ea39d9b29 162-173
+Resources/Localization/zh-Hant.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_69a01ea39d9b29 163-174
+  s_3d6e78ea1e9f59::t_deba0595efd410 159-162
+README.md
+  s_3d6e78ea1e9f59::t_2fe95e46d8ea8a 27
+  s_3d6e78ea1e9f59::t_22ad66b04123b1 11-12,42
+  s_3d6e78ea1e9f59::t_0cf06c902ec924 20,157
+Docs/QA-Copy-Image-1.1.7.md
+  s_3d6e78ea1e9f59::t_2fe95e46d8ea8a 1-44
+Resources/Localization/ko.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_69a01ea39d9b29 163-174
+  s_3d6e78ea1e9f59::t_deba0595efd410 159-162
+Resources/Localization/source.json
+  s_3d6e78ea1e9f59::t_69a01ea39d9b29 154-166
+  s_3d6e78ea1e9f59::t_deba0595efd410 152-153
+Resources/Localization/de.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_69a01ea39d9b29 162-173
+  s_3d6e78ea1e9f59::t_deba0595efd410 158-161
+Resources/Localization/ru.lproj/Localizable.strings
+  s_3d6e78ea1e9f59::t_69a01ea39d9b29 162-173
+  s_3d6e78ea1e9f59::t_deba0595efd410 158-161
+Tests/NousBrowserTests/BrowserImageClipboardTests.swift
+  s_3d6e78ea1e9f59::t_a24f604817323d 51,110-113
+  s_3d6e78ea1e9f59::t_d78f27a80c0e8e 19
+  s_3d6e78ea1e9f59::t_18165f282abd37 1-18,20-50,52-109,114-156
+Sources/NousBrowser/BrowserTextInputCompatibility.swift
+  s_3d6e78ea1e9f59::t_17db478af0361a 1-72
+Tests/NousBrowserTests/BrowserTextInputCompatibilityTests.swift
+  s_3d6e78ea1e9f59::t_17db478af0361a 1-158,198-250
+  s_3d6e78ea1e9f59::t_686513b50b43d2 159-197
+Docs/QA-IME-1.1.8.md
+  s_3d6e78ea1e9f59::t_ea442a0ce3b649 37-42
+  s_3d6e78ea1e9f59::t_0cf06c902ec924 1-36
+  s_3d6e78ea1e9f59::t_0f77a88669a122 43-45
+Tests/NousBrowserTests/BrowserWebViewTests.swift
+  s_3d6e78ea1e9f59::t_003e892768edb2 10-21,23-85,677-687
+  s_3d6e78ea1e9f59::t_fdaae1ad22ee2b 376-379
+  s_3d6e78ea1e9f59::t_9126834ce5fa46 22,688
+Package.resolved
+  s_3d6e78ea1e9f59::t_be5b3461e2d668 2,13-19
+  s_3d6e78ea1e9f59::t_7ecd3ee62e0078 20-21
+Sources/NousBrowser/NousBrowserApp.swift
+  s_3d6e78ea1e9f59::t_84473fa9f4079f 202,235-239
+Sources/NousBrowser/BrowserWebView.swift
+  s_3d6e78ea1e9f59::t_28a01a40c1785d 273-274
+  s_3d6e78ea1e9f59::t_1826bcd96bb55d 52
+  s_3d6e78ea1e9f59::t_f488da063c5ec3 62,91,93-96,210,240-262,264-266,271-272,275-289,291-295,297-298,300-309,312-317,321
+  s_3d6e78ea1e9f59::t_34998e9a372b6c 263,267-270,290,296,299,310-311,318-320,322-325
+Scripts/generate-update-feed.sh
+  s_3d6e78ea1e9f59::t_d96494a0f15a70 9-15
+  s_3d6e78ea1e9f59::t_30d6f767aa7204 1-8,16-19
+Docs/QA-Updates-1.1.9.md
+  s_3d6e78ea1e9f59::t_574f934f62c6db 1-25
+Scripts/build.sh
+  s_3d6e78ea1e9f59::t_84473fa9f4079f 18-22
+Docs/Updates.md
+  s_3d6e78ea1e9f59::t_22ad66b04123b1 1-32
+Package.swift
+  s_3d6e78ea1e9f59::t_1aa04e317165c8 12-13,17-18
+Resources/ThirdPartyNotices.txt
+  s_3d6e78ea1e9f59::t_135f07c9685e27 1482-1618
+Scripts/package-release.sh
+  s_3d6e78ea1e9f59::t_079142826fdec3 179-181
+Scripts/verify-update-key.swift
+  s_3d6e78ea1e9f59::t_e8531a6b20e3e1 1-18
+Sources/NousBrowser/BrowserShell.swift
+  s_3d6e78ea1e9f59::t_7fb4aee569f6fc 37,58,119-130,161,173-174,233,319,354,454-458
+Sources/NousBrowser/BrowserTabDragCoordinator.swift
+  s_3d6e78ea1e9f59::t_5d9f04cb8b9269 198-199
+Sources/NousBrowser/BrowserUpdateButton.swift
+  s_3d6e78ea1e9f59::t_9e38b3373d0d1a 1-44
+Sources/NousBrowser/BrowserUpdater.swift
+  s_3d6e78ea1e9f59::t_33b82a2d1d859c 1-189
+Sources/NousBrowser/SidebarTabDragging.swift
+  s_3d6e78ea1e9f59::t_87f5416747b1d3 54,60
+Tests/NousBrowserTests/BrowserUpdaterTests.swift
+  s_3d6e78ea1e9f59::t_06cc402bc5e75b 1-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "899ea5130a4c426e30576a4d96dd59a939f43cb4",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
