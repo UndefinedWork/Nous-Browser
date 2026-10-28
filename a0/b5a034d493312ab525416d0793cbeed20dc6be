@@ -1,0 +1,32 @@
+README.md
+  s_3d6e78ea1e9f59::t_d3ef26221865ff 42
+Tests/NousBrowserTests/BrowserWindowManagerTests.swift
+  s_3d6e78ea1e9f59::t_55feb27217ac5d 44-73,75-76
+  s_3d6e78ea1e9f59::t_118ed7d32a453b 74
+Sources/NousBrowser/NousBrowserApp.swift
+  s_3d6e78ea1e9f59::t_d3ef26221865ff 141-143
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_d3ef26221865ff 22,24
+Docs/QA-Address-Palette-1.1.10.md
+  s_3d6e78ea1e9f59::t_3d1d3dd3d49088 1-7
+Scripts/build.sh
+  s_3d6e78ea1e9f59::t_0acff6c8cee82a 6,17
+Scripts/package-release.sh
+  s_3d6e78ea1e9f59::t_ef525c13d85434 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a0b5a034d493312ab525416d0793cbeed20dc6be",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
