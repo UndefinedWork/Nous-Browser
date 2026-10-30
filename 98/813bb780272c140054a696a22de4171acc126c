@@ -1,0 +1,54 @@
+Sources/NousBrowser/ZoomSlidesCompatibility.swift
+  s_3d6e78ea1e9f59::t_b524b34c54f617 3
+Tests/NousBrowserTests/BrowserScrollbarTests.swift
+  s_3d6e78ea1e9f59::t_4dd739439bb40a 30,82
+  s_3d6e78ea1e9f59::t_72f79fac9b42f0 113
+  s_3d6e78ea1e9f59::t_c53e9a053a3198 62-68,71-81,83-99
+  s_3d6e78ea1e9f59::t_1c41d6472246f3 1-29,31-61,69-70,100-112,114-154
+Sources/NousBrowser/BrowserModel.swift
+  s_3d6e78ea1e9f59::t_b524b34c54f617 952,964
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_33bb93447e26f8 5-6,38-45,60-98,101-104
+Sources/NousBrowser/BrowserPasswordAutofill.swift
+  s_3d6e78ea1e9f59::t_efbac29fafac12 269-270,330-337,348-351,361,365-387,419,421,424,435-438
+Docs/QA-Compatibility-Performance-1.1.12.md
+  s_3d6e78ea1e9f59::t_141b1c1933afb8 74-87,91-96
+  s_3d6e78ea1e9f59::t_600e9cfd7d75ec 100-136
+  s_3d6e78ea1e9f59::t_c8d3ca05138638 1-59,65-73,97-99
+  s_3d6e78ea1e9f59::t_ac8bc9c53f26de 88-90
+  s_3d6e78ea1e9f59::t_ad9121a853ee02 62-64
+  s_3d6e78ea1e9f59::t_60a31bc21f6fbd 60-61
+Tests/NousBrowserTests/BrowserPasswordAutofillTests.swift
+  s_3d6e78ea1e9f59::t_5d0bbf0b3ff10b 10-29,31-38
+  s_3d6e78ea1e9f59::t_80dd436308338a 39-92,189-190,243-244,336-341
+  s_3d6e78ea1e9f59::t_f027a9ca9365b6 30,356,361
+  s_3d6e78ea1e9f59::t_ff1599b8735cab 273,279-298,342,354-355,357-360,362,439
+  s_3d6e78ea1e9f59::t_f8cc8be02135b4 343
+  s_3d6e78ea1e9f59::t_3db5354136c1d1 363
+Sources/NousBrowser/BrowserUserAgent.swift
+  s_3d6e78ea1e9f59::t_b524b34c54f617 4-6,10-23
+Tests/NousBrowserTests/BrowserTextInputCompatibilityTests.swift
+  s_3d6e78ea1e9f59::t_b524b34c54f617 225
+Sources/NousBrowser/BrowserScrollbars.swift
+  s_3d6e78ea1e9f59::t_9f9210081d419b 92,94,99,103-106,116
+  s_3d6e78ea1e9f59::t_03a2a01cfa73d0 66-91,93,95-98,107-115,117-127,142,145,149
+Tests/NousBrowserTests/BrowserUserAgentTests.swift
+  s_3d6e78ea1e9f59::t_fb34fc3099132f 1,7-8,10,33,44-47,51-53,56-67,69-75,79-97,101-141,144,148-149,153-157,160,162-178,180-190,192-194,196-197,200,202-204,207-273
+  s_3d6e78ea1e9f59::t_5d290708113bb9 68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "98813bb780272c140054a696a22de4171acc126c",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
