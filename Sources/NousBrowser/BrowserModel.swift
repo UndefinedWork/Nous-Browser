@@ -545,7 +545,6 @@ final class BrowserTab: NSObject, Identifiable {
     @ObservationIgnored private var faviconObservation: BrowserFaviconObservation.Attachment?
     @ObservationIgnored private var passwordAutofill: BrowserPasswordAutofill.Attachment?
     @ObservationIgnored private var pageNavigationShortcuts: BrowserPageNavigationShortcuts.Attachment?
-    @ObservationIgnored private var userAgentPolicy: BrowserUserAgent.NavigationPolicy?
 
     var displayTitle: String {
         !hasWebContent && url == nil ? L10n.string("New Tab") : title
@@ -585,7 +584,6 @@ final class BrowserTab: NSObject, Identifiable {
     }
 
     private func attach(_ webView: WKWebView) {
-        userAgentPolicy = BrowserUserAgent.NavigationPolicy(webView: webView)
         faviconObservation = BrowserFaviconObservation.attach(to: webView) { [weak self, weak webView] snapshot in
             guard let self, self.webView === webView, self.url == snapshot.pageURL else { return }
             self.updateFavicon(snapshot)
@@ -682,8 +680,6 @@ final class BrowserTab: NSObject, Identifiable {
         cancelFaviconLoading()
         faviconObservation?.invalidate()
         faviconObservation = nil
-        userAgentPolicy?.invalidate()
-        userAgentPolicy = nil
         (webView as? BrowserWebView)?.invalidateContextMenu()
         detachPageNavigationShortcuts()
         observations.forEach { $0.invalidate() }
@@ -777,9 +773,6 @@ final class BrowserTab: NSObject, Identifiable {
     static let terminationReloadWindow: TimeInterval = 10
 
     func load(_ url: URL, cachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy) {
-        // Cancel an older identity lookup before a new address starts loading.
-        // The main-frame navigation policy resolves a first compatible-site identity.
-        userAgentPolicy?.applyKnownIdentity(for: url)
         let wasBlankTab = !hasWebContent && self.url == nil
         let hadPlaceholderTitle = ["New Tab", "新标签页", "新標籤頁", L10n.string("New Tab")].contains(title)
         hasLoaded = true
@@ -956,18 +949,7 @@ extension BrowserTab: WKNavigationDelegate {
             return
         }
         let policy: WKNavigationActionPolicy = navigationAction.shouldPerformDownload ? .download : .allow
-        guard navigationAction.targetFrame?.isMainFrame == true, let userAgentPolicy else {
-            decisionHandler(policy)
-            return
-        }
-        userAgentPolicy.prepare(for: url) { ready in decisionHandler(ready ? policy : .cancel) }
-    }
-
-    func webView(_ webView: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!) {
-        guard webView === self.webView else { return }
-        // A redirect can cross identity profiles without a new action callback.
-        // Apply the destination profile before committing its document.
-        userAgentPolicy?.applyKnownIdentity(for: webView.url)
+        decisionHandler(policy)
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void) {
@@ -979,9 +961,7 @@ extension BrowserTab: WKNavigationDelegate {
         let isAttachment = disposition.split(separator: ";", maxSplits: 1).first?
             .trimmingCharacters(in: .whitespacesAndNewlines) == "attachment"
         let policy: WKNavigationResponsePolicy = isAttachment || !navigationResponse.canShowMIMEType ? .download : .allow
-        guard navigationResponse.isForMainFrame, let url = navigationResponse.response.url,
-              let userAgentPolicy else { decisionHandler(policy); return }
-        userAgentPolicy.prepare(for: url) { ready in decisionHandler(ready ? policy : .cancel) }
+        decisionHandler(policy)
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {

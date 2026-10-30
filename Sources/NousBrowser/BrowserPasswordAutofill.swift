@@ -266,6 +266,8 @@ enum BrowserPasswordAutofill {
             let entry = null;
             let lastSent = '';
             let scheduled = false;
+            const passwordInputs = new Set();
+            let discoveryDirty = true;
 
             function secureDocument() {
                 if (window !== window.top) return false;
@@ -325,7 +327,14 @@ enum BrowserPasswordAutofill {
                 return a && b && a.form === b.form && a.passwordInput === b.passwordInput && a.usernameInput === b.usernameInput && a.shape === b.shape;
             }
             function candidate() {
-                const forms = [...document.forms].slice(0, 100);
+                if (discoveryDirty) {
+                    passwordInputs.clear();
+                    discoverPasswords(document);
+                    discoveryDirty = false;
+                }
+                if (!passwordInputs.size) { entry = null; return null; }
+                const passwordForms = new Set([...passwordInputs].map(input => input.form).filter(Boolean));
+                const forms = [...document.forms].slice(0, 100).filter(form => passwordForms.has(form));
                 let found = null;
                 for (const form of forms) { found = analyze(form); if (found) break; }
                 if (!found) { entry = null; return null; }
@@ -336,6 +345,10 @@ enum BrowserPasswordAutofill {
             }
             function report() {
                 scheduled = false;
+                // Background document editors can keep mutating their DOM.
+                // Metadata is only useful while the page is visible; the next
+                // visibility event refreshes the index before detecting forms.
+                if (document.visibilityState !== 'visible') return;
                 const current = candidate();
                 const fieldTypes = current ? (current.analysis.usernameInput ? [current.analysis.usernameInput.type, 'password'] : ['password']) : [];
                 const payload = { token: current ? current.token : '', frameURL: location.href, fieldTypes };
@@ -345,9 +358,32 @@ enum BrowserPasswordAutofill {
                 try { window.webkit.messageHandlers.nousPasswordCandidate.postMessage(payload); } catch (_) {}
             }
             function schedule() {
-                if (scheduled) return;
+                if (scheduled || document.visibilityState !== 'visible') return;
                 scheduled = true;
                 setTimeout(report, 60);
+            }
+            function discoverPasswords(root) {
+                if (root instanceof HTMLInputElement && root.type === 'password') passwordInputs.add(root);
+                if (!(root instanceof Element || root instanceof Document)) return;
+                for (const input of root.querySelectorAll('input[type="password" i]')) passwordInputs.add(input);
+            }
+            function observeChanges(records) {
+                if (document.visibilityState !== 'visible') { discoveryDirty = true; return; }
+                for (const record of records) {
+                    if (record.type === 'childList') {
+                        for (const node of record.addedNodes) discoverPasswords(node);
+                    } else if (record.type === 'attributes' && record.target instanceof HTMLInputElement && record.attributeName === 'type') {
+                        if (record.target.type === 'password') passwordInputs.add(record.target);
+                        else passwordInputs.delete(record.target);
+                    }
+                }
+                for (const input of passwordInputs) {
+                    if (!input.isConnected || input.ownerDocument !== document) passwordInputs.delete(input);
+                }
+                // Text edits, canvas selections and layout/class changes on a
+                // page without password fields cannot produce a login form.
+                // New fields and text -> password changes are indexed above.
+                if (passwordInputs.size || entry) schedule();
             }
             function currentEntry(expectedOrigin, token) {
                 if (document.visibilityState !== 'visible' || !secureDocument() || location.origin !== expectedOrigin || !entry || entry.used || entry.token !== token || entry.frameURL !== location.href) return null;
@@ -380,11 +416,12 @@ enum BrowserPasswordAutofill {
                 lastSent = '';
                 report();
             }
+            if (!secureDocument()) return;
             Object.defineProperty(globalThis, '__nousBrowserPasswordAutofill', { value: Object.freeze({ fill, refreshCandidate }), configurable: false, writable: false });
-            const observer = new MutationObserver(schedule);
+            const observer = new MutationObserver(observeChanges);
             function start() {
                 observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true,
-                    attributeFilter: ['type', 'autocomplete', 'hidden', 'style', 'class', 'disabled', 'readonly', 'action', 'target', 'formaction', 'formtarget', 'inert', 'aria-hidden'] });
+                    attributeFilter: ['type', 'autocomplete', 'hidden', 'style', 'class', 'disabled', 'readonly', 'action', 'target', 'formaction', 'formtarget', 'inert', 'aria-hidden', 'form', 'id', 'name', 'aria-label', 'value'] });
                 schedule();
             }
             if (document.documentElement) start(); else document.addEventListener('DOMContentLoaded', start, { once: true });
@@ -395,6 +432,10 @@ enum BrowserPasswordAutofill {
             window.addEventListener('hashchange', schedule);
             window.addEventListener('popstate', schedule);
             window.addEventListener('pageshow', refreshCandidate);
+            document.addEventListener('visibilitychange', () => {
+                discoveryDirty = true;
+                schedule();
+            });
         })();
         """#
     }

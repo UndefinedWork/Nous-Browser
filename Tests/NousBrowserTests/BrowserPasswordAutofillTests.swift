@@ -7,6 +7,89 @@ import WebKit
 
 @Suite("Password autofill boundaries", .serialized)
 struct BrowserPasswordAutofillTests {
+    @Test(.enabled(if: PasswordAutofillTestEnvironment.isHosted, "Requires the AppKit integration host"))
+    @MainActor func editingWithoutLoginFieldsDoesNotRescanForms() async throws {
+        let fixture = try await AutofillFixture(measureDetectionWork: true)
+        defer { fixture.close() }
+        try await fixture.load("/editor")
+        try await Task.sleep(for: .milliseconds(200))
+        try await fixture.resetDetectionWork()
+        _ = try await fixture.webView.callAsyncJavaScript(#"""
+        const editor = document.getElementById('editor');
+        for (let index = 0; index < 12; index++) {
+            editor.firstChild.nodeValue = 'Editing slide ' + index;
+            editor.className = 'selection-' + index;
+            editor.style.transform = `translateX(${index % 2}px)`;
+            const selection = document.createElement('span');
+            selection.textContent = 'selection';
+            editor.append(selection);
+            selection.remove();
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        return true;
+        """#, arguments: [:], in: nil, contentWorld: .page)
+        let work = try await fixture.detectionWork()
+        print("[Autofill editor mutations] \(work)")
+        #expect(work["formCollections"] == 0)
+        #expect(work["formElements"] == 0)
+        #expect(work["geometryReads"] == 0)
+        #expect(fixture.candidate == nil)
+    }
+
+    @Test(.enabled(if: PasswordAutofillTestEnvironment.isHosted, "Requires the AppKit integration host"))
+    @MainActor func dynamicPasswordFieldsAndRemovedFormsRefreshCandidates() async throws {
+        let fixture = try await AutofillFixture()
+        defer { fixture.close() }
+        try await fixture.load("/editor")
+        _ = try await fixture.webView.evaluateJavaScript(#"""
+        document.body.innerHTML = '<form id="login" action="/session"><input id="username" type="email" autocomplete="username"><input id="password" type="text" autocomplete="current-password"><button>Sign in</button></form>';
+        true;
+        """#)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(fixture.candidate == nil)
+        _ = try await fixture.webView.evaluateJavaScript("document.getElementById('password').type='password'; true")
+        let original = try await fixture.waitForCandidate()
+        #expect(original.fieldTypes == ["email", "password"])
+        _ = try await fixture.webView.evaluateJavaScript("window.removedLogin = document.getElementById('login'); removedLogin.remove(); true")
+        try await fixture.waitForNoCandidate()
+        _ = try await fixture.webView.evaluateJavaScript("document.body.append(removedLogin); true")
+        let restored = try await fixture.waitForCandidate()
+        #expect(restored.token != original.token)
+    }
+
+    @Test(.enabled(if: PasswordAutofillTestEnvironment.isHosted, "Requires the AppKit integration host"))
+    @MainActor func backgroundMutationsDeferDetectionUntilVisible() async throws {
+        let fixture = try await AutofillFixture(measureDetectionWork: true)
+        defer { fixture.close() }
+        try await fixture.load("/login")
+        _ = try await fixture.waitForCandidate()
+        fixture.webView.isHidden = true
+        try await fixture.waitForVisibility("hidden")
+        try await fixture.resetDetectionWork()
+        _ = try await fixture.webView.callAsyncJavaScript(#"""
+        for (let index = 0; index < 6; index++) {
+            document.getElementById('login').className = 'state-' + index;
+            document.querySelector('button').textContent = 'Sign in ' + index;
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        document.getElementById('login').outerHTML = '<form id="login" action="/session"><input id="replacement" type="password" autocomplete="current-password"><button>Sign in</button></form>';
+        return true;
+        """#, arguments: [:], in: nil, contentWorld: .page)
+        let work = try await fixture.detectionWork()
+        print("[Autofill hidden mutations] \(work)")
+        #expect(work["formCollections"] == 0)
+        #expect(work["formElements"] == 0)
+        #expect(work["geometryReads"] == 0)
+        fixture.candidate = nil
+        fixture.webView.isHidden = false
+        try await fixture.waitForVisibility("visible")
+        let candidate = try await fixture.waitForCandidate()
+        #expect(candidate.fieldTypes == ["password"])
+        _ = try await BrowserPasswordAutofill.fill(.init(username: "", password: "synthetic-only"), in: fixture.webView,
+                                                 expectedOrigin: candidate.origin, token: candidate.token)
+        #expect(try await fixture.webView.evaluateJavaScript("document.getElementById('replacement').value") as? String == "synthetic-only")
+    }
+
     @Test @MainActor func originsAreExactHTTPSOrigins() throws {
         let first = try #require(BrowserPasswordAutofill.Origin(url: URL(string: "https://example.test/login")!))
         #expect(first == BrowserPasswordAutofill.Origin(url: URL(string: "https://example.test:443/other")!))
@@ -103,7 +186,8 @@ struct BrowserPasswordAutofillTests {
         #expect(password as? String == "")
     }
 
-    @Test @MainActor func restoredDocumentAndNativeRefreshReportFreshMetadata() async throws {
+    @Test(.enabled(if: PasswordAutofillTestEnvironment.isHosted, "Requires the AppKit integration host"))
+    @MainActor func restoredDocumentAndNativeRefreshReportFreshMetadata() async throws {
         let fixture = try await AutofillFixture()
         defer { fixture.close() }
         try await fixture.load("/login")
@@ -156,7 +240,8 @@ struct BrowserPasswordAutofillTests {
         #expect(visiblePassword as? String == values.password)
     }
 
-    @Test @MainActor func sharedPopupControllerKeepsBothAttachmentsWorking() async throws {
+    @Test(.enabled(if: PasswordAutofillTestEnvironment.isHosted, "Requires the AppKit integration host"))
+    @MainActor func sharedPopupControllerKeepsBothAttachmentsWorking() async throws {
         let controller = WKUserContentController()
         let first = try await AutofillFixture(controller: controller)
         let second = try await AutofillFixture(controller: controller)
@@ -185,12 +270,32 @@ private final class AutofillFixture {
     var attachment: BrowserPasswordAutofill.Attachment?
     var candidate: BrowserPasswordAutofill.Candidate?
 
-    init(allowTestHTTP: Bool = true, controller: WKUserContentController? = nil) async throws {
+    init(allowTestHTTP: Bool = true, controller: WKUserContentController? = nil, measureDetectionWork: Bool = false) async throws {
         let application = NSApplication.shared
         server = try await AutofillFixtureServer()
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         if let controller { configuration.userContentController = controller }
+        if measureDetectionWork {
+            configuration.userContentController.addUserScript(WKUserScript(source: #"""
+            globalThis.fixtureDetectionWork = {formCollections:0, formElements:0, geometryReads:0};
+            function countGetter(prototype, property, counter) {
+                const original = Object.getOwnPropertyDescriptor(prototype, property);
+                Object.defineProperty(prototype, property, {...original, get() {
+                    fixtureDetectionWork[counter]++;
+                    return original.get.call(this);
+                }});
+            }
+            countGetter(Document.prototype, 'forms', 'formCollections');
+            countGetter(HTMLFormElement.prototype, 'elements', 'formElements');
+            const originalRect = Element.prototype.getBoundingClientRect;
+            Element.prototype.getBoundingClientRect = function() {
+                fixtureDetectionWork.geometryReads++;
+                return originalRect.call(this);
+            };
+            """#, injectionTime: .atDocumentStart, forMainFrameOnly: true,
+            in: .world(name: "NousBrowserPasswordAutofill")))
+        }
         BrowserPasswordAutofill.install(configuration: configuration, allowLoopbackHTTPForTesting: allowTestHTTP)
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 640, height: 480), configuration: configuration)
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 480), styleMask: [.titled], backing: .buffered, defer: false)
@@ -228,6 +333,14 @@ private final class AutofillFixture {
         throw FixtureFailure.timeout("candidate on \(webView.url?.path ?? "no document"), loading=\(webView.isLoading), attachment=\(attachment?.candidate != nil)")
     }
 
+    func waitForNoCandidate() async throws {
+        for _ in 0..<100 {
+            if candidate == nil { return }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        throw FixtureFailure.timeout("candidate invalidation")
+    }
+
     func waitForVisibility(_ expected: String) async throws {
         for _ in 0..<100 {
             let state = try await webView.evaluateJavaScript("document.visibilityState")
@@ -236,6 +349,16 @@ private final class AutofillFixture {
         }
         print("[AutofillFixture] visibilityTimeout expected=\(expected) windowVisible=\(window.isVisible) occlusion=\(window.occlusionState.rawValue) webViewHidden=\(webView.isHidden) appRunning=\(NSApp.isRunning) appActive=\(NSApp.isActive) appHidden=\(NSApp.isHidden) policy=\(NSApp.activationPolicy().rawValue)")
         throw FixtureFailure.timeout("visibility \(expected)")
+    }
+
+    func resetDetectionWork() async throws {
+        _ = try await webView.evaluateJavaScript("Object.keys(fixtureDetectionWork).forEach(key => fixtureDetectionWork[key] = 0); true",
+                                                 in: nil, contentWorld: .world(name: "NousBrowserPasswordAutofill"))
+    }
+
+    func detectionWork() async throws -> [String: Int] {
+        try #require(try await webView.evaluateJavaScript("fixtureDetectionWork", in: nil,
+                                                         contentWorld: .world(name: "NousBrowserPasswordAutofill")) as? [String: Int])
     }
 
     func close() {
@@ -313,6 +436,7 @@ private final class AutofillFixtureServer {
             if self.path == '/cross-action': form = form.replace('action="/session"', 'action="https://unrelated.invalid/session"')
             if self.path == '/iframe': form = '<iframe src="/inner" width="600" height="400"></iframe>'
             if self.path == '/covered': form += '<div style="position:fixed;inset:0;background:white;z-index:99">Covered</div>'
+            if self.path == '/editor': form = '<div id="editor" contenteditable="true">Slide text</div>' + ''.join('<form><input type="text" aria-label="Property"></form>' for _ in range(60))
             script = '''window.fixtureEvents={input:0,change:0,submit:0};
             for(const type of ['input','change','submit'])document.addEventListener(type,e=>{window.fixtureEvents[type]++;if(type==='submit')e.preventDefault();});'''
             if self.path == '/mutate-on-username': script += "document.getElementById('username').addEventListener('input',()=>document.getElementById('login').action='https://unrelated.invalid/session');"

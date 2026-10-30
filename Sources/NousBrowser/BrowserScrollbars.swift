@@ -63,15 +63,68 @@ enum BrowserScrollbars {
         }
 
         function inspectElement(element) {
-            if (element.shadowRoot && element.shadowRoot.mode === 'open') {
-                observeRoot(element.shadowRoot);
+            const shadow = element.shadowRoot;
+            if (shadow && shadow.mode === 'open') observeRoot(shadow);
+        }
+
+        const pendingTrees = new Set();
+        let discoveryScheduled = false;
+        let traversal = null;
+
+        function scheduleDiscovery() {
+            if (discoveryScheduled) return;
+            discoveryScheduled = true;
+            // Editing frameworks can move the same large subtree repeatedly
+            // across mutation callbacks. Coalesce those moves before walking
+            // it, and yield between bounded chunks rather than blocking input.
+            if (typeof requestIdleCallback === 'function') {
+                requestIdleCallback(discoverPending, { timeout: 120 });
+            } else {
+                setTimeout(discoverPending, 16);
             }
         }
 
-        function discoverTree(node) {
-            if (node.nodeType === Node.ELEMENT_NODE) inspectElement(node);
-            if (!node.querySelectorAll) return;
-            for (const element of node.querySelectorAll('*')) inspectElement(element);
+        function enqueueTree(node) {
+            pendingTrees.add(node);
+            scheduleDiscovery();
+        }
+
+        function prunePendingTrees() {
+            for (const node of pendingTrees) {
+                if (!node.isConnected) { pendingTrees.delete(node); continue; }
+                // Include Document/ShadowRoot ancestors here; TreeWalker never
+                // crosses a shadow boundary, so each shadow is queued itself.
+                let parent = node.parentNode;
+                while (parent && !pendingTrees.has(parent)) parent = parent.parentNode;
+                if (parent) pendingTrees.delete(node);
+            }
+        }
+
+        function nextTraversal() {
+            for (const node of pendingTrees) {
+                pendingTrees.delete(node);
+                if (!node.isConnected) continue;
+                const walker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT);
+                return { walker, next: node.nodeType === Node.ELEMENT_NODE ? node : walker.nextNode() };
+            }
+            return null;
+        }
+
+        function discoverPending() {
+            discoveryScheduled = false;
+            const started = performance.now();
+            prunePendingTrees();
+            let budget = 256;
+            while (budget > 0 && performance.now() - started < 3) {
+                if (!traversal) traversal = nextTraversal();
+                if (!traversal) break;
+                const node = traversal.next;
+                if (!node) { traversal = null; continue; }
+                traversal.next = traversal.walker.nextNode();
+                if (node.isConnected) inspectElement(node);
+                budget--;
+            }
+            if (traversal || pendingTrees.size) scheduleDiscovery();
         }
 
         function observeRoot(root) {
@@ -84,31 +137,19 @@ enum BrowserScrollbars {
             roots.set(root, state);
             state.observer = new MutationObserver(records => {
                 ensurePolicy(root, state);
-                const added = new Set();
                 for (const record of records) {
                     for (const node of record.addedNodes) {
-                        if (node.nodeType === Node.ELEMENT_NODE && node.id !== marker) added.add(node);
+                        if (node.nodeType === Node.ELEMENT_NODE && node.id !== marker) pendingTrees.add(node);
                     }
                 }
-                // A parser/framework batch may report both a parent and child.
-                // Traverse each newly added subtree only once.
-                for (const node of added) {
-                    let parent = node.parentElement;
-                    let covered = false;
-                    while (parent) {
-                        if (added.has(parent)) { covered = true; break; }
-                        parent = parent.parentElement;
-                    }
-                    if (!covered && node.isConnected) discoverTree(node);
-                }
+                if (pendingTrees.size) scheduleDiscovery();
             });
             state.observer.observe(root, { childList: true, subtree: true });
             ensurePolicy(root, state);
-            discoverTree(root);
+            enqueueTree(root);
         }
 
         observeRoot(document);
-        document.addEventListener('DOMContentLoaded', () => discoverTree(document), { once: true });
 
         // Attaching a shadow root to an already connected host doesn't emit a
         // document mutation. Discover those roots at first interaction through

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Shared by the navigation identity and the isolated IME guard. Keep this
+/// Scope for the isolated IME guard; browser identity is uniform for all sites. Keep this
 /// exact-host list aligned with Slides' published SLIDES_HOSTS configuration,
 /// including regional redirects; never match every Zoom product or arbitrary
 /// hosts containing "slides". Source: https://dg01slides.zoom.us/ (2026-10-28).

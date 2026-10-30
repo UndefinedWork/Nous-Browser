@@ -222,10 +222,9 @@ struct BrowserTextInputCompatibilityTests {
         }
     }
 
-    @Test func everyPublishedSlidesHostEnablesBothIdentityAndIMEGuard() async throws {
+    @Test func everyPublishedSlidesHostEnablesIMEGuard() async throws {
         for host in ZoomSlidesCompatibility.hosts {
             let address = "https://\(host)/p/fixture"
-            #expect(BrowserUserAgent.needsZoomSlidesCompatibility(URL(string: address)))
             let view = try await makeView(address: address)
             defer { view.stopLoading() }
             let result = try await evaluate(view, """
