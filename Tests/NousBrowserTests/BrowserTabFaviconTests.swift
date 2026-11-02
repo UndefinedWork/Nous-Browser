@@ -7,6 +7,30 @@ import WebKit
 @Suite("Live tab document icons", .serialized)
 @MainActor
 struct BrowserTabFaviconTests {
+    @Test func titleIconChangesKeepTheDeclaredFaviconAvailableAsFallback() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = BrowserModel(sessionURL: directory.appendingPathComponent("session.json"), restoreSession: false, startWithBlankTab: true)
+        defer { model.shutdown(); try? FileManager.default.removeItem(at: directory) }
+        let tab = try #require(model.selectedTab)
+        let base = URL(string: "http://127.0.0.1:9/" + UUID().uuidString)!
+        tab.url = base
+        tab.webView.loadHTMLString("<html><head><title>⭐ Planning</title><link id='icon' rel='icon' href='\(icon("red"))'></head><body>Document</body></html>", baseURL: base)
+        try await wait { isColor(tab.favicon, red: true) && tab.pageTitle.icon == "⭐" }
+        #expect(tab.pageTitle.title == "Planning")
+        #expect(tab.webView.title == "⭐ Planning")
+
+        try await tab.webView.evaluateJavaScript("document.title='👩🏽‍💻 Engineering'; document.getElementById('icon').href='\(icon("blue"))'")
+        try await wait { tab.pageTitle.icon == "👩🏽‍💻" && isColor(tab.favicon, red: false) }
+        #expect(tab.pageTitle.title == "Engineering")
+        #expect(tab.title == "👩🏽‍💻 Engineering")
+
+        try await tab.webView.evaluateJavaScript("document.title='Engineering'")
+        try await wait { tab.title == "Engineering" }
+        #expect(tab.pageTitle.icon == nil)
+        #expect(isColor(tab.favicon, red: false))
+        #expect(isColor(FaviconStore.shared.cachedImage(for: base), red: false))
+    }
+
     @Test func updatesAfterLoadAndKeepsOtherDocumentsDistinct() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = BrowserModel(sessionURL: directory.appendingPathComponent("session.json"), restoreSession: false, startWithBlankTab: true)

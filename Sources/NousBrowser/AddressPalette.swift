@@ -86,8 +86,9 @@ struct AddressPalette: View {
     private func suggestionRow(_ suggestion: BrowserAddressSuggestion, selected: Bool) -> some View {
         let isOpenTab: Bool = if case .openTab = suggestion { true } else { false }
         let preferredIcon: NSImage? = if case .openTab(let tab) = suggestion { tab.favicon } else { nil }
+        let pageTitle = BrowserPageTitle(suggestion.title)
         return paletteRow(symbol: "globe", iconURL: suggestion.url, preferredIcon: preferredIcon,
-                          title: suggestion.title,
+                          titleIcon: pageTitle.icon, title: pageTitle.title,
                           subtitle: isOpenTab ? L10n.string("Switch to Open Tab") : suggestion.url.absoluteString,
                           selected: selected) { controller.activateSuggestion(suggestion) }
     }
@@ -109,11 +110,12 @@ struct AddressPalette: View {
         .help(link.url.absoluteString)
     }
 
-    private func paletteRow(symbol: String, iconURL: URL? = nil, preferredIcon: NSImage? = nil, title: String, subtitle: String, selected: Bool, action: @escaping () -> Void) -> some View {
+    private func paletteRow(symbol: String, iconURL: URL? = nil, preferredIcon: NSImage? = nil, titleIcon: String? = nil, title: String, subtitle: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Group {
-                    if let iconURL { QuickLinkIcon(url: iconURL, preferredImage: preferredIcon) }
+                    if let titleIcon { Text(verbatim: titleIcon).font(.system(size: 22)).fixedSize() }
+                    else if let iconURL { QuickLinkIcon(url: iconURL, preferredImage: preferredIcon) }
                     else { Image(systemName: symbol).font(.system(size: 15)) }
                 }.frame(width: 26, height: 24)
                 VStack(alignment: .leading, spacing: 3) {

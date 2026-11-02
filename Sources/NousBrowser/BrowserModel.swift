@@ -550,6 +550,8 @@ final class BrowserTab: NSObject, Identifiable {
         !hasWebContent && url == nil ? L10n.string("New Tab") : title
     }
 
+    var pageTitle: BrowserPageTitle { BrowserPageTitle(displayTitle) }
+
     init(id: UUID = UUID(), title: String? = nil, url: URL? = nil, isPinned: Bool = false, owner: BrowserModel?, configuration: WKWebViewConfiguration? = nil) {
         self.id = id
         self.isPinned = isPinned

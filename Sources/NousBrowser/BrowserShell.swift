@@ -825,7 +825,7 @@ private struct BrowserTabRow: View {
             HStack(spacing: 7) {
                 SidebarTabFavicon(tab: tab)
                 if !isCompact {
-                Text(tab.displayTitle)
+                Text(tab.pageTitle.title)
                     .font(.system(size: 12, weight: .regular))
                     .lineLimit(1)
                     .truncationMode(.tail)

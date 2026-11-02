@@ -155,7 +155,11 @@ struct SidebarTabFavicon: View {
 
     var body: some View {
         Group {
-            if let favicon = tab.favicon {
+            if let icon = tab.pageTitle.icon {
+                Text(verbatim: icon)
+                    .font(.system(size: 12))
+                    .fixedSize()
+            } else if let favicon = tab.favicon {
                 Image(nsImage: favicon)
                     .renderingMode(.original)
                     .resizable()
@@ -183,7 +187,7 @@ struct SidebarFloatingTab: View {
         HStack(spacing: isCompact ? 0 : 7) {
             SidebarTabFavicon(tab: tab)
             if !isCompact {
-                Text(tab.displayTitle)
+                Text(tab.pageTitle.title)
                     .font(.system(size: 12, weight: .regular))
                     .lineLimit(1)
                     .truncationMode(.tail)
