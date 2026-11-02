@@ -1,0 +1,43 @@
+Sources/NousBrowser/BrowserShell.swift
+  s_3d6e78ea1e9f59::t_e848c8e4616486 828
+Sources/NousBrowser/BrowserModel.swift
+  s_3d6e78ea1e9f59::t_e848c8e4616486 553-554
+Resources/Info.plist
+  s_3d6e78ea1e9f59::t_58c4f9c74d4509 65,81
+Sources/NousBrowser/BrowserPageTitle.swift
+  s_3d6e78ea1e9f59::t_8a913296881e0e 34-37
+  s_3d6e78ea1e9f59::t_ed567fd78c8b65 38-41
+  s_3d6e78ea1e9f59::t_e848c8e4616486 1-33,42-46
+Sources/NousBrowser/AddressPalette.swift
+  s_3d6e78ea1e9f59::t_e848c8e4616486 89,91,113,118
+  s_3d6e78ea1e9f59::t_fc84cdcfdca1c5 117
+Docs/QA-Page-Title-Icons-1.1.13.md
+  s_3d6e78ea1e9f59::t_7ed2ba735635d9 37
+  s_3d6e78ea1e9f59::t_b2dd36c88be969 1-17,19-28,38-39
+  s_3d6e78ea1e9f59::t_548e4df9bdb7b1 18,29-36
+Sources/NousBrowser/SidebarTabDragging.swift
+  s_3d6e78ea1e9f59::t_fc84cdcfdca1c5 161
+  s_3d6e78ea1e9f59::t_e848c8e4616486 158-160,162,190
+Tests/NousBrowserTests/BrowserPageTitleTests.swift
+  s_3d6e78ea1e9f59::t_ed567fd78c8b65 45-46
+  s_3d6e78ea1e9f59::t_4032c1ebe6883b 3
+  s_3d6e78ea1e9f59::t_016c21cfece900 1-2,4-44,47-111
+Tests/NousBrowserTests/BrowserTabFaviconTests.swift
+  s_3d6e78ea1e9f59::t_cdfaf42bb081fb 10-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "3d667bfcaeaec7f2fe51b5b5fde2e5af1793f7fa",
+  "prompts": {},
+  "sessions": {
+    "s_3d6e78ea1e9f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e60-0805-7260-a0e8-8186f275e05d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
