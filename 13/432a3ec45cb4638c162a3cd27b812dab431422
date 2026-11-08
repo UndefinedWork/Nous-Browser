@@ -1,0 +1,30 @@
+README.md
+  s_a868a580eb8a06::t_a904e56270e19e 38
+Docs/Chromium-Build.md
+  s_a868a580eb8a06::t_a904e56270e19e 3
+Resources/Info.plist
+  s_a868a580eb8a06::t_a904e56270e19e 65,81
+Sources/NousBrowser/BrowserModel.swift
+  s_a868a580eb8a06::t_1541e3c3bc6dc9 61-71,292-298,640-642,727-730,737-738,1177-1179
+Docs/releases/1.4.6.md
+  s_a868a580eb8a06::t_a904e56270e19e 1-9
+Tests/NousBrowserTests/PinnedGroupExpansionTests.swift
+  s_a868a580eb8a06::t_226c4e6ec951c1 1-23,26-48
+  s_a868a580eb8a06::t_4c17068c0cd575 24-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "13432a3ec45cb4638c162a3cd27b812dab431422",
+  "prompts": {},
+  "sessions": {
+    "s_a868a580eb8a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1919a1c-2b86-4a7e-9b4f-767da074be83",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
