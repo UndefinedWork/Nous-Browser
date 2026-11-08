@@ -1,0 +1,85 @@
+Sources/NousBrowser/NousBrowserApp.swift
+  s_a868a580eb8a06::t_50b820bdaa27be 50-53
+README.md
+  s_a868a580eb8a06::t_bb9383c039cb17 38
+Resources/Localization/source.json
+  s_a868a580eb8a06::t_03934d463fdc24 391-392
+Resources/Localization/ko.lproj/Localizable.strings
+  s_a868a580eb8a06::t_54aca7c355dd9f 435
+Resources/Localization/ja.lproj/Localizable.strings
+  s_a868a580eb8a06::t_54aca7c355dd9f 435
+Sources/NousBrowser/Capture/ScreenshotEditor.swift
+  s_a868a580eb8a06::t_c9a38b9dfcdc6d 647,656-657,660-668,670-679,725-728
+Resources/Info.plist
+  s_a868a580eb8a06::t_bb9383c039cb17 65,81
+Resources/Localization/it.lproj/Localizable.strings
+  s_a868a580eb8a06::t_54aca7c355dd9f 434
+Sources/NousBrowser/BrowserShell.swift
+  s_a868a580eb8a06::t_82595a660ca18c 308,318-320
+Tests/NousBrowserTests/BrowserWindowManagerTests.swift
+  s_a868a580eb8a06::t_f9290a0abcc401 459-480
+Resources/Localization/fr.lproj/Localizable.strings
+  s_a868a580eb8a06::t_54aca7c355dd9f 434
+Resources/Localization/pt-BR.lproj/Localizable.strings
+  s_a868a580eb8a06::t_54aca7c355dd9f 434
+Resources/Localization/es.lproj/Localizable.strings
+  s_a868a580eb8a06::t_54aca7c355dd9f 434
+Sources/NousBrowser/ChromiumCloseTransaction.swift
+  s_a868a580eb8a06::t_55b356c234194d 41,50-53,61-64,69-72,80-83
+Engine/patches/apply_chromium_patches.py
+  s_a868a580eb8a06::t_a216ee03d86769 281-292
+Sources/NousBrowser/SpaceSidebar.swift
+  s_a868a580eb8a06::t_82595a660ca18c 137,152-154,731,741-743,872,895-897,1231,1240-1242
+  s_a868a580eb8a06::t_92f2175faf14d8 58-67,202-208,210,258,359,557-558,569-574,603-609
+  s_a868a580eb8a06::t_91f8f854d9643a 678-679
+  s_a868a580eb8a06::t_904390e98b8980 526-541
+  s_a868a580eb8a06::t_d3e0f30f09a89f 875
+Resources/Localization/zh-Hans.lproj/Localizable.strings
+  s_a868a580eb8a06::t_54aca7c355dd9f 435
+Resources/Localization/zh-Hant.lproj/Localizable.strings
+  s_a868a580eb8a06::t_54aca7c355dd9f 435
+Docs/releases/1.4.2.md
+  s_a868a580eb8a06::t_18e37ad19ec11f 12,23
+  s_a868a580eb8a06::t_64fd8335b58bd0 1-11,13-22
+Sources/NousBrowser/LibraryView.swift
+  s_a868a580eb8a06::t_82595a660ca18c 261,272-274,393,401-403,511,521-523,617,623-625
+Sources/NousBrowser/BrowserModel.swift
+  s_a868a580eb8a06::t_0752fcd47c41d2 911
+  s_a868a580eb8a06::t_fb55fa4b686313 879,882-883,895-899,901-904,1268-1272
+  s_a868a580eb8a06::t_0563979eb3dbcc 887
+  s_a868a580eb8a06::t_0355de5360d431 880,892-894,900,905
+  s_a868a580eb8a06::t_0cbfa69d287291 1273
+Sources/NousBrowser/BrowserWindowManager.swift
+  s_a868a580eb8a06::t_e9fdf9caa43a61 337-344,377-385
+  s_a868a580eb8a06::t_91326ccb57061a 386-387
+Resources/Localization/de.lproj/Localizable.strings
+  s_a868a580eb8a06::t_54aca7c355dd9f 434
+Scripts/build-chromium.sh
+  s_a868a580eb8a06::t_3db64584c4c980 106-109
+Docs/Chromium-Build.md
+  s_a868a580eb8a06::t_bb9383c039cb17 3
+Resources/Localization/ru.lproj/Localizable.strings
+  s_a868a580eb8a06::t_54aca7c355dd9f 434
+Sources/NousBrowser/Capture/CanvasZoom.swift
+  s_a868a580eb8a06::t_d4eb2c29c6dd6e 1-95
+Resources/Localization/en.lproj/Localizable.strings
+  s_a868a580eb8a06::t_54aca7c355dd9f 435
+Sources/NousBrowser/Capture/RecordingEditor.swift
+  s_a868a580eb8a06::t_93dd6e9fec39cd 299,306-307,311-323,364-367
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "524e2256473cbd6bcae534160a75aba202529271",
+  "prompts": {},
+  "sessions": {
+    "s_a868a580eb8a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1919a1c-2b86-4a7e-9b4f-767da074be83",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
