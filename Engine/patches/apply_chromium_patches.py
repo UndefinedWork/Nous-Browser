@@ -278,4 +278,16 @@ edit('ui/native_theme/native_theme_mac.mm', '''  if (part == kScrollbarHorizonta
     }
     PaintMacScrollBarTrackOrCorner(''')
 
+# 13. One notification identity: Chrome shows alert-style notifications from a
+#     separate "Helper (Alerts)" app, which macOS lists as a second app in
+#     Notifications settings. Nous shows every notification from the app itself.
+edit('chrome/browser/notifications/mac/mac_notification_provider_factory.cc', '''    case mac_notifications::NotificationStyle::kAlert:
+      return LaunchOutOfProcessProvider();''', '''    case mac_notifications::NotificationStyle::kAlert:
+      if (nous::IsEmbedded()) {
+        return LaunchInProcessProvider();
+      }
+      return LaunchOutOfProcessProvider();''')
+include_after('chrome/browser/notifications/mac/mac_notification_provider_factory.cc',
+              '#include "chrome/browser/notifications/mac/mac_notification_provider_factory.h"\n', EMBEDDER)
+
 print('Nous Core Chromium patches are applied.')

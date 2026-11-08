@@ -55,6 +55,16 @@ struct SidebarDragState: Equatable {
     var size: CGSize
     var isOutside = false
     var hoveredGroup: UUID?
+    /// Where the item started; a tab row cannot be re-parented while its own
+    /// drag gesture is running (SwiftUI would end the gesture with the view).
+    var origin: SidebarDropTarget? = nil
+
+    /// The drop changes which group holds the tab: show an insertion mark
+    /// instead of moving the row.
+    var changesContainer: Bool {
+        guard case .tab = item, let origin else { return false }
+        return target.groupID != origin.groupID && target.section == origin.section
+    }
 }
 
 // MARK: - Sidebar
@@ -124,6 +134,7 @@ struct BrowserSidebar: View {
             .onAppear { visibleSpace = model.activeSpaceID }
         }
         .contextMenu {
+            Group {
             Button(L10n.string("New Tab"), systemImage: "plus", action: controller.newTab)
             Button(L10n.string("New Group"), systemImage: "folder.badge.plus") { newFolder() }
             Button(L10n.string("New Space"), systemImage: "square.stack.3d.up.badge.automatic") {
@@ -138,6 +149,9 @@ struct BrowserSidebar: View {
             Divider()
             Button(L10n.string("New Window"), systemImage: "macwindow.badge.plus", action: controller.newWindow)
             Button(L10n.string("Close Window"), systemImage: "xmark.rectangle", action: controller.closeWindow)
+            }
+            // macOS 27 hides menu icons unless asked for.
+            .labelStyle(.titleAndIcon)
         }
     }
 
@@ -185,8 +199,15 @@ struct BrowserSidebar: View {
     private func displayedLayout(for space: UUID) -> SpaceLayout {
         let layout = model.layout(for: space)
         guard let drag, drag.space == space, !drag.isOutside else { return layout }
-        // Dropping into a closed folder keeps the list still; the folder lights up instead.
+        return Self.displayed(layout, for: drag)
+    }
+
+    /// The list as drawn during a drag. Moving into or out of a group keeps the
+    /// row where it is (the group shows an insertion mark), and so does dropping
+    /// into a closed group (it lights up).
+    private static func displayed(_ layout: SpaceLayout, for drag: SidebarDragState) -> SpaceLayout {
         if let id = drag.target.groupID, layout.group(id)?.isExpanded == false { return layout }
+        if drag.changesContainer { return layout }
         return layout.moving(drag.item, to: drag.target)
     }
 
@@ -234,7 +255,7 @@ struct BrowserSidebar: View {
             guard let frame, let start = currentTarget(of: item, in: space) else { return }
             drag = SidebarDragState(item: item, space: space, pointer: value.location,
                                     grab: CGSize(width: value.startLocation.x - frame.minX, height: value.startLocation.y - frame.minY),
-                                    target: start, size: frame.size)
+                                    target: start, size: frame.size, origin: start)
             NSCursor.closedHand.set()
         }
         guard var state = drag else { return }
@@ -335,7 +356,7 @@ struct BrowserSidebar: View {
 
     /// Where the pointer would drop the item, from the rows as currently drawn.
     private func proposedTarget(for state: SidebarDragState, size: CGSize) -> (SidebarDropTarget?, UUID?) {
-        let layout = model.layout(for: state.space).moving(state.item, to: state.target)
+        let layout = Self.displayed(model.layout(for: state.space), for: state)
         let draggedID = state.item.id
         let pointer = state.pointer
         let pinZone = frames[.pinZone(state.space)]
@@ -502,10 +523,22 @@ private struct SpaceColumn: View {
 
     private var regularArea: some View {
         VStack(spacing: SidebarTabDragGeometry.rowSpacing) {
-            ForEach(layout.regular) { node in
-                switch node {
-                case .tab(let id): tabRow(id, in: nil)
-                case .group(let group): folder(group, section: .regular)
+            let insertion: Int? = if let drag, drag.space == space, drag.changesContainer,
+                                     drag.target.section == .regular, drag.target.groupID == nil { drag.target.index } else { nil }
+            ForEach(Array(layout.regular.enumerated()), id: \.element.id) { index, node in
+                Group {
+                    switch node {
+                    case .tab(let id): tabRow(id, in: nil)
+                    case .group(let group): folder(group, section: .regular)
+                    }
+                }
+                .overlay(alignment: .top) {
+                    if insertion == index { insertionMark.offset(y: -SidebarTabDragGeometry.rowSpacing / 2 - 1) }
+                }
+                .overlay(alignment: .bottom) {
+                    if insertion == layout.regular.count, index == layout.regular.count - 1 {
+                        insertionMark.offset(y: SidebarTabDragGeometry.rowSpacing / 2 + 1)
+                    }
                 }
             }
             // Room to drop below the last row.
@@ -521,6 +554,8 @@ private struct SpaceColumn: View {
         let isTarget = drag?.hoveredGroup == group.id && drag?.space == space
         let visible = group.isExpanded ? group.tabIDs : group.tabIDs.filter { $0 == model.selectedTabID }
         let contained = !visible.isEmpty || group.isExpanded && (group.tabIDs.isEmpty || isDraggingTab)
+        let insertion: Int? = if let drag, drag.space == space, drag.changesContainer, group.isExpanded,
+                                 drag.target.groupID == group.id { drag.target.index } else { nil }
         VStack(spacing: SidebarTabDragGeometry.rowSpacing) {
             FolderHeader(controller: controller, group: group, section: section, compact: compact,
                          isRenaming: Binding(get: { renamingGroup == group.id }, set: { if !$0 { renamingGroup = nil } }),
@@ -531,6 +566,12 @@ private struct SpaceColumn: View {
             ForEach(visible, id: \.self) { id in
                 tabRow(id, in: group)
                     .padding(.leading, compact ? 0 : SidebarMetrics.folderIndent)
+                    .overlay(alignment: .top) {
+                        if insertion == visible.firstIndex(of: id) { insertionMark.offset(y: -SidebarTabDragGeometry.rowSpacing / 2 - 1) }
+                    }
+                    .overlay(alignment: .bottom) {
+                        if insertion == visible.count, id == visible.last { insertionMark.offset(y: SidebarTabDragGeometry.rowSpacing / 2 + 1) }
+                    }
                     .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: -8)),
                                             removal: .opacity.combined(with: .scale(scale: 0.96, anchor: .top))))
             }
@@ -557,6 +598,13 @@ private struct SpaceColumn: View {
         .animation(reduceMotion ? nil : BrowserMotion.spring, value: contained)
         .padding(.vertical, contained ? 2 : 0)
         .opacity(dragged ? 0 : 1)
+    }
+
+    private var insertionMark: some View {
+        Capsule().fill(Color.accentColor).frame(height: 2)
+            .padding(.leading, compact ? 4 : SidebarMetrics.folderIndent + 6).padding(.trailing, 6)
+            .allowsHitTesting(false)
+            .transition(.opacity)
     }
 
     @ViewBuilder
@@ -627,7 +675,8 @@ struct TileGridLayout: Layout {
         if compact { return 1 }
         let spacing = SidebarMetrics.tileSpacing
         let fitting = max(1, Int((width + spacing) / (SidebarMetrics.tileHeight + spacing)))
-        return max(1, count <= 4 ? count : min(fitting, 6))
+        // Never more columns than pins, so a single row always spans the sidebar.
+        return max(1, count <= 4 ? count : min(count, fitting, 6))
     }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
@@ -679,6 +728,7 @@ private struct PinnedTile: View {
         .accessibilityValue(L10n.string("Pinned"))
         .accessibilityAddTraits(selected ? .isSelected : [])
         .contextMenu {
+            Group {
             Button(L10n.string("Copy Link"), systemImage: "link") { controller.copyURL(tab) }.disabled(tab.url == nil)
             Button(L10n.string("Duplicate Tab"), systemImage: "plus.square.on.square") { controller.model.duplicateTab(tab.id) }
             Button(L10n.string("Unpin Tab"), systemImage: "pin.slash") {
@@ -688,6 +738,9 @@ private struct PinnedTile: View {
             Divider()
             Button(L10n.string("Close Tab"), systemImage: "xmark") { controller.model.closeTab(tab.id) }
                 .disabled(!tab.hasWebContent)
+            }
+            // macOS 27 hides menu icons unless asked for.
+            .labelStyle(.titleAndIcon)
         }
     }
 
@@ -816,9 +869,10 @@ private struct FolderHeader: View {
         .accessibilityAction { toggle() }
         .accessibilityAction(named: L10n.string("Rename Group"), startRename)
         .contextMenu {
+            Group {
             Button(L10n.string("Rename Group"), systemImage: "pencil", action: startRename)
             Button(L10n.string("Change Icon…"), systemImage: "face.smiling") { choosingIcon = true }
-            Button(L10n.string(section == .pinned ? "Unpin Folder" : "Pin Folder"), systemImage: section == .pinned ? "pin.slash" : "pin") {
+            Button(L10n.string(section == .pinned ? "Unpin Group" : "Pin Group"), systemImage: section == .pinned ? "pin.slash" : "pin") {
                 withAnimation(BrowserMotion.spring) { model.toggleGroupPinned(group.id) }
             }
             Button(L10n.string("New Tab in Group"), systemImage: "plus") {
@@ -838,6 +892,9 @@ private struct FolderHeader: View {
             Button(L10n.string("Close Group"), systemImage: "xmark", role: .destructive) {
                 withAnimation(BrowserMotion.spring) { model.closeGroup(group.id) }
             }
+            }
+            // macOS 27 hides menu icons unless asked for.
+            .labelStyle(.titleAndIcon)
         }
     }
 
@@ -1171,6 +1228,7 @@ private struct SpaceDots: View {
                         SpaceEditor(controller: controller, space: space) { editingSpace = nil }
                     }
                     .contextMenu {
+                        Group {
                         Button(L10n.string("Edit Space…"), systemImage: "pencil") { editingSpace = space.id }
                         Button(L10n.string("New Space"), systemImage: "plus") {
                             withAnimation(BrowserMotion.spring) { model.newSpace() }
@@ -1179,6 +1237,9 @@ private struct SpaceDots: View {
                         Divider()
                         Button(L10n.string("Delete Space"), systemImage: "trash", role: .destructive) { confirmDelete(space) }
                             .disabled(model.spaces.count < 2)
+                        }
+                        // macOS 27 hides menu icons unless asked for.
+                        .labelStyle(.titleAndIcon)
                     }
                     .accessibilityElement()
                     .accessibilityLabel(space.name)

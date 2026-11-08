@@ -876,20 +876,39 @@ final class BrowserModel {
                     self.unpreparedCloseTabIDs.insert(tab.id); answer(true); return
                 }
                 var synchronous = true
+                let state = CloseAnswer()
+                let tabID = tab.id
                 tab.webView.prepareClose { [weak self, weak tab] accepted in
+                    guard !state.answered else { return }
+                    state.answered = true
                     if !accepted, synchronous, let self, let tab {
                         self.unpreparedCloseTabIDs.insert(tab.id); answer(true); return
                     }
+                    if !accepted { BrowserAppDelegate.trace("close: \(tab?.url?.host() ?? "?") declined (beforeunload)") }
                     if !accepted, let self, let tab, tab.isOwned(by: self) { self.selectTab(tab.id) }
                     answer(accepted)
                 }
                 synchronous = false
+                // A frozen or hung page never answers beforeunload, which left
+                // Quit doing nothing at all. While no "Leave site?" sheet is
+                // showing, a page gets 3 seconds before it is closed anyway.
+                guard !state.answered else { return }
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    while !state.answered, let window = self?.chromiumPresentationWindow, window.attachedSheet != nil {
+                        try? await Task.sleep(for: .seconds(1))
+                    }
+                    guard !state.answered, let self else { return }
+                    state.answered = true
+                    self.unpreparedCloseTabIDs.insert(tabID)
+                    answer(true)
+                }
             }, validate: { [weak self, weak tab] in
                 guard let self, let tab, tab.isOwned(by: self) else { return false }
                 return self.unpreparedCloseTabIDs.contains(tab.id) || tab.webView.validatePreparedClose()
             }, cancel: { [weak self, weak tab] in
                 guard let tab else { return }
-                if self?.unpreparedCloseTabIDs.contains(tab.id) == true { return }
+                self?.unpreparedCloseTabIDs.remove(tab.id)
                 tab.webView.cancelPreparedClose()
             },
             commit: { [weak self, weak tab] answer in
@@ -1245,4 +1264,10 @@ final class BrowserModel {
         persistSession()
         return tab.webView
     }
+}
+
+/// Whether a page already answered a close preparation (one answer only).
+@MainActor
+private final class CloseAnswer {
+    var answered = false
 }

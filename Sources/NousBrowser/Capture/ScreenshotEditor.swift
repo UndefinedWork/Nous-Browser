@@ -644,6 +644,7 @@ private struct ScreenshotEditor: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var focused: Bool
+    @State private var zoom: CGFloat = 1
 
     var body: some View {
         GeometryReader { geometry in
@@ -652,24 +653,30 @@ private struct ScreenshotEditor: View {
             let canvas = style.layout(content: content.size).canvas
             let inspectorWidth: CGFloat = model.showsInspector ? 252 : 0
             let available = CGSize(width: geometry.size.width - inspectorWidth - 64, height: geometry.size.height - 132)
-            let scale = max(0.05, min(available.width / max(canvas.width, 1), available.height / max(canvas.height, 1), 2 / max(1, model.unit)))
+            let fit = max(0.05, min(available.width / max(canvas.width, 1), available.height / max(canvas.height, 1), 2 / max(1, model.unit)))
+            let viewport = CGSize(width: geometry.size.width - inspectorWidth, height: geometry.size.height - 56)
             ZStack {
                 editorBackdrop
-                ScreenshotComposition(model: model, document: model.document, crop: model.tool == .crop ? nil : model.document.crop)
-                    .frame(width: canvas.width, height: canvas.height)
-                    .scaleEffect(scale)
-                    .frame(width: canvas.width * scale, height: canvas.height * scale)
-                    .background {
-                        if style.background.isNone {
-                            CheckerboardView().clipShape(RoundedRectangle(cornerRadius: 2))
+                ZoomableCanvas(canvas: canvas, fitScale: fit, zoom: $zoom, viewport: viewport) { scale in
+                    ScreenshotComposition(model: model, document: model.document, crop: model.tool == .crop ? nil : model.document.crop)
+                        .frame(width: canvas.width, height: canvas.height)
+                        .scaleEffect(scale)
+                        .frame(width: canvas.width * scale, height: canvas.height * scale)
+                        .background {
+                            if style.background.isNone {
+                                CheckerboardView().clipShape(RoundedRectangle(cornerRadius: 2))
+                            }
                         }
-                    }
-                    .shadow(color: .black.opacity(colorScheme == .dark ? 0.4 : 0.12), radius: 24, y: 8)
-                    .padding(.trailing, inspectorWidth)
-                    .padding(.top, 56)
-                    .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.document.style)
-                    .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.document.crop)
-                    .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.showsInspector)
+                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.4 : 0.12), radius: 24, y: 8)
+                }
+                .padding(.trailing, inspectorWidth)
+                .padding(.top, 56)
+                .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.document.style)
+                .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.document.crop)
+                .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.showsInspector)
+            }
+            .overlay(alignment: .bottomLeading) {
+                CanvasZoomControl(zoom: $zoom, scale: fit * zoom).padding(16)
             }
             .overlay(alignment: .top) { ScreenshotToolbar(model: model).padding(.top, 16) }
             .overlay(alignment: .topTrailing) {
@@ -715,6 +722,10 @@ private struct ScreenshotEditor: View {
         default: break
         }
         let character = press.characters.lowercased()
+        if command, let zoomed = CanvasZoom.zoom(for: character, current: zoom) {
+            withAnimation(reduceMotion ? nil : BrowserMotion.spring) { zoom = zoomed }
+            return .handled
+        }
         if command {
             switch character {
             case "z": shift ? model.redo() : model.undo(); return .handled

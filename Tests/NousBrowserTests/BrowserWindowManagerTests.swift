@@ -456,6 +456,28 @@ struct BrowserWindowManagerTests {
         #expect(manager.newWindow() != nil)
     }
 
+    @Test func quitReachesCommitWhenTwoWindowsShareAPin() async throws {
+        enum Stop: Error { case beforeCommit }
+        let fixture = try fixture()
+        defer { fixture.cleanUp() }
+        let manager = fixture.manager
+        manager.restoreWindows()
+        let first = try #require(manager.activeContext)
+        let pinned = try #require(first.controller.model.selectedTabID)
+        first.controller.model.togglePin(pinned)
+        let second = try #require(manager.newWindow())
+        #expect(second.controller.model.tabs.contains { $0.id == pinned })
+        var reachedCommit = false
+        var results: [Bool] = []
+        manager.requestTermination(beforeCommit: {
+            reachedCommit = true
+            throw Stop.beforeCommit
+        }) { results.append($0) }
+        try await waitForBrowserTest { !results.isEmpty }
+        // A shared pin ID used to make the transaction refuse before any page was asked.
+        #expect(reachedCommit)
+    }
+
     @Test func standardZoomUsesTheWindowsCurrentScreensVisibleFrameWithoutChangingItsFrame() throws {
         let fixture = try fixture()
         defer { fixture.cleanUp() }

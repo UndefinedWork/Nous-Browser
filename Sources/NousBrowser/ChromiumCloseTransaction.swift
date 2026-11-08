@@ -38,6 +38,7 @@ final class ChromiumCloseTransaction {
     private func prepareNext() {
         guard completion != nil, !committing else { return }
         guard let current = targets(), Set(current.map(\.id)).count == current.count else {
+            BrowserAppDelegate.trace("close: no targets (a window is busy or already closing)")
             finish(false); return
         }
         // A popup/new window created while a confirmation was open joins this
@@ -46,7 +47,10 @@ final class ChromiumCloseTransaction {
             touched[next.id] = next
             next.prepare { [weak self] accepted in
                 guard let self, self.completion != nil, !self.committing else { return }
-                guard accepted else { self.finish(false); return }
+                guard accepted else {
+                    BrowserAppDelegate.trace("close: page \(next.id) declined")
+                    self.finish(false); return
+                }
                 self.approved.insert(next.id)
                 self.prepareNext()
             }
@@ -54,12 +58,18 @@ final class ChromiumCloseTransaction {
         }
         // Validation and all commit dispatches happen in one main-thread turn.
         // Navigation or a self-closed page invalidates its native approval.
-        guard current.allSatisfy({ $0.validate() }) else { finish(false); return }
+        guard current.allSatisfy({ $0.validate() }) else {
+            BrowserAppDelegate.trace("close: approval invalidated for \(current.filter { !$0.validate() }.map(\.id))")
+            finish(false); return
+        }
         committing = true
         pendingCommits = Set(current.map(\.id))
         dispatchingCommits = true
         do { try willCommit() }
-        catch { finish(false); return }
+        catch {
+            BrowserAppDelegate.trace("close: saving failed: \(error)")
+            finish(false); return
+        }
         // A pre-commit operation may cancel reentrantly. Never dispatch native
         // close after its cancellation has already been reported.
         guard completion != nil else { return }
@@ -67,7 +77,10 @@ final class ChromiumCloseTransaction {
             target.commit { [weak self] closed in
                 guard let self, self.completion != nil,
                       self.pendingCommits.remove(target.id) != nil else { return }
-                if !closed { self.commitFailed = true }
+                if !closed {
+                    BrowserAppDelegate.trace("close: page \(target.id) failed to close")
+                    self.commitFailed = true
+                }
                 self.finishCommitIfReady()
             }
         }

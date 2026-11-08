@@ -103,6 +103,10 @@ for version in versions:
         (contents / 'Resources' / 'Assets.car').unlink(missing_ok=True)
         shutil.copyfile(icon, contents / 'Resources' / 'app.icns')
         (contents / 'Info.plist').write_bytes(plistlib.dumps(data))
+        # Localized names win over Info.plist: Chromium's say "Chromium", which
+        # macOS showed as a second app in Notifications settings.
+        for strings in (contents / 'Resources').glob('*.lproj/InfoPlist.strings'):
+            strings.write_text(f'CFBundleDisplayName = "{display}";\nCFBundleName = "{display}";\n', encoding='utf-16')
 BRAND
 
 # Signing identity. A build signed by the NousStableStorageTeam team keeps one

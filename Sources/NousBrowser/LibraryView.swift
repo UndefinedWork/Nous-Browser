@@ -258,6 +258,7 @@ private struct LibraryCaptureCard: View {
         .onHover { value in withAnimation(reduceMotion ? nil : BrowserMotion.interaction) { hovered = value } }
         .onTapGesture { if !capture.isPlaceholder { open() } }
         .contextMenu {
+            Group {
             Button(L10n.string("Open"), action: open)
             Button(L10n.string("Show in Finder")) { NSWorkspace.shared.activateFileViewerSelecting([capture.url]) }
             Button(L10n.string("Copy")) {
@@ -268,6 +269,9 @@ private struct LibraryCaptureCard: View {
             Button(L10n.string("Rename")) { name = capture.name; renaming = true }
             Divider()
             Button(L10n.string("Move to Trash"), role: .destructive) { LibraryStore.shared.delete(capture) }
+            }
+            // macOS 27 hides menu icons unless asked for.
+            .labelStyle(.titleAndIcon)
         }
         .onDrag { NSItemProvider(contentsOf: capture.url) ?? NSItemProvider() }
         .task(id: "\(capture.id)-\(LibraryStore.shared.previewRevision)") { await loadThumbnail() }
@@ -386,6 +390,7 @@ private struct LibraryHistoryRow: View {
         .onHover { hovered = $0 }
         .onTapGesture { controller.model.newTab(url: entry.url) }
         .contextMenu {
+            Group {
             Button(L10n.string("Open in New Tab")) { controller.model.newTab(url: entry.url) }
             Button(L10n.string("Copy Link")) {
                 NSPasteboard.general.clearContents(); NSPasteboard.general.setString(entry.url.absoluteString, forType: .string)
@@ -393,6 +398,9 @@ private struct LibraryHistoryRow: View {
             BookmarkMenuButton(url: entry.url, title: entry.title)
             Divider()
             Button(L10n.string("Remove from History"), role: .destructive) { controller.history.remove(entry.id) }
+            }
+            // macOS 27 hides menu icons unless asked for.
+            .labelStyle(.titleAndIcon)
         }
         .task(id: entry.id) {
             favicon = FaviconStore.shared.cachedImage(for: entry.url)
@@ -500,6 +508,7 @@ private struct LibraryBookmarkRow: View {
         .onHover { hovered = $0 }
         .onTapGesture { if !renaming { controller.model.newTab(url: bookmark.url) } }
         .contextMenu {
+            Group {
             Button(L10n.string("Open in New Tab")) { controller.model.newTab(url: bookmark.url) }
             Button(L10n.string("Copy Link")) {
                 NSPasteboard.general.clearContents(); NSPasteboard.general.setString(bookmark.url.absoluteString, forType: .string)
@@ -509,6 +518,9 @@ private struct LibraryBookmarkRow: View {
             Button(L10n.string("Remove Bookmark"), role: .destructive) {
                 withAnimation(BrowserMotion.spring) { LibraryStore.shared.removeBookmark(bookmark.id) }
             }
+            }
+            // macOS 27 hides menu icons unless asked for.
+            .labelStyle(.titleAndIcon)
         }
         .draggable(bookmark.url)
         .task(id: bookmark.id) {
@@ -602,11 +614,15 @@ private struct FinishedDownloadRow: View {
         .onHover { value in withAnimation(BrowserMotion.interaction) { hovered = value } }
         .onTapGesture(count: 2) { if let url, exists { NSWorkspace.shared.open(url) } }
         .contextMenu {
+            Group {
             if let url, exists {
                 Button(L10n.string("Open")) { NSWorkspace.shared.open(url) }
                 Button(L10n.string("Show in Finder")) { NSWorkspace.shared.activateFileViewerSelecting([url]) }
             }
             Button(L10n.string("Remove from List")) { LibraryStore.shared.removeDownload(download.id) }
+            }
+            // macOS 27 hides menu icons unless asked for.
+            .labelStyle(.titleAndIcon)
         }
     }
 

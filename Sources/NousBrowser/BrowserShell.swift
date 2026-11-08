@@ -305,6 +305,7 @@ struct BrowserTabRow: View {
         }
         .modifier(SidebarTabHelp(isCompact: isCompact, text: tab.url?.absoluteString ?? L10n.string("New Tab")))
         .contextMenu {
+            Group {
             Button(L10n.string("Open Address…"), systemImage: "magnifyingglass") { select(); editAddress() }
             Button(L10n.string("Copy Link"), systemImage: "link", action: copyLink).disabled(tab.url == nil)
             Divider()
@@ -314,6 +315,9 @@ struct BrowserTabRow: View {
             menu
             Divider()
             Button(L10n.string("Close Tab"), systemImage: "xmark", action: close)
+            }
+            // macOS 27 hides menu icons unless asked for.
+            .labelStyle(.titleAndIcon)
         }
     }
 

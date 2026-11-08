@@ -334,7 +334,14 @@ final class BrowserWindowManager {
             for context in self.windows {
                 guard let windowTargets = context.controller.model.targetsForWindowClose(transactionID) else { return nil }
                 if !participants.contains(where: { $0 === context }) { participants.append(context) }
-                targets.append(contentsOf: windowTargets)
+                // Pinned tabs keep the same ID in every window; the one
+                // transaction needs one ID per page, or Quit with two windows
+                // was refused as a duplicate.
+                let window = context.session.id
+                targets.append(contentsOf: windowTargets.map { target in
+                    .init(id: Self.pageID(target.id, in: window), prepare: target.prepare,
+                          validate: target.validate, cancel: target.cancel, commit: target.commit)
+                })
             }
             return targets
         }, willCommit: { [weak self] in
@@ -365,6 +372,17 @@ final class BrowserWindowManager {
         })
         terminationTransaction = transaction
         transaction.start()
+    }
+
+    /// A per-window identity for a page (tab ID XOR window ID).
+    nonisolated static func pageID(_ tab: UUID, in window: UUID) -> UUID {
+        var a = tab.uuid, b = window.uuid
+        return withUnsafeMutableBytes(of: &a) { left in
+            withUnsafeBytes(of: &b) { right in
+                for index in 0..<16 { left[index] ^= right[index] }
+            }
+            return UUID(uuid: left.load(as: uuid_t.self))
+        }
     }
 
     private func finishTerminationRequest(accepted: Bool) {

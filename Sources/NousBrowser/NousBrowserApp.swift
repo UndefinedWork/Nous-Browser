@@ -47,6 +47,10 @@ struct NousBrowserLauncher {
         configuration.keychainServiceName = storage.keychainService
         configuration.keychainAccountName = storage.keychainAccount
         configuration.safeStoragePassword = storage.safeStoragePassword
+        // FedCM ("Sign in with Google" account chooser) needs Chrome's own
+        // browser-window bubble, which Nous does not have: the button did
+        // nothing. Without it, Google Identity Services opens its popup instead.
+        configuration.additionalArguments = ["--disable-features=FedCm"]
         let application = NousBrowserApplication.shared()
         application.delegate = host
         // Blocks inside ChromeMain until Chromium has shut down.

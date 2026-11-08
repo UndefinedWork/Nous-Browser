@@ -296,25 +296,31 @@ private struct RecordingEditor: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var focused: Bool
+    @State private var zoom: CGFloat = 1
 
     var body: some View {
         GeometryReader { geometry in
             let inspectorWidth: CGFloat = model.showsInspector ? 252 : 0
             let canvas = model.document.style.layout(content: model.sourceSize).canvas
             let available = CGSize(width: geometry.size.width - inspectorWidth - 64, height: geometry.size.height - 210)
-            let scale = max(0.05, min(available.width / max(canvas.width, 1), available.height / max(canvas.height, 1)))
+            let fit = max(0.05, min(available.width / max(canvas.width, 1), available.height / max(canvas.height, 1)))
+            let viewport = CGSize(width: geometry.size.width - inspectorWidth, height: max(0, geometry.size.height - 24 - 18 - 138))
             ZStack(alignment: .top) {
                 Color(nsColor: colorScheme == .dark ? NSColor(white: 0.10, alpha: 1) : NSColor(white: 0.955, alpha: 1))
                 VStack(spacing: 18) {
-                    PlayerSurface(player: model.player)
-                        .frame(width: canvas.width * scale, height: canvas.height * scale)
-                        .background(Color.primary.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.4 : 0.12), radius: 24, y: 8)
-                        .overlay { if !model.isReady { ProgressView().controlSize(.small) } }
-                        .onTapGesture { model.togglePlay() }
-                        .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.document.style)
-                        .frame(maxHeight: .infinity)
+                    ZoomableCanvas(canvas: canvas, fitScale: fit, zoom: $zoom, viewport: viewport) { scale in
+                        PlayerSurface(player: model.player)
+                            .frame(width: canvas.width * scale, height: canvas.height * scale)
+                            .background(Color.primary.opacity(0.06))
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .shadow(color: .black.opacity(colorScheme == .dark ? 0.4 : 0.12), radius: 24, y: 8)
+                            .overlay { if !model.isReady { ProgressView().controlSize(.small) } }
+                            .onTapGesture { model.togglePlay() }
+                    }
+                    .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.document.style)
+                    .overlay(alignment: .bottomLeading) {
+                        CanvasZoomControl(zoom: $zoom, scale: fit * zoom).padding(.leading, 24)
+                    }
                     RecordingTimeline(model: model)
                         .frame(height: 118)
                         .padding(.horizontal, 24)
@@ -354,6 +360,10 @@ private struct RecordingEditor: View {
             case .leftArrow: model.seek(to: model.currentTime - (press.modifiers.contains(.shift) ? 1 : 1.0 / 30)); return .handled
             case .rightArrow: model.seek(to: model.currentTime + (press.modifiers.contains(.shift) ? 1 : 1.0 / 30)); return .handled
             default: break
+            }
+            if command, let zoomed = CanvasZoom.zoom(for: press.characters, current: zoom) {
+                withAnimation(reduceMotion ? nil : BrowserMotion.spring) { zoom = zoomed }
+                return .handled
             }
             if command, press.characters.lowercased() == "z" {
                 press.modifiers.contains(.shift) ? model.redo() : model.undo()
