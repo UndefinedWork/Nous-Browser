@@ -1,0 +1,69 @@
+Sources/NousMCP/NousMCPMain.swift
+  s_a868a580eb8a06::t_5b44abad5b3f00 17-18,34-36,44
+Resources/Localization/es.lproj/Localizable.strings
+  s_a868a580eb8a06::t_76dce1bc342f78 454-460
+Sources/NousBrowser/BrowserAutomationSettingsView.swift
+  s_a868a580eb8a06::t_76dce1bc342f78 10-12,31-52,54-58,67,86-90,104-146
+  s_a868a580eb8a06::t_29973f2e339f93 147
+Resources/Localization/it.lproj/Localizable.strings
+  s_a868a580eb8a06::t_76dce1bc342f78 454-460
+Resources/Localization/pt-BR.lproj/Localizable.strings
+  s_a868a580eb8a06::t_76dce1bc342f78 454-460
+Resources/Localization/en.lproj/Localizable.strings
+  s_a868a580eb8a06::t_76dce1bc342f78 455-461
+Sources/NousBrowser/MCPClientSetup.swift
+  s_a868a580eb8a06::t_5b1fe625fb0963 1-124
+Resources/Localization/ja.lproj/Localizable.strings
+  s_a868a580eb8a06::t_76dce1bc342f78 455-461
+Resources/Localization/zh-Hant.lproj/Localizable.strings
+  s_a868a580eb8a06::t_76dce1bc342f78 455-461
+Sources/NousAutomation/AutomationSocketClient.swift
+  s_a868a580eb8a06::t_5b44abad5b3f00 106-107,109-120
+Resources/Localization/zh-Hans.lproj/Localizable.strings
+  s_a868a580eb8a06::t_76dce1bc342f78 455-461
+Tests/NousAutomationTests/ParseSafeTransportTests.swift
+  s_a868a580eb8a06::t_7dd03030ef362c 28-42
+Sources/NousBrowser/BrowserAutomationService.swift
+  s_a868a580eb8a06::t_76dce1bc342f78 33-38,40
+Sources/NousMCP/ParseSafeTransport.swift
+  s_a868a580eb8a06::t_5b44abad5b3f00 36-49,54,58
+Resources/Localization/fr.lproj/Localizable.strings
+  s_a868a580eb8a06::t_76dce1bc342f78 454-460
+Resources/Localization/source.json
+  s_a868a580eb8a06::t_76dce1bc342f78 411-418
+Sources/NousMCP/BrowserBridge.swift
+  s_a868a580eb8a06::t_a9cc5402284408 25,28
+  s_a868a580eb8a06::t_5b44abad5b3f00 1-24,26-27,29-68
+Tests/NousBrowserTests/MCPClientSetupTests.swift
+  s_a868a580eb8a06::t_7dd03030ef362c 1-30
+Resources/Localization/de.lproj/Localizable.strings
+  s_a868a580eb8a06::t_76dce1bc342f78 454-460
+Resources/Localization/ru.lproj/Localizable.strings
+  s_a868a580eb8a06::t_76dce1bc342f78 454-460
+Resources/Localization/ko.lproj/Localizable.strings
+  s_a868a580eb8a06::t_76dce1bc342f78 455-461
+Docs/Chromium-Build.md
+  s_a868a580eb8a06::t_bf11ad18597878 3
+Docs/releases/1.4.9.md
+  s_a868a580eb8a06::t_f67c007ee861de 1-17
+README.md
+  s_a868a580eb8a06::t_194400580dd8c0 38
+Resources/Info.plist
+  s_a868a580eb8a06::t_f0f03fd12e38b1 65,81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "28f1a41e6235e8669baf66d1cd2d35f444d666da",
+  "prompts": {},
+  "sessions": {
+    "s_a868a580eb8a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1919a1c-2b86-4a7e-9b4f-767da074be83",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
