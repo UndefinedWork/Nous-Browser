@@ -47,25 +47,27 @@ struct LibraryView: View {
 
     // MARK: Header
 
-    /// One row when everything fits; otherwise the tabs move to a second row
-    /// (scrolling sideways if they still do not fit) and the search field narrows.
+    /// The title has a row of its own; below it the sections sit on the left
+    /// and search and capture on the right. When that row does not fit, the
+    /// sections get their own (sideways-scrolling) row above the actions.
     private var header: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 16) {
-                title
-                tabs
-                Spacer(minLength: 16)
-                actions(searchWidth: 200)
-            }
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 12) {
-                    title
-                    Spacer(minLength: 12)
-                    actions(searchWidth: 150)
+        VStack(alignment: .leading, spacing: 14) {
+            title
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 16) {
+                    tabs
+                    Spacer(minLength: 16)
+                    actions(searchWidth: 200)
                 }
-                ScrollView(.horizontal) { tabs.padding(.vertical, 2) }
-                    .scrollIndicators(.hidden)
-                    .scrollClipDisabled()
+                VStack(alignment: .leading, spacing: 10) {
+                    ScrollView(.horizontal) { tabs.padding(.vertical, 2) }
+                        .scrollIndicators(.hidden)
+                        .scrollClipDisabled()
+                    HStack {
+                        Spacer(minLength: 0)
+                        actions(searchWidth: 160)
+                    }
+                }
             }
         }
         .padding(.top, 22)
