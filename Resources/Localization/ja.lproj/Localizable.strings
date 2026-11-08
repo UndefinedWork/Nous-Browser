@@ -433,3 +433,5 @@
 "Add ⌘, ⌥ or ⌃" = "⌘、⌥、⌃ のいずれかを含めてください";
 "Used by %@" = "“%@”で使用中";
 "Zoom to Fit" = "ウインドウに合わせる";
+"Show window buttons" = "ウインドウボタンを表示";
+"Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden." = "サイドバーの上部に閉じる・しまう・フルスクリーンのボタンを表示します。サイドバーを隠しているときは表示されません。";

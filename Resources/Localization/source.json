@@ -389,7 +389,9 @@
     "Another app is using this shortcut.",
     "Add ⌘, ⌥ or ⌃",
     "Used by %@",
-    "Zoom to Fit"
+    "Zoom to Fit",
+    "Show window buttons",
+    "Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden."
   ],
   "infoPlist": {
     "NSCameraUsageDescription": "Allow camera access on websites you authorize, such as video meetings.",

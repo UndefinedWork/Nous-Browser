@@ -432,3 +432,5 @@
 "Add ⌘, ⌥ or ⌃" = "Добавьте ⌘, ⌥ или ⌃";
 "Used by %@" = "Занято: «%@»";
 "Zoom to Fit" = "Подогнать по размеру";
+"Show window buttons" = "Показывать кнопки окна";
+"Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden." = "Кнопки закрытия, свёртывания и полноэкранного режима вверху боковой панели. Скрыты, когда боковая панель скрыта.";

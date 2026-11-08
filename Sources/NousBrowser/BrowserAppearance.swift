@@ -22,10 +22,18 @@ final class BrowserAppearanceSettings {
     private(set) var mode: BrowserAppearanceMode
     @ObservationIgnored private let defaults: UserDefaults
     private static let key = "browser.appearance"
+    private static let windowButtonsKey = "browser.showsWindowButtons"
+
+    /// Close / minimize / zoom in the sidebar. Off by default; never shown
+    /// while the sidebar is hidden.
+    var showsWindowButtons: Bool {
+        didSet { defaults.set(showsWindowButtons, forKey: Self.windowButtonsKey) }
+    }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         mode = defaults.string(forKey: Self.key).flatMap(BrowserAppearanceMode.init(rawValue:)) ?? .system
+        showsWindowButtons = defaults.bool(forKey: Self.windowButtonsKey)
     }
 
     func select(_ mode: BrowserAppearanceMode) {

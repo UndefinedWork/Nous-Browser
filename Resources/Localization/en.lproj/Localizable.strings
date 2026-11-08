@@ -433,3 +433,5 @@
 "Add ⌘, ⌥ or ⌃" = "Add ⌘, ⌥ or ⌃";
 "Used by %@" = "Used by %@";
 "Zoom to Fit" = "Zoom to Fit";
+"Show window buttons" = "Show window buttons";
+"Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden." = "Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden.";

@@ -6,6 +6,9 @@ import SwiftUI
 // (two-finger swipe to switch); back/forward/reload in one glass control.
 
 enum SidebarMetrics {
+    /// The icon rail moves its top controls down to make room for the
+    /// window buttons when they are shown.
+    static let compactWindowButtonsShift: CGFloat = 30
     static let tileHeight: CGFloat = 32
     static let tileSpacing: CGFloat = 5
     static let folderHeight: CGFloat = 32
@@ -95,10 +98,11 @@ struct BrowserSidebar: View {
                 spacePager(size: geometry.size)
 
                 VStack(spacing: 0) {
+                    let lights = controller.appearance.showsWindowButtons
                     SidebarEdgeGlass(edge: .top,
-                                     buttonCenters: compact ? [30] : [30, geometry.size.width - 30],
-                                     height: compact ? 132 : 88,
-                                     controlCenterFromEdge: compact ? 52 : 30)
+                                     buttonCenters: compact ? [30] : [lights ? 104 : 30, geometry.size.width - 30],
+                                     height: compact ? 132 + (lights ? SidebarMetrics.compactWindowButtonsShift : 0) : 88,
+                                     controlCenterFromEdge: compact ? 52 + (lights ? SidebarMetrics.compactWindowButtonsShift : 0) : 30)
                     Spacer(minLength: 0)
                     SidebarEdgeGlass(edge: .bottom,
                                      buttonCenters: compact ? [30] : [52, geometry.size.width / 2, geometry.size.width - 28],
@@ -501,7 +505,8 @@ private struct SpaceColumn: View {
                     .sidebarFrame(.regularZone(space))
             }
             .padding(.horizontal, compact ? 12 : BrowserDesign.inset)
-            .padding(.top, SidebarTabDragGeometry.topInset(isCompact: compact))
+            .padding(.top, SidebarTabDragGeometry.topInset(isCompact: compact)
+                     + (compact && controller.appearance.showsWindowButtons ? SidebarMetrics.compactWindowButtonsShift : 0))
             .padding(.bottom, compact ? 196 : SidebarTabDragGeometry.bottomInset(isCompact: false) + 12)
             .frame(maxWidth: .infinity, minHeight: 0, alignment: .top)
             .windowDragBackground()
@@ -1066,16 +1071,30 @@ private struct SidebarControls: View {
     var body: some View {
         let compact = model.isSidebarCompact
         let topLabel = L10n.string(compact ? "Expand Sidebar" : "Collapse Sidebar")
+        let lights = controller.appearance.showsWindowButtons
+        // With window buttons: they lead the top row (wide sidebar) or get a
+        // row of their own above the controls (icon rail).
+        let toggleX: CGFloat = lights && !compact ? 104 : 30
+        let shift: CGFloat = lights && compact ? SidebarMetrics.compactWindowButtonsShift : 0
         ZStack(alignment: .topLeading) {
             if !compact {
+                let dragStart = toggleX + 22
                 WindowDragArea()
-                    .frame(width: max(0, size.width - 120), height: BrowserDesign.buttonSize)
-                    .position(x: size.width / 2, y: 30)
+                    .frame(width: max(0, size.width - 60 - dragStart), height: BrowserDesign.buttonSize)
+                    .position(x: (dragStart + size.width - 60) / 2, y: 30)
+            }
+            if lights {
+                Group {
+                    if compact { WindowTrafficLights(diameter: 12, spacing: 6) }
+                    else { WindowTrafficLights() }
+                }
+                .position(x: compact ? 30 : 47, y: compact ? 24 : 30)
+                .transition(.opacity)
             }
             GlassSymbolButton("sidebar.left", label: topLabel, help: topLabel + "  ⌘/") { model.toggleSidebar() }
-                .position(x: 30, y: 30)
+                .position(x: toggleX, y: 30 + shift)
             GlassSymbolButton("plus", label: L10n.string("New Tab"), help: L10n.string("New Tab") + "  ⌘T", action: controller.newTab)
-                .position(x: compact ? 30 : size.width - 30, y: compact ? 74 : 30)
+                .position(x: compact ? 30 : size.width - 30, y: compact ? 74 + shift : 30)
 
             NavigationCluster(controller: controller, vertical: compact)
                 .position(x: compact ? 30 : BrowserDesign.inset + 42, y: compact ? size.height - 60 : size.height - 28)

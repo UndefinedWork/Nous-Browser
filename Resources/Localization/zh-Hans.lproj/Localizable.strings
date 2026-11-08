@@ -433,3 +433,5 @@
 "Add ⌘, ⌥ or ⌃" = "需包含 ⌘、⌥ 或 ⌃";
 "Used by %@" = "已用于“%@”";
 "Zoom to Fit" = "缩放至适合大小";
+"Show window buttons" = "显示窗口按钮";
+"Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden." = "在侧边栏顶部显示关闭、最小化和全屏按钮。隐藏侧边栏时它们也会隐藏。";

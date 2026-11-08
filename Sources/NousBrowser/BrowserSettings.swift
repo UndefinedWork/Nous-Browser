@@ -73,6 +73,12 @@ private struct AppearanceSettingsView: View {
             }
             .labelsHidden()
             .pickerStyle(.radioGroup)
+            Divider().padding(.vertical, 4)
+            Toggle(L10n.string("Show window buttons"), isOn: $appearance.showsWindowButtons)
+                .toggleStyle(.switch)
+            Text(L10n.string("Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden."))
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             Spacer()
         }
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -432,3 +432,5 @@
 "Add ⌘, ⌥ or ⌃" = "Aggiungi ⌘, ⌥ o ⌃";
 "Used by %@" = "Usata da “%@”";
 "Zoom to Fit" = "Adatta alla finestra";
+"Show window buttons" = "Mostra pulsanti finestra";
+"Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden." = "Pulsanti Chiudi, Riduci e Schermo intero in cima alla barra laterale. Restano nascosti quando la barra laterale è nascosta.";
