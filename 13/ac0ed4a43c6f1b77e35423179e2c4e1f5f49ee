@@ -1,0 +1,43 @@
+Tests/NousBrowserTests/BrowserLayoutAutomationTests.swift
+  s_a868a580eb8a06::t_6c12262b43b80a 1-43,46-158
+  s_a868a580eb8a06::t_7fd75e6daa5d27 44-45
+Sources/NousBrowser/BrowserAutomation.swift
+  s_a868a580eb8a06::t_c5e33012c1adc2 715
+  s_a868a580eb8a06::t_5b635c5e711e4c 183-185,220-222,540-714,716-924
+  s_a868a580eb8a06::t_ea0279c44fa307 925-926
+Tests/NousAutomationTests/NousMCPServerTests.swift
+  s_a868a580eb8a06::t_d5ab167eb9168d 24
+Sources/NousBrowser/BrowserModel.swift
+  s_a868a580eb8a06::t_a28edfde6acc47 616-618,699-707,725-803
+  s_a868a580eb8a06::t_3e0915af4b302c 804
+Sources/NousAutomation/AutomationToolCatalog.swift
+  s_a868a580eb8a06::t_716823c8d82a8f 30-52,91-118,151-155
+Tests/NousAutomationTests/AutomationProtocolTests.swift
+  s_a868a580eb8a06::t_d5ab167eb9168d 23
+Sources/NousBrowser/BrowserLayoutPlan.swift
+  s_a868a580eb8a06::t_a28edfde6acc47 1-82
+Docs/Chromium-Build.md
+  s_a868a580eb8a06::t_9e3d3f4e7a84df 3
+Docs/releases/1.4.8.md
+  s_a868a580eb8a06::t_8f0e669dfc420e 1-17
+README.md
+  s_a868a580eb8a06::t_9c1bad24e6e7b9 38
+Resources/Info.plist
+  s_a868a580eb8a06::t_be23032a89ba68 65,81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "13ac0ed4a43c6f1b77e35423179e2c4e1f5f49ee",
+  "prompts": {},
+  "sessions": {
+    "s_a868a580eb8a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1919a1c-2b86-4a7e-9b4f-767da074be83",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
