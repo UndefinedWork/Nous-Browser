@@ -1,0 +1,57 @@
+Resources/Localization/de.lproj/Localizable.strings
+  s_a868a580eb8a06::t_828c0b7852fcd5 437-439
+Sources/NousBrowser/BrowserAppearance.swift
+  s_a868a580eb8a06::t_5e7521b85317c3 26-28,36-46,51-64
+Sources/NousBrowser/BrowserShell.swift
+  s_a868a580eb8a06::t_5e7521b85317c3 143
+Resources/Localization/en.lproj/Localizable.strings
+  s_a868a580eb8a06::t_828c0b7852fcd5 438-440
+Resources/Localization/it.lproj/Localizable.strings
+  s_a868a580eb8a06::t_828c0b7852fcd5 437-439
+Docs/releases/1.4.5.md
+  s_a868a580eb8a06::t_8a8335845213a8 1-9
+Resources/Localization/pt-BR.lproj/Localizable.strings
+  s_a868a580eb8a06::t_828c0b7852fcd5 437-439
+Sources/NousBrowser/BrowserSettings.swift
+  s_a868a580eb8a06::t_5e7521b85317c3 82-107
+Resources/Info.plist
+  s_a868a580eb8a06::t_8a8335845213a8 65,81
+Resources/Localization/fr.lproj/Localizable.strings
+  s_a868a580eb8a06::t_828c0b7852fcd5 437-439
+README.md
+  s_a868a580eb8a06::t_8a8335845213a8 38
+Tests/NousBrowserTests/BrowserPreferencesTests.swift
+  s_a868a580eb8a06::t_9f6b5bce4fdbf5 27-42
+Resources/Localization/zh-Hant.lproj/Localizable.strings
+  s_a868a580eb8a06::t_828c0b7852fcd5 438-440
+Resources/Localization/ru.lproj/Localizable.strings
+  s_a868a580eb8a06::t_828c0b7852fcd5 437-439
+Resources/Localization/ja.lproj/Localizable.strings
+  s_a868a580eb8a06::t_828c0b7852fcd5 438-440
+Resources/Localization/es.lproj/Localizable.strings
+  s_a868a580eb8a06::t_828c0b7852fcd5 437-439
+Resources/Localization/ko.lproj/Localizable.strings
+  s_a868a580eb8a06::t_828c0b7852fcd5 438-440
+Docs/Chromium-Build.md
+  s_a868a580eb8a06::t_8a8335845213a8 3
+Resources/Localization/zh-Hans.lproj/Localizable.strings
+  s_a868a580eb8a06::t_828c0b7852fcd5 438-440
+Resources/Localization/source.json
+  s_a868a580eb8a06::t_828c0b7852fcd5 394-397
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "b1e7021146038c27239f53d945f00b2481c93f27",
+  "prompts": {},
+  "sessions": {
+    "s_a868a580eb8a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1919a1c-2b86-4a7e-9b4f-767da074be83",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
