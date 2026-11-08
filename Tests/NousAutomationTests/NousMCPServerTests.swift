@@ -21,7 +21,7 @@ struct NousMCPServerTests {
             #expect(initialized.serverInfo.name == "nous-browser")
             #expect(initialized.capabilities.tools != nil)
             let (tools, cursor) = try await client.listTools()
-            #expect(tools.count == 16)
+            #expect(tools.count == 23)
             #expect(cursor == nil)
             #expect(tools.first { $0.name == "browser_snapshot" }?.annotations.readOnlyHint == true)
             #expect(tools.first { $0.name == "browser_close_tab" }?.annotations.destructiveHint == true)

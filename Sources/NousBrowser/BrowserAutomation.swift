@@ -180,6 +180,9 @@ final class BrowserAutomationExecutor {
             fields["tab_id"] = .string(tab.id.uuidString)
             fields["window_id"] = .string(context.session.id.uuidString)
             return value(.object(fields))
+        case "browser_get_layout", "browser_apply_layout", "browser_space", "browser_delete_space",
+             "browser_group", "browser_close_group", "browser_tab":
+            return value(try await organize(request.tool, args))
         default:
             throw AutomationFailure("Unknown browser tool: \(request.tool).")
         }
@@ -214,6 +217,9 @@ final class BrowserAutomationExecutor {
         .object(["tab_id": .string(tab.id.uuidString), "window_id": .string(context.session.id.uuidString),
                  "title": .string(tab.displayTitle), "url": .string(redactedURL(tab.url)),
                  "selected": .bool(context.controller.model.selectedTabID == tab.id), "pinned": .bool(tab.isPinned),
+                 "space_id": tab.spaceID.map { .string($0.uuidString) } ?? .null,
+                 "group_id": tab.spaceID.flatMap { context.controller.model.layout(for: $0).location(of: tab.id)?.groupID }
+                    .map { .string($0.uuidString) } ?? .null,
                  "loading": .bool(tab.isLoading), "can_go_back": .bool(tab.canGoBack), "can_go_forward": .bool(tab.canGoForward)])
     }
 
@@ -529,6 +535,393 @@ final class BrowserAutomationExecutor {
     if (operation === 'press_key') return press(element);
     return {error:'Unsupported page operation.'};
     """#
+}
+
+// MARK: - Spaces, groups and tab organization
+
+extension BrowserAutomationExecutor {
+    fileprivate func organize(_ tool: String, _ args: [String: JSONValue]) async throws -> JSONValue {
+        switch tool {
+        case "browser_get_layout":
+            let contexts = args["window_id"] != nil ? [try context(args)] : windows.windows
+            return .object(["windows": .array(contexts.map(layoutValue)),
+                            "note": .string("Pinned items are shared by every window; ordinary tabs belong to one window.")])
+
+        case "browser_apply_layout":
+            let context = try windowOrActive(args)
+            let plan = try layoutPlan(args)
+            let result = context.controller.model.applyLayoutPlan(plan, activate: try boolean(args, "activate", default: true))
+            context.controller.dismissAddress()
+            return .object([
+                "window_id": .string(context.session.id.uuidString),
+                "spaces": .array(result.spaces.map { .object(["space_id": .string($0.id.uuidString), "name": .string($0.name),
+                                                               "created": .bool($0.created)]) }),
+                "groups": .array(result.groups.map { .object(["group_id": .string($0.id.uuidString), "name": .string($0.name),
+                                                               "space_id": .string($0.spaceID.uuidString)]) }),
+                "created_tabs": .number(Double(result.createdTabs)), "moved_tabs": .number(Double(result.movedTabs)),
+                "unchanged_tabs": .number(Double(result.keptTabs)), "created_groups": .number(Double(result.createdGroups)),
+            ])
+
+        case "browser_space":
+            let action = try string(args, "action", maximum: 16)
+            switch action {
+            case "create":
+                let context = try windowOrActive(args)
+                let name = try optionalName(args)
+                let icon = try optionalIcon(args)
+                let id = context.controller.model.createSpace(name: name, icon: icon)
+                return spaceValue(id, in: context)
+            case "update":
+                let (context, id) = try existingSpace(args)
+                let name = try optionalName(args)
+                let icon = try optionalIcon(args)
+                guard name != nil || icon != nil else { throw AutomationFailure("update needs a name or an icon.") }
+                context.controller.model.spaceStore.updateSpace(id, name: name, icon: icon)
+                return spaceValue(id, in: context)
+            case "switch":
+                let context = try windowOrActive(args)
+                let id = try uuid(args, "space_id")
+                guard context.controller.model.spaces.contains(where: { $0.id == id }) else {
+                    throw AutomationFailure("The space no longer exists. Read the layout again.")
+                }
+                context.controller.model.switchSpace(to: id)
+                context.controller.dismissAddress()
+                windows.activate(context)
+                return spaceValue(id, in: context)
+            case "move":
+                let (context, id) = try existingSpace(args)
+                let offset = Int(try number(args, "offset", default: 0, range: -50...50))
+                guard offset != 0 else { throw AutomationFailure("move needs a non-zero offset.") }
+                context.controller.model.spaceStore.moveSpace(id, by: offset)
+                return .object(["space_ids": .array(context.controller.model.spaces.map { .string($0.id.uuidString) })])
+            default:
+                throw AutomationFailure("Unsupported action.")
+            }
+
+        case "browser_delete_space":
+            let (context, id) = try existingSpace(args)
+            let model = context.controller.model
+            guard model.spaces.count > 1 else { throw AutomationFailure("The last space cannot be deleted.") }
+            model.deleteSpace(id)
+            return .object(["deleted_space_id": .string(id.uuidString)])
+
+        case "browser_group":
+            let action = try string(args, "action", maximum: 16)
+            if action == "create" {
+                let tabIDs = try (args["tab_ids"]?.arrayValue ?? []).map { item -> UUID in
+                    guard let text = item.stringValue, let id = UUID(uuidString: text) else {
+                        throw AutomationFailure("tab_ids must contain IDs returned by this browser.")
+                    }
+                    return id
+                }
+                let context: BrowserWindowContext
+                if let first = tabIDs.first { context = try target(["tab_id": .string(first.uuidString)]).0 }
+                else { context = try windowOrActive(args) }
+                let model = context.controller.model
+                let spaceIDs = Set(tabIDs.compactMap { model.tab($0)?.spaceID })
+                guard tabIDs.allSatisfy({ model.tab($0) != nil }) else {
+                    throw AutomationFailure("Every tab in tab_ids must exist in the same window. List tabs again.")
+                }
+                guard spaceIDs.count <= 1 else { throw AutomationFailure("Tabs in one group must come from the same space.") }
+                var space = spaceIDs.first
+                if args["space_id"] != nil {
+                    let requested = try uuid(args, "space_id")
+                    guard model.spaces.contains(where: { $0.id == requested }) else {
+                        throw AutomationFailure("The space no longer exists. Read the layout again.")
+                    }
+                    if let space, space != requested { throw AutomationFailure("The tabs are in a different space than space_id.") }
+                    space = requested
+                }
+                let pinned = try boolean(args, "pinned", default: false)
+                if let first = tabIDs.first, let space,
+                   let section = model.layout(for: space).location(of: first)?.section, (section == .pinned) != pinned,
+                   args["pinned"] != nil {
+                    throw AutomationFailure("The first tab is \(section == .pinned ? "pinned" : "not pinned"); omit pinned or use matching tabs.")
+                }
+                guard let id = model.newGroup(containing: tabIDs, section: pinned ? .pinned : .regular,
+                                              name: try optionalName(args), in: space) else {
+                    throw AutomationFailure("The group could not be created.")
+                }
+                if let icon = try optionalIcon(args) { model.updateGroup(id, icon: icon) }
+                if args["expanded"] != nil { model.updateGroup(id, isExpanded: try boolean(args, "expanded", default: true)) }
+                return groupValue(id, in: context)
+            }
+            let (context, id) = try existingGroup(args)
+            let model = context.controller.model
+            let section = model.layouts.values.lazy.compactMap { $0.section(ofGroup: id) }.first
+            switch action {
+            case "update":
+                let name = try optionalName(args)
+                let icon = try optionalIcon(args)
+                let expanded = args["expanded"] != nil ? try boolean(args, "expanded", default: true) : nil
+                guard name != nil || icon != nil || expanded != nil else {
+                    throw AutomationFailure("update needs a name, an icon or expanded.")
+                }
+                model.updateGroup(id, name: name, icon: icon, isExpanded: expanded)
+                return groupValue(id, in: context)
+            case "pin", "unpin":
+                if (section == .pinned) != (action == "pin") { model.toggleGroupPinned(id) }
+                return groupValue(id, in: context)
+            case "ungroup":
+                model.ungroup(id)
+                return .object(["ungrouped_group_id": .string(id.uuidString)])
+            default:
+                throw AutomationFailure("Unsupported action.")
+            }
+
+        case "browser_close_group":
+            let (context, id) = try existingGroup(args)
+            context.controller.model.closeGroup(id)
+            return .object(["closed_group_id": .string(id.uuidString)])
+
+        case "browser_tab":
+            let action = try string(args, "action", maximum: 16)
+            let (context, tab) = try target(args)
+            let model = context.controller.model
+            guard let space = tab.spaceID else { throw AutomationFailure("This tab is not in a space.") }
+            switch action {
+            case "pin", "unpin":
+                if tab.isPinned != (action == "pin") {
+                    // A tab inside a group moves to the top level of the other section.
+                    model.togglePin(tab.id)
+                }
+            case "move":
+                let layout = model.layout(for: space)
+                let target: SidebarDropTarget
+                if args["group_id"] != nil {
+                    let groupID = try uuid(args, "group_id")
+                    guard let group = layout.group(groupID), let section = layout.section(ofGroup: groupID) else {
+                        throw AutomationFailure("The group is not in this tab's space. Read the layout again.")
+                    }
+                    let count = group.tabIDs.filter { $0 != tab.id }.count
+                    target = SidebarDropTarget(section: section, groupID: groupID,
+                                               index: min(Int(try number(args, "index", default: Double(count), range: 0...10_000)), count))
+                } else {
+                    let current = layout.location(of: tab.id)?.section ?? .regular
+                    let section: SidebarSection = args["section"] != nil
+                        ? (try string(args, "section", maximum: 8) == "pinned" ? .pinned : .regular) : current
+                    let count = layout.nodes(section).filter { $0 != .tab(tab.id) }.count
+                    target = SidebarDropTarget(section: section, groupID: nil,
+                                               index: min(Int(try number(args, "index", default: Double(count), range: 0...10_000)), count))
+                }
+                model.move(.tab(tab.id), to: target, in: space)
+            case "move_to_space":
+                let destination = try uuid(args, "space_id")
+                guard model.spaces.contains(where: { $0.id == destination }) else {
+                    throw AutomationFailure("The space no longer exists. Read the layout again.")
+                }
+                model.moveTab(tab.id, toSpace: destination)
+            case "move_to_window":
+                let destination = try self.context(args)
+                guard destination !== context else { throw AutomationFailure("The tab is already in that window.") }
+                guard windows.moveTab(tab.id, from: context.session.id, to: destination.session.id,
+                                      at: destination.controller.model.tabs.count) else {
+                    throw AutomationFailure("The tab could not be moved to that window.")
+                }
+                return tabValue(tab, in: destination)
+            case "duplicate":
+                model.duplicateTab(tab.id)
+                guard let copy = model.selectedTab, copy.id != tab.id else { throw AutomationFailure("The tab could not be duplicated.") }
+                return tabValue(copy, in: context)
+            default:
+                throw AutomationFailure("Unsupported action.")
+            }
+            return tabValue(tab, in: context)
+
+        default:
+            throw AutomationFailure("Unknown browser tool: \(tool).")
+        }
+    }
+
+    // MARK: Lookups
+
+    private func windowOrActive(_ args: [String: JSONValue]) throws -> BrowserWindowContext {
+        if args["window_id"] != nil { return try context(args) }
+        guard let context = windows.activeContext else { throw AutomationFailure("No browser window is open. Create one first.") }
+        return context
+    }
+
+    private func existingSpace(_ args: [String: JSONValue]) throws -> (BrowserWindowContext, UUID) {
+        let id = try uuid(args, "space_id")
+        let context = try windowOrActive(args)
+        guard context.controller.model.spaces.contains(where: { $0.id == id }) else {
+            throw AutomationFailure("The space no longer exists. Read the layout again.")
+        }
+        return (context, id)
+    }
+
+    /// Pinned groups appear in every window; prefer the named or active one.
+    private func existingGroup(_ args: [String: JSONValue]) throws -> (BrowserWindowContext, UUID) {
+        let id = try uuid(args, "group_id")
+        let preferred = args["window_id"] != nil ? [try context(args)] : [windows.activeContext].compactMap { $0 } + windows.windows
+        for context in preferred where context.controller.model.layouts.values.contains(where: { $0.group(id) != nil }) {
+            return (context, id)
+        }
+        throw AutomationFailure("The group no longer exists. Read the layout again.")
+    }
+
+    private func optionalName(_ args: [String: JSONValue]) throws -> String? {
+        guard args["name"] != nil else { return nil }
+        let name = try string(args, "name", maximum: 240).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name.count <= 80 else { throw AutomationFailure("name must be 1 to 80 characters.") }
+        return name
+    }
+
+    private func optionalIcon(_ args: [String: JSONValue]) throws -> String? {
+        guard let raw = args["icon"] else { return nil }
+        guard let icon = raw.stringValue else { throw AutomationFailure("icon must be a string.") }
+        return try Self.validIcon(icon)
+    }
+
+    /// An SF Symbol that exists on this Mac, or a single emoji.
+    fileprivate static func validIcon(_ icon: String) throws -> String {
+        let trimmed = icon.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count == 1, trimmed.unicodeScalars.contains(where: { $0.properties.isEmojiPresentation || $0.properties.isEmoji && $0.value > 0xFF }) {
+            return trimmed
+        }
+        guard trimmed.utf8.count <= 64, NSImage(systemSymbolName: trimmed, accessibilityDescription: nil) != nil else {
+            throw AutomationFailure("icon must be an SF Symbol name such as \"briefcase\" or a single emoji.")
+        }
+        return trimmed
+    }
+
+    // MARK: Values
+
+    private func layoutValue(_ context: BrowserWindowContext) -> JSONValue {
+        let model = context.controller.model
+        return .object([
+            "window_id": .string(context.session.id.uuidString),
+            "active": .bool(context.session.id == windows.activeWindowID),
+            "active_space_id": .string(model.activeSpaceID.uuidString),
+            "spaces": .array(model.spaces.map { space in
+                let layout = model.layout(for: space.id)
+                return .object([
+                    "space_id": .string(space.id.uuidString), "name": .string(space.name), "icon": .string(space.icon),
+                    "active": .bool(space.id == model.activeSpaceID),
+                    "pinned": .array(layout.pinned.map { nodeValue($0, model: model) }),
+                    "tabs": .array(layout.regular.map { nodeValue($0, model: model) }),
+                ])
+            }),
+        ])
+    }
+
+    private func nodeValue(_ node: SidebarNode, model: BrowserModel) -> JSONValue {
+        switch node {
+        case .tab(let id):
+            return layoutTabValue(id, model: model)
+        case .group(let group):
+            return .object(["type": .string("group"), "group_id": .string(group.id.uuidString), "name": .string(group.name),
+                            "icon": .string(group.icon), "expanded": .bool(group.isExpanded),
+                            "tabs": .array(group.tabIDs.map { layoutTabValue($0, model: model) })])
+        }
+    }
+
+    private func layoutTabValue(_ id: UUID, model: BrowserModel) -> JSONValue {
+        guard let tab = model.tab(id) else { return .object(["type": .string("tab"), "tab_id": .string(id.uuidString)]) }
+        return .object(["type": .string("tab"), "tab_id": .string(id.uuidString), "title": .string(tab.displayTitle),
+                        "url": .string(redactedURL(tab.url)), "selected": .bool(model.selectedTabID == id),
+                        "loading": .bool(tab.isLoading)])
+    }
+
+    private func spaceValue(_ id: UUID, in context: BrowserWindowContext) -> JSONValue {
+        let model = context.controller.model
+        guard let space = model.spaces.first(where: { $0.id == id }) else { return .object(["space_id": .string(id.uuidString)]) }
+        return .object(["space_id": .string(id.uuidString), "name": .string(space.name), "icon": .string(space.icon),
+                        "window_id": .string(context.session.id.uuidString), "active": .bool(model.activeSpaceID == id)])
+    }
+
+    private func groupValue(_ id: UUID, in context: BrowserWindowContext) -> JSONValue {
+        let model = context.controller.model
+        for (space, layout) in model.layouts {
+            guard let group = layout.group(id) else { continue }
+            return .object(["group_id": .string(id.uuidString), "name": .string(group.name), "icon": .string(group.icon),
+                            "expanded": .bool(group.isExpanded), "pinned": .bool(layout.section(ofGroup: id) == .pinned),
+                            "space_id": .string(space.uuidString), "window_id": .string(context.session.id.uuidString),
+                            "tab_ids": .array(group.tabIDs.map { .string($0.uuidString) })])
+        }
+        return .object(["group_id": .string(id.uuidString)])
+    }
+
+    // MARK: Plan parsing
+
+    private func layoutPlan(_ args: [String: JSONValue]) throws -> BrowserLayoutPlan {
+        guard let rawSpaces = args["spaces"]?.arrayValue, !rawSpaces.isEmpty else {
+            throw AutomationFailure("spaces must list at least one space.")
+        }
+        guard rawSpaces.count <= BrowserLayoutPlan.maximumSpaces else {
+            throw AutomationFailure("A plan can describe at most \(BrowserLayoutPlan.maximumSpaces) spaces.")
+        }
+        let plan = BrowserLayoutPlan(spaces: try rawSpaces.enumerated().map { index, raw in
+            let path = "spaces[\(index)]"
+            let fields = try object(raw, path, allowed: ["name", "icon", "pinned", "tabs"])
+            return BrowserLayoutPlan.Space(name: try planName(fields["name"], "\(path).name"),
+                                           icon: try fields["icon"].map { try planIcon($0, "\(path).icon") },
+                                           pinned: try items(fields["pinned"], "\(path).pinned"),
+                                           tabs: try items(fields["tabs"], "\(path).tabs"))
+        })
+        guard plan.tabCount <= BrowserLayoutPlan.maximumTabs else {
+            throw AutomationFailure("A plan can open at most \(BrowserLayoutPlan.maximumTabs) tabs.")
+        }
+        return plan
+    }
+
+    private func items(_ raw: JSONValue?, _ path: String) throws -> [BrowserLayoutPlan.Item] {
+        guard let raw else { return [] }
+        guard let list = raw.arrayValue else { throw AutomationFailure("\(path) must be an array.") }
+        return try list.enumerated().map { index, item in
+            let itemPath = "\(path)[\(index)]"
+            guard let fields = item.objectValue else { throw AutomationFailure("\(itemPath) must be an object.") }
+            if fields["group"] != nil {
+                let group = try object(item, itemPath, allowed: ["group", "icon", "expanded", "tabs"])
+                guard let tabs = group["tabs"].map({ $0.arrayValue }) ?? [] else {
+                    throw AutomationFailure("\(itemPath).tabs must be an array.")
+                }
+                var expanded: Bool?
+                if let raw = group["expanded"] {
+                    guard let value = raw.boolValue else { throw AutomationFailure("\(itemPath).expanded must be a boolean.") }
+                    expanded = value
+                }
+                return .group(.init(name: try planName(group["group"], "\(itemPath).group"),
+                                    icon: try group["icon"].map { try planIcon($0, "\(itemPath).icon") },
+                                    expanded: expanded,
+                                    tabs: try tabs.enumerated().map { try planTab($1, "\(itemPath).tabs[\($0)]") }))
+            }
+            return .tab(try planTab(item, itemPath))
+        }
+    }
+
+    private func planTab(_ raw: JSONValue, _ path: String) throws -> BrowserLayoutPlan.Tab {
+        let fields = try object(raw, path, allowed: ["url", "title"])
+        guard let text = fields["url"]?.stringValue else { throw AutomationFailure("\(path).url is required.") }
+        var title: String?
+        if let raw = fields["title"] {
+            guard let value = raw.stringValue, value.count <= 200 else { throw AutomationFailure("\(path).title must be a short string.") }
+            title = value.isEmpty ? nil : value
+        }
+        do { return .init(url: try url(text), title: title) }
+        catch { throw AutomationFailure("\(path).url must be an http:// or https:// address.") }
+    }
+
+    private func planName(_ raw: JSONValue?, _ path: String) throws -> String {
+        guard let name = raw?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty, name.count <= 80 else {
+            throw AutomationFailure("\(path) must be a name of 1 to 80 characters.")
+        }
+        return name
+    }
+
+    private func planIcon(_ raw: JSONValue, _ path: String) throws -> String {
+        guard let icon = raw.stringValue else { throw AutomationFailure("\(path) must be a string.") }
+        do { return try Self.validIcon(icon) }
+        catch { throw AutomationFailure("\(path) must be an SF Symbol name such as \"briefcase\" or a single emoji.") }
+    }
+
+    private func object(_ raw: JSONValue, _ path: String, allowed: Set<String>) throws -> [String: JSONValue] {
+        guard let fields = raw.objectValue else { throw AutomationFailure("\(path) must be an object.") }
+        if let unexpected = fields.keys.first(where: { !allowed.contains($0) }) {
+            throw AutomationFailure("\(path) has an unexpected field: \(unexpected.prefix(64)).")
+        }
+        return fields
+    }
 }
 
 private struct AutomationFailure: Error, Sendable {

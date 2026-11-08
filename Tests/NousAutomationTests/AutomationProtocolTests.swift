@@ -20,7 +20,7 @@ struct AutomationProtocolTests {
     }
 
     @Test func catalogIsUniqueAndUsesExplicitPageTargets() throws {
-        #expect(AutomationToolCatalog.tools.count == 16)
+        #expect(AutomationToolCatalog.tools.count == 23)
         #expect(Set(AutomationToolCatalog.tools.map(\.name)).count == AutomationToolCatalog.tools.count)
         for tool in AutomationToolCatalog.tools {
             #expect(tool.inputSchema.objectValue?["additionalProperties"] == .bool(false))

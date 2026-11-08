@@ -613,8 +613,9 @@ final class BrowserModel {
     // MARK: Folders
 
     @discardableResult
-    func newGroup(containing ids: [UUID] = [], section: SidebarSection = .regular, name: String? = nil) -> UUID? {
-        let space = ids.first.flatMap { tab($0)?.spaceID } ?? activeSpaceID
+    func newGroup(containing ids: [UUID] = [], section: SidebarSection = .regular, name: String? = nil,
+                  in requestedSpace: UUID? = nil) -> UUID? {
+        let space = ids.first.flatMap { tab($0)?.spaceID } ?? requestedSpace ?? activeSpaceID
         guard var layout = layouts[space] else { return nil }
         let members = ids.filter { layout.contains(tab: $0) }
         let section = members.first.flatMap { layout.location(of: $0)?.section } ?? section
@@ -695,6 +696,15 @@ final class BrowserModel {
         switchSpace(to: ids[next])
     }
 
+    /// Automation: a new space, without switching to it.
+    @discardableResult
+    func createSpace(name: String?, icon: String?) -> UUID {
+        let id = spaceStore.addSpace(name: name, icon: icon, origin: self)
+        layouts[id] = layouts[id] ?? SpaceLayout()
+        persistSession()
+        return id
+    }
+
     func newSpace() {
         let id = spaceStore.addSpace(origin: self)
         layouts[id] = SpaceLayout()
@@ -710,6 +720,86 @@ final class BrowserModel {
         }
         spaceStore.removeSpace(id)
         storeDidChange()
+    }
+
+    // MARK: Automation layout
+
+    /// Builds spaces, groups and tabs from a description. It only adds and
+    /// rearranges: nothing is closed. A space or group with the same name, or a
+    /// tab with the same address in that space, is reused, so sending the same
+    /// plan twice changes nothing. New tabs load when first selected.
+    @discardableResult
+    func applyLayoutPlan(_ plan: BrowserLayoutPlan, activate: Bool) -> BrowserLayoutPlanResult {
+        var result = BrowserLayoutPlanResult()
+        for spec in plan.spaces {
+            let spaceID: UUID
+            if let existing = spaces.first(where: { BrowserLayoutPlan.sameName($0.name, spec.name) }) {
+                spaceID = existing.id
+                if let icon = spec.icon, icon != existing.icon { spaceStore.updateSpace(spaceID, icon: icon) }
+                result.spaces.append(.init(id: spaceID, name: existing.name, created: false))
+            } else {
+                spaceID = spaceStore.addSpace(name: spec.name, icon: spec.icon, origin: self)
+                result.spaces.append(.init(id: spaceID, name: spec.name, created: true))
+            }
+            var layout = layouts[spaceID] ?? SpaceLayout()
+            let pinnedBefore = layout.pinned
+            for (section, items) in [(SidebarSection.pinned, spec.pinned), (.regular, spec.tabs)] {
+                for item in items {
+                    switch item {
+                    case .tab(let tab):
+                        placePlannedTab(tab, section: section, groupID: nil, space: spaceID, layout: &layout, result: &result)
+                    case .group(let group):
+                        let groupID: UUID
+                        if let found = layout.nodes(section).compactMap(\.group)
+                            .first(where: { BrowserLayoutPlan.sameName($0.name, group.name) }) {
+                            groupID = found.id
+                        } else {
+                            let created = TabGroup(name: group.name, icon: group.icon ?? TabGroup.defaultIcon)
+                            layout.update(section) { $0.append(.group(created)) }
+                            groupID = created.id
+                            result.createdGroups += 1
+                        }
+                        layout.updateGroup(groupID) { existing in
+                            if let icon = group.icon { existing.icon = icon }
+                            if let expanded = group.expanded { existing.isExpanded = expanded }
+                        }
+                        result.groups.append(.init(id: groupID, name: group.name, spaceID: spaceID))
+                        for tab in group.tabs {
+                            placePlannedTab(tab, section: section, groupID: groupID, space: spaceID, layout: &layout, result: &result)
+                        }
+                    }
+                }
+            }
+            applyLayout(layout, to: spaceID, pinnedChanged: layout.pinned != pinnedBefore)
+        }
+        if activate, let first = result.spaces.first {
+            if first.id != activeSpaceID { switchSpace(to: first.id) }
+            else if selectedTab == nil { selectedTabID = preferredSelection(in: first.id) }
+        }
+        persistSession()
+        return result
+    }
+
+    private func placePlannedTab(_ spec: BrowserLayoutPlan.Tab, section: SidebarSection, groupID: UUID?, space: UUID,
+                                 layout: inout SpaceLayout, result: inout BrowserLayoutPlanResult) {
+        if let existing = layout.allTabIDs.first(where: { BrowserLayoutPlan.sameAddress(tab($0)?.url, spec.url) }) {
+            if let location = layout.location(of: existing), location.section == section, location.groupID == groupID {
+                result.keptTabs += 1
+            } else {
+                layout.removeTab(existing)
+                layout.insertTab(existing, section: section, groupID: groupID, index: .max)
+                result.movedTabs += 1
+            }
+            result.tabIDs.append(existing)
+            return
+        }
+        let tab = BrowserTab(title: spec.title, url: spec.url, owner: self)
+        tab.spaceID = space
+        tabs.append(tab)
+        layout.insertTab(tab.id, section: section, groupID: groupID, index: .max)
+        if !isRestoring { synchronizeChromiumLifecycleState(for: tab) }
+        result.createdTabs += 1
+        result.tabIDs.append(tab.id)
     }
 
     // MARK: Shared pins
