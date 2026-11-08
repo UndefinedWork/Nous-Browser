@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import Testing
-import WebKit
 @testable import NousBrowser
 
 @Suite("Live tabs transfer between windows", .serialized)
@@ -37,7 +36,7 @@ struct BrowserTabTransferTests {
         let manager = BrowserWindowManager(workspace: BrowserWorkspaceStore(sessionURL: sessionURL),
                                            appearance: BrowserAppearanceSettings(defaults: defaults),
                                            preferences: BrowserPreferences(defaults: defaults),
-                                           showsWindows: false, startsHibernationMonitors: false)
+                                           showsWindows: false)
         manager.restoreWindows()
         return Fixture(directory: directory, sessionURL: sessionURL, defaults: defaults,
                        defaultsDomain: defaultsDomain, manager: manager)
@@ -62,30 +61,6 @@ struct BrowserTabTransferTests {
         return url
     }
 
-    private func loadTwoPages(in tab: BrowserTab, directory: URL) async throws -> (first: URL, second: URL) {
-        let first = try writePage("First transfer page", in: directory)
-        let second = try writePage("Second transfer page", in: directory)
-        tab.load(first)
-        try await waitUntil { tab.webView.url == first && !tab.webView.isLoading }
-        tab.load(second)
-        try await waitUntil {
-            tab.webView.url == second && !tab.webView.isLoading
-                && tab.webView.backForwardList.backItem?.url == first
-        }
-        _ = try await tab.webView.evaluateJavaScript("""
-        window.transferMarker = 'kept-document';
-        document.getElementById('draft').value = 'Kept synthetic draft';
-        true;
-        """)
-        return (first, second)
-    }
-
-    private func documentState(_ view: WKWebView) async throws -> String {
-        let value = try await view.evaluateJavaScript("""
-        JSON.stringify({marker: window.transferMarker, draft: document.getElementById('draft').value})
-        """)
-        return try #require(value as? String)
-    }
 
     private func destination(in manager: BrowserWindowManager, tabCount: Int) throws -> BrowserWindowContext {
         let context = try #require(manager.newWindow())
@@ -127,36 +102,7 @@ struct BrowserTabTransferTests {
         #expect(!moving.isPinned)
     }
 
-    @Test(arguments: [false, true], [-3, 1, Int.max])
-    func existingWindowInsertionClampsToTheIncomingPinGroup(pinned: Bool, slot: Int) throws {
-        let fixture = try fixture(tabCount: 2)
-        defer { fixture.cleanUp() }
-        let manager = fixture.manager
-        let source = try #require(manager.activeContext)
-        let moving = try #require(source.controller.model.selectedTab)
-        if pinned { source.controller.model.togglePin(moving.id) }
-        let target = try destination(in: manager, tabCount: 4)
-        let firstPin = target.controller.model.tabs[0].id
-        let secondPin = target.controller.model.tabs[1].id
-        target.controller.model.togglePin(firstPin)
-        target.controller.model.togglePin(secondPin)
-        let previous = target.controller.model.tabs.map(\.id)
-        let expectedSlot = pinned ? max(0, min(2, slot)) : max(2, min(previous.count, slot))
-        var expected = previous
-        expected.insert(moving.id, at: expectedSlot)
-
-        #expect(manager.moveTab(moving.id, from: source.session.id, to: target.session.id, at: slot))
-        #expect(target.controller.model.tabs.map(\.id) == expected)
-        #expect(moving.isPinned == pinned)
-        #expect(target.controller.model.tabs.prefix(pinned ? 3 : 2).allSatisfy { $0.isPinned })
-        #expect(target.controller.model.tabs.dropFirst(pinned ? 3 : 2).allSatisfy { !$0.isPinned })
-        #expect(target.controller.model.selectedTab === moving)
-        let saved = try savedSession(for: target, in: fixture)
-        #expect(saved.tabs.map(\.id) == expected)
-        #expect(saved.tabs.first { $0.id == moving.id }?.isPinned == pinned)
-    }
-
-    @Test func backgroundMoveToAnExistingWindowPersistsBothSidesAndKeepsTheirClosedTabHistory() throws {
+    @Test func backgroundMoveToAnExistingWindowPersistsBothSidesAndKeepsTheirClosedTabHistory() async throws {
         let fixture = try fixture(tabCount: 4)
         defer { fixture.cleanUp() }
         let manager = fixture.manager
@@ -166,12 +112,14 @@ struct BrowserTabTransferTests {
         let moving = sourceModel.tabs[1]
         let sourceClosed = sourceModel.tabs[3]
         sourceModel.closeTab(sourceClosed.id)
+        try await waitForBrowserTest { !sourceModel.tabs.contains { $0.id == sourceClosed.id } }
         let sourceRemaining = sourceModel.tabs.filter { $0.id != moving.id }.map(\.id)
         sourceModel.resizeSidebar(to: 300)
         let target = try destination(in: manager, tabCount: 3)
         let targetModel = target.controller.model
         let targetClosed = targetModel.tabs[2]
         targetModel.closeTab(targetClosed.id)
+        try await waitForBrowserTest { !targetModel.tabs.contains { $0.id == targetClosed.id } }
         targetModel.resizeSidebar(to: 367)
         targetModel.isSidebarVisible = false
         let targetIDs = targetModel.tabs.map(\.id)
@@ -210,110 +158,6 @@ struct BrowserTabTransferTests {
         #expect(!sourceModel.tabs.contains { $0 === moving })
     }
 
-    @Test func movingTheLastTabIntoAnExistingWindowClosesOnlyItsFormerWindow() async throws {
-        let fixture = try fixture(tabCount: 1)
-        defer { fixture.cleanUp() }
-        let manager = fixture.manager
-        let source = try #require(manager.activeContext)
-        let moving = try #require(source.controller.model.selectedTab)
-        _ = try await loadTwoPages(in: moving, directory: fixture.directory)
-        let view = moving.webView
-        let before = try await documentState(view)
-        let target = try destination(in: manager, tabCount: 2)
-        let targetIDs = target.controller.model.tabs.map(\.id)
-
-        #expect(manager.moveTab(moving.id, from: source.session.id, to: target.session.id, at: 1))
-        #expect(manager.windows.count == 1 && manager.windows.first === target)
-        #expect(manager.activeContext === target)
-        #expect(source.controller.model.tabs.isEmpty && source.controller.model.selectedTabID == nil)
-        #expect(source.window.contentView == nil && source.controller.model.onLastTabClosed == nil)
-        #expect(target.controller.model.tabs.map(\.id) == [targetIDs[0], moving.id, targetIDs[1]])
-        #expect(target.controller.model.selectedTab === moving)
-        #expect(moving.webView === view)
-        #expect(view.navigationDelegate === moving && view.uiDelegate === moving)
-        #expect(try await documentState(view) == before)
-        let workspace = BrowserWorkspaceStore(sessionURL: fixture.sessionURL)
-        #expect(workspace.restoredWindows == [target.session])
-        let saved = try savedSession(for: target, in: fixture)
-        #expect(saved.tabs.map(\.id) == target.controller.model.tabs.map(\.id))
-        #expect(saved.selectedTabID == moving.id)
-    }
-
-    @Test func existingWindowMovePreservesTheLivePageAndMovesNativeCallbacksWithoutAStaleDeckReclaim() async throws {
-        let fixture = try fixture(tabCount: 2)
-        defer { fixture.cleanUp() }
-        let manager = fixture.manager
-        let source = try #require(manager.activeContext)
-        let sourceModel = source.controller.model
-        let moving = try #require(sourceModel.selectedTab)
-        let urls = try await loadTwoPages(in: moving, directory: fixture.directory)
-        let view = moving.webView
-        let store = view.configuration.websiteDataStore
-        view.pageZoom = 1.75
-        let before = try await documentState(view)
-        // Supply both native decks directly so a delayed SwiftUI rendering in
-        // a hidden test window cannot independently host the same page.
-        source.window.contentView = nil
-        let sourceSnapshot = sourceModel.tabs
-        let sourceDeck = WebViewDeckView(frame: NSRect(x: 0, y: 0, width: 640, height: 480))
-        sourceDeck.show(sourceSnapshot, selectedID: moving.id, owner: sourceModel)
-        #expect(view.superview === sourceDeck)
-        let target = try destination(in: manager, tabCount: 2)
-        target.window.contentView = nil
-        let targetModel = target.controller.model
-        let targetDeck = WebViewDeckView(frame: sourceDeck.frame)
-        targetDeck.show(targetModel.tabs, selectedID: targetModel.selectedTabID, owner: targetModel)
-
-        // Synthetic detection metadata exercises the native controller's tab
-        // ownership only; no real credential or authentication is requested.
-        let formURL = URL(string: "https://synthetic.example.test/login")!
-        let candidate = BrowserPasswordAutofill.Candidate(token: UUID().uuidString, frameURL: formURL,
-            origin: try #require(BrowserPasswordAutofill.Origin(url: formURL)), fieldTypes: ["email", "password"])
-        moving.passwordCandidate = candidate
-        source.controller.passwords.presentFill()
-        target.controller.passwords.presentImport()
-        #expect(source.controller.passwords.canFill)
-        var sourceTitleUpdates = 0
-        var targetTitleUpdates: [String] = []
-        var sourceVisits: [URL] = []
-        var targetVisits: [URL] = []
-        sourceModel.onPageTitleChanged = { _, _ in sourceTitleUpdates += 1 }
-        targetModel.onPageTitleChanged = { _, title in targetTitleUpdates.append(title) }
-        sourceModel.onVisit = { url, _ in sourceVisits.append(url) }
-        targetModel.onVisit = { url, _ in targetVisits.append(url) }
-
-        #expect(manager.moveTab(moving.id, from: source.session.id, to: target.session.id, at: 1))
-        targetDeck.show(targetModel.tabs, selectedID: moving.id, owner: targetModel)
-        #expect(targetModel.selectedTab === moving && moving.webView === view)
-        #expect(view.superview === targetDeck && !view.isHidden)
-        #expect(view.configuration.websiteDataStore === store)
-        #expect(view.navigationDelegate === moving && view.uiDelegate === moving)
-        #expect(view.pageZoom == 1.75)
-        #expect(view.url == urls.second && view.backForwardList.backItem?.url == urls.first)
-        #expect(try await documentState(view) == before)
-        #expect(moving.passwordCandidate == candidate)
-        #expect(!source.controller.passwords.isPresented && !target.controller.passwords.isPresented)
-        #expect(!source.controller.passwords.canFill && target.controller.passwords.canFill)
-        moving.passwordCandidate = nil
-        #expect(!target.controller.passwords.canFill)
-
-        sourceDeck.show(sourceSnapshot, selectedID: moving.id, owner: sourceModel)
-        #expect(view.superview === targetDeck)
-        _ = try await view.evaluateJavaScript("document.title = 'Moved existing-window title'; true;")
-        try await waitUntil { targetTitleUpdates.contains("Moved existing-window title") }
-        #expect(sourceTitleUpdates == 0)
-        sourceModel.shutdown()
-        sourceDeck.show([], selectedID: nil, owner: sourceModel)
-        #expect(view.superview === targetDeck)
-        #expect(view.navigationDelegate === moving && view.uiDelegate === moving)
-        #expect(try await documentState(view) == before)
-        let next = try writePage("After existing-window transfer", in: fixture.directory)
-        moving.load(next)
-        try await waitUntil { targetVisits.contains(next) && !view.isLoading }
-        #expect(sourceVisits.isEmpty)
-        #expect(targetModel.selectedTab === moving)
-        #expect(view.pageZoom == 1.75)
-    }
 
     @Test func invalidExistingWindowTransfersLeaveBothWindowsAndTheirViewsUnchanged() throws {
         let fixture = try fixture(tabCount: 2)
@@ -351,39 +195,6 @@ struct BrowserTabTransferTests {
         #expect(source.controller.model.selectedTabID == sourceSelected)
     }
 
-    @Test func windowTitleUsesOnlyTheSelectedDisplayTitleAndTracksWebKitTitleChanges() async throws {
-        let fixture = try fixture(tabCount: 2)
-        defer { fixture.cleanUp() }
-        let source = try #require(fixture.manager.activeContext)
-        let model = source.controller.model
-        let selected = try #require(model.selectedTab)
-        let background = model.tabs[1]
-        selected.title = "A stale blank-tab title"
-        #expect(selected.displayTitle == L10n.string("New Tab"))
-        #expect(source.window.title == selected.displayTitle)
-        let selectedPage = try writePage("Selected page title", in: fixture.directory)
-        selected.load(selectedPage)
-        try await waitUntil { !selected.webView.isLoading && source.window.title == "Selected page title" }
-        let peer = try destination(in: fixture.manager, tabCount: 1)
-        let peerTitle = peer.window.title
-        let backgroundPage = try writePage("Background page title", in: fixture.directory)
-        background.load(backgroundPage)
-        try await waitUntil { !background.webView.isLoading && background.title == "Background page title" }
-        _ = try await background.webView.evaluateJavaScript("document.title = 'Asynchronous background title'; true;")
-        try await waitUntil { background.title == "Asynchronous background title" }
-        #expect(source.window.title == "Selected page title")
-        #expect(peer.window.title == peerTitle)
-
-        model.selectTab(background.id)
-        try await waitUntil { source.window.title == "Asynchronous background title" }
-        _ = try await background.webView.evaluateJavaScript("document.title = 'Asynchronous selected title'; true;")
-        try await waitUntil { source.window.title == "Asynchronous selected title" }
-        #expect(source.window.title == model.selectedTab?.displayTitle)
-        #expect(peer.window.title == peerTitle)
-        model.selectTab(selected.id)
-        try await waitUntil { source.window.title == "Selected page title" }
-        #expect(fixture.manager.activeContext === peer)
-    }
 
     @Test func existingWindowTransferUpdatesBothWindowTitlesWithoutRetainingTheFormerSelection() async throws {
         let fixture = try fixture(tabCount: 2)
@@ -427,80 +238,6 @@ struct BrowserTabTransferTests {
         #expect(source.window.title == "Title before shutdown")
     }
 
-    @Test func movingALivePageKeepsItsViewDocumentHistoryZoomAndNewOwner() async throws {
-        let fixture = try fixture(tabCount: 3)
-        defer { fixture.cleanUp() }
-        let manager = fixture.manager
-        let source = try #require(manager.activeContext)
-        let model = source.controller.model
-        let tab = try #require(model.selectedTab)
-        let remaining = model.tabs.dropFirst().map(\.id)
-        model.togglePin(tab.id)
-        let urls = try await loadTwoPages(in: tab, directory: fixture.directory)
-        let view = tab.webView
-        let websiteStore = view.configuration.websiteDataStore
-        view.pageZoom = 1.5
-        let before = try await documentState(view)
-
-        let destination = try #require(manager.moveTabToNewWindow(tab.id, from: source.session.id))
-        #expect(manager.windows.count == 2)
-        #expect(destination.controller.model.tabs.map(\.id) == [tab.id])
-        #expect(destination.controller.model.selectedTab === tab)
-        #expect(destination.controller.model.selectedTab?.webView === view)
-        #expect(tab.isPinned)
-        #expect(model.tabs.map(\.id) == remaining)
-        #expect(model.selectedTabID == remaining.first)
-        #expect(!model.canRestoreClosedTab)
-        #expect(view.navigationDelegate === tab && view.uiDelegate === tab)
-        #expect(view.configuration.websiteDataStore === websiteStore)
-        #expect(view.pageZoom == 1.5)
-        #expect(view.url == urls.second)
-        #expect(view.backForwardList.backItem?.url == urls.first)
-        #expect(view.backForwardList.currentItem?.url == urls.second)
-        #expect(try await documentState(view) == before)
-
-        // Source cleanup must no longer own or invalidate this live page.
-        model.shutdown()
-        #expect(view.navigationDelegate === tab && view.uiDelegate === tab)
-        #expect(try await documentState(view) == before)
-        var destinationReceivedTitle = false
-        destination.controller.model.onPageTitleChanged = { _, title in
-            if title == "Transferred live title" { destinationReceivedTitle = true }
-        }
-        _ = try await view.evaluateJavaScript("document.title = 'Transferred live title'; true;")
-        try await waitUntil { destinationReceivedTitle }
-        #expect(view.pageZoom == 1.5)
-    }
-
-    @Test func movingTheOnlyTabClosesItsSourceAndLeavesTheTransferredPageAlive() async throws {
-        let fixture = try fixture(tabCount: 1)
-        defer { fixture.cleanUp() }
-        let manager = fixture.manager
-        let source = try #require(manager.activeContext)
-        let tab = try #require(source.controller.model.selectedTab)
-        _ = try await loadTwoPages(in: tab, directory: fixture.directory)
-        let view = tab.webView
-        let before = try await documentState(view)
-
-        let destination = try #require(manager.moveTabToNewWindow(tab.id, from: source.session.id))
-        #expect(manager.windows.count == 1)
-        #expect(manager.windows.first === destination)
-        #expect(manager.activeContext === destination)
-        #expect(source.controller.model.tabs.isEmpty)
-        #expect(source.controller.model.selectedTabID == nil)
-        #expect(source.window.contentView == nil)
-        #expect(source.controller.model.onLastTabClosed == nil)
-        #expect(destination.controller.model.selectedTab === tab)
-        #expect(tab.webView === view)
-        #expect(view.navigationDelegate === tab && view.uiDelegate === tab)
-        #expect(try await documentState(view) == before)
-
-        let restored = BrowserWorkspaceStore(sessionURL: fixture.sessionURL)
-        #expect(restored.restoredWindows == [destination.session])
-        let session = try JSONDecoder().decode(BrowserSession.self,
-            from: Data(contentsOf: restored.sessionURL(for: destination.session)))
-        #expect(session.tabs.map(\.id) == [tab.id])
-    }
 
     @Test func backgroundTransferTargetsItsOwningWindowAndPersistsBothLayoutsAndSessions() throws {
         let fixture = try fixture(tabCount: 3)
@@ -544,7 +281,7 @@ struct BrowserTabTransferTests {
         #expect(savedDestination.sidebarWidth == 326 && !savedDestination.isSidebarVisible)
     }
 
-    @Test func transferDoesNotReplaceThePreviouslyClosedTabHistory() throws {
+    @Test func transferDoesNotReplaceThePreviouslyClosedTabHistory() async throws {
         let fixture = try fixture(tabCount: 3)
         defer { fixture.cleanUp() }
         let manager = fixture.manager
@@ -553,6 +290,7 @@ struct BrowserTabTransferTests {
         let moving = model.tabs[1]
         let previouslyClosed = model.tabs[2]
         model.closeTab(previouslyClosed.id)
+        try await waitForBrowserTest { !model.tabs.contains { $0.id == previouslyClosed.id } }
         #expect(model.canRestoreClosedTab)
         let destination = try #require(manager.moveTabToNewWindow(moving.id, from: source.session.id))
         model.restoreClosedTab()
@@ -589,7 +327,7 @@ struct BrowserTabTransferTests {
         source.controller.model.shutdown()
         oldDeck.show([], selectedID: nil, owner: source.controller.model)
         #expect(view.superview === newDeck)
-        #expect(view.navigationDelegate === tab && view.uiDelegate === tab)
+        #expect(tab.owner === destination.controller.model)
     }
 
     @Test func invalidTabOrWindowIDsDoNotCreateOrChangeWindows() throws {

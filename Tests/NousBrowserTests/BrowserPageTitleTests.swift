@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-import WebKit
 @testable import NousBrowser
 
 @Suite("Page title icon presentation")
@@ -93,7 +92,6 @@ struct BrowserPageTitlePersistenceTests {
         #expect(stored.tabs.count == 1)
         #expect(stored.tabs[0].title == rawTitle)
         #expect(stored.tabs[0].url == pageURL)
-        #expect(stored.tabs[0].isPinned)
 
         let restored = BrowserModel(sessionURL: file, loadSelectedTab: false)
         defer { restored.shutdown() }

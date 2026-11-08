@@ -1,5 +1,15 @@
 // swift-tools-version: 6.2
 import PackageDescription
+import Foundation
+
+// Nous Core: Chromium's //chrome layer plus the //nous embedding API, built as
+// NousCore.framework from the Chromium tree (see Engine/README.md). Like Dia's
+// ArcCore.framework it is linked directly and imported as a Clang module.
+let repositoryPath = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
+let nousCoreSDK = ProcessInfo.processInfo.environment["NOUS_CORE_SDK_DIR"]
+    ?? repositoryPath + "/.build/nouscore/sdk"
+let nousCoreSwift: [SwiftSetting] = [.unsafeFlags(["-F", nousCoreSDK])]
+let nousCoreLink: [LinkerSetting] = [.unsafeFlags(["-F", nousCoreSDK, "-framework", "NousCore"])]
 
 let package = Package(
     name: "NousBrowser",
@@ -14,8 +24,13 @@ let package = Package(
     ],
     targets: [
         .target(name: "NousAutomation", path: "Sources/NousAutomation"),
-        .executableTarget(name: "NousBrowser", dependencies: ["NousAutomation", .product(name: "Sparkle", package: "Sparkle")], path: "Sources/NousBrowser",
-            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]) ]),
+        .executableTarget(
+            name: "NousBrowser",
+            dependencies: ["NousAutomation", .product(name: "Sparkle", package: "Sparkle")],
+            path: "Sources/NousBrowser",
+            swiftSettings: [.define("NOUS_CHROMIUM")] + nousCoreSwift,
+            linkerSettings: nousCoreLink + [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
+        ),
         .executableTarget(
             name: "NousMCP",
             dependencies: ["NousAutomation", .product(name: "MCP", package: "swift-sdk")],
@@ -24,7 +39,9 @@ let package = Package(
         .testTarget(
             name: "NousBrowserTests",
             dependencies: ["NousBrowser", "NousAutomation"],
-            path: "Tests/NousBrowserTests"
+            path: "Tests/NousBrowserTests",
+            swiftSettings: [.define("NOUS_CHROMIUM")] + nousCoreSwift,
+            linkerSettings: nousCoreLink + [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", nousCoreSDK])]
         ),
         .testTarget(
             name: "NousAutomationTests",
@@ -32,5 +49,6 @@ let package = Package(
             path: "Tests/NousAutomationTests"
         )
     ],
-    swiftLanguageModes: [.v6]
+    swiftLanguageModes: [.v6],
+    cxxLanguageStandard: .cxx20
 )

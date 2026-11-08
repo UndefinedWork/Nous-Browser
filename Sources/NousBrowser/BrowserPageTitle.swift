@@ -1,8 +1,8 @@
 import Foundation
 
-/// Some web apps expose a document icon as an emoji title prefix when running
-/// in WebKit instead of updating rel=icon. Present that explicit prefix in the
-/// one icon slot. Keep the original title in WebKit, history and saved sessions.
+/// Some web apps expose a document icon as an emoji title prefix
+/// instead of updating rel=icon. Present that explicit prefix in the
+/// one icon slot. Keep the original title in the webpage, history and saved sessions.
 /// This is presentation only: it never changes the page or its favicon cache.
 struct BrowserPageTitle: Equatable {
     let title: String

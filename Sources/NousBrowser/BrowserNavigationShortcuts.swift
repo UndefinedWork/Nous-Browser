@@ -1,5 +1,4 @@
 import AppKit
-import WebKit
 
 @MainActor
 enum BrowserNavigationShortcuts {
@@ -15,12 +14,12 @@ enum BrowserNavigationShortcuts {
         }
     }
 
-    static func shouldPreserveTextEditing(in window: NSWindow, webView: WKWebView) -> Bool {
+    static func shouldPreserveTextEditing(in window: NSWindow, webView: BrowserPageView) -> Bool {
         if let text = window.firstResponder as? NSText, text.isEditable || text.isSelectable { return true }
         guard let responder = window.firstResponder as? NSView else { return false }
         if responder === webView || responder.isDescendant(of: webView) {
-            // WebKit exposes an input context only while its focused frame is
-            // editable, including text fields, contenteditable and subframes.
+            // Renderer-owned shortcuts use Chromium's native editing path;
+            // this fallback only guards the active native input context.
             return webView.inputContext != nil
         }
         return responder.inputContext != nil
@@ -50,7 +49,46 @@ enum BrowserShortcutAliases {
     }
 }
 
-/// Webpage arrows go through WebKit's DOM listener; browser chrome is handled
+/// Alloy sends Command equivalents to the renderer before trying the main
+/// menu. Reserve only browser navigation/address/tab/sidebar commands present
+/// in our menu, so a page cannot swallow them with preventDefault(). Editing
+/// commands and composition keys retain the normal responder/renderer path.
+@MainActor
+enum ChromiumReservedBrowserShortcuts {
+    static func isReserved(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown,
+              let characters = event.charactersIgnoringModifiers?.lowercased() else { return false }
+        let modifiers = event.modifierFlags.intersection([.command, .shift, .control, .option])
+        switch modifiers {
+        case .command:
+            return ["l", "t", "n", "w", "r", "[", "]", "/", ".", "1", "2", "3", "4", "5", "6", "7", "8", "9"].contains(characters)
+        case [.command, .shift]:
+            // Braces are the shifted bracket equivalents on common layouts;
+            // AppKit still resolves the exact menu shortcut for that layout.
+            return ["t", "w", "r", "[", "]", "{", "}"].contains(characters)
+        default:
+            return false
+        }
+    }
+
+    /// Dispatch through the existing menu to retain its action and enabled
+    /// state. A disabled reserved command stays reserved rather than leaking to
+    /// the page (for example Back on the first history entry).
+    @discardableResult
+    static func dispatch(_ event: NSEvent, through menu: NSMenu?) -> Bool {
+        guard isReserved(event) else { return false }
+        // Chrome discards repeats of new-tab/new-window commands. A held key
+        // must not create a burst of pages; keep all other commands repeatable.
+        let modifiers = event.modifierFlags.intersection([.command, .shift, .control, .option])
+        if event.isARepeat, modifiers == .command,
+           let characters = event.charactersIgnoringModifiers?.lowercased(),
+           characters == "t" || characters == "n" { return true }
+        _ = menu?.performKeyEquivalent(with: event)
+        return true
+    }
+}
+
+/// Webpage arrows use Chromium's native key handling; browser chrome is handled
 /// here without overriding native text editing or involving other windows.
 @MainActor
 final class BrowserWindow: NSWindow {
@@ -60,6 +98,9 @@ final class BrowserWindow: NSWindow {
         guard isKeyWindow, let controller = browserController,
               attachedSheet == nil, !controller.passwords.isPresented else {
             return super.performKeyEquivalent(with: event)
+        }
+        if ChromiumReservedBrowserShortcuts.dispatch(event, through: NSApp.mainMenu) {
+            return true
         }
         if let action = BrowserShortcutAliases.action(for: event) {
             switch action {

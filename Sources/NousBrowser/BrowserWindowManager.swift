@@ -1,7 +1,6 @@
 import AppKit
 import Observation
 import SwiftUI
-import WebKit
 
 /// Owns browser windows independently of SwiftUI's Settings scene. Keeping the
 /// active identity here also gives menu commands the same target as AppKit.
@@ -13,15 +12,18 @@ final class BrowserWindowManager {
     let history: BrowserHistoryStore
     let passwordImporter = BrowserPasswordController()
     let tabDragCoordinator = BrowserTabDragCoordinator()
+    /// Spaces and pinned items are shared by every window and outlive them.
+    let spaceStore: BrowserSpaceStore
     private(set) var windows: [BrowserWindowContext] = []
     private(set) var activeWindowID: UUID?
     private(set) var keyWindowID: UUID?
 
     @ObservationIgnored private let workspace: BrowserWorkspaceStore
     @ObservationIgnored private let showsWindows: Bool
-    @ObservationIgnored private let startsHibernationMonitors: Bool
     @ObservationIgnored private var didRestoreWindows = false
     @ObservationIgnored private var isTerminating = false
+    @ObservationIgnored private var terminationCallbacks: [(Bool) -> Void] = []
+    @ObservationIgnored private var terminationTransaction: ChromiumCloseTransaction?
 
     var activeContext: BrowserWindowContext? {
         windows.first { $0.session.id == activeWindowID } ?? windows.last
@@ -35,14 +37,14 @@ final class BrowserWindowManager {
     init(workspace: BrowserWorkspaceStore, appearance: BrowserAppearanceSettings = BrowserAppearanceSettings(),
          preferences: BrowserPreferences = BrowserPreferences(),
          history: BrowserHistoryStore? = nil,
-         showsWindows: Bool = true, startsHibernationMonitors: Bool = true) {
+         showsWindows: Bool = true) {
         self.workspace = workspace
         self.appearance = appearance
         self.preferences = preferences
         self.history = history ?? BrowserHistoryStore(fileURL: workspace.legacySessionURL
             .deletingLastPathComponent().appendingPathComponent("history.json"))
         self.showsWindows = showsWindows
-        self.startsHibernationMonitors = startsHibernationMonitors
+        spaceStore = BrowserSpaceStore(fileURL: BrowserSpaceStore.fileURL(besideSession: workspace.legacySessionURL))
     }
 
     func restoreWindows() {
@@ -113,12 +115,12 @@ final class BrowserWindowManager {
         if sourceModel.tabs.isEmpty { closeWindow(sourceID) }
         activate(destination)
         transferred.prepareAfterTransfer()
-        if showsWindows, transferred.hasWebContent { destination.window.makeFirstResponder(transferred.webView) }
+        focusTransferredTab(transferred, in: destination)
         tabDragCoordinator.completeTransfer(to: destination.controller, index: 0)
         return destination
     }
 
-    /// Insert the existing tab into another window, preserving its WebKit
+    /// Insert the existing tab into another window, preserving its Chromium
     /// instance, history and pin status. The slot precedes destination tabs.
     @discardableResult
     func moveTab(_ id: UUID, from sourceID: UUID, to destinationID: UUID, at index: Int) -> Bool {
@@ -152,10 +154,20 @@ final class BrowserWindowManager {
         if sourceModel.tabs.isEmpty { closeWindow(sourceID) }
         activate(destination)
         transferred.prepareAfterTransfer()
-        if showsWindows, transferred.hasWebContent { destination.window.makeFirstResponder(transferred.webView) }
+        focusTransferredTab(transferred, in: destination)
         tabDragCoordinator.completeTransfer(to: destination.controller,
             index: destinationModel.tabs.firstIndex(where: { $0.id == id }) ?? 0)
         return true
+    }
+
+    private func focusTransferredTab(_ tab: BrowserTab, in destination: BrowserWindowContext) {
+        guard showsWindows, tab.hasWebContent else { return }
+        tab.webView.requestTransferredFocus(in: destination.window) { [weak tab, weak destination] in
+            guard let tab, let destination else { return false }
+            let model = destination.controller.model
+            return tab.isOwned(by: model) && model.selectedTabID == tab.id
+                && !destination.controller.isAddressPresented
+        }
     }
 
     private func positionTransferredWindow(_ window: NSWindow, from source: NSWindow, at point: NSPoint?) {
@@ -235,7 +247,7 @@ final class BrowserWindowManager {
 
     func closeWindow(_ id: UUID) {
         guard let context = windows.first(where: { $0.session.id == id }) else { return }
-        context.window.performClose(nil)
+        context.requestClose { _ in }
     }
 
     func activate(_ context: BrowserWindowContext) {
@@ -258,11 +270,85 @@ final class BrowserWindowManager {
         passwordImporter.dismiss()
         windows.forEach { $0.shutdown() }
         history.flush()
+        spaceStore.save()
+    }
+
+    /// Save every live window before publishing the workspace manifest. No
+    /// window or page is closed here; a caller must abort restart on any error.
+    /// This is also callable from Chromium's final approval phase, where the
+    /// normal best-effort saveWorkspace() intentionally does nothing.
+    func persistForRestart() throws {
+        for context in windows { try context.controller.model.persistForRestart() }
+        try workspace.save(windows: windows.map(\.session), activeWindowID: activeWindowID)
+    }
+
+    /// All windows participate in ONE approval phase. Canceling any native
+    /// beforeunload preserves every other page and window instance.
+    func requestTermination(beforeCommit: (() throws -> Void)? = nil,
+                            completion: @escaping (Bool) -> Void) {
+        if !terminationCallbacks.isEmpty {
+            // A late restart request cannot attach a save requirement to a
+            // close that may already have committed. Plain quit still coalesces.
+            guard beforeCommit == nil else { completion(false); return }
+            terminationCallbacks.append(completion)
+            return
+        }
+        guard !isTerminating else { completion(beforeCommit == nil); return }
+        saveWorkspace()
+        terminationCallbacks = [completion]
+        isTerminating = true
+        let transactionID = UUID()
+        var participants: [BrowserWindowContext] = []
+        var restoredWindows: [BrowserWindowSession] = []
+        let restoredActiveID = activeWindowID
+        let transaction = ChromiumCloseTransaction(id: transactionID, targets: { [weak self] in
+            guard let self else { return nil }
+            var targets: [ChromiumCloseTransaction.Target] = []
+            for context in self.windows {
+                guard let windowTargets = context.controller.model.targetsForWindowClose(transactionID) else { return nil }
+                if !participants.contains(where: { $0 === context }) { participants.append(context) }
+                targets.append(contentsOf: windowTargets)
+            }
+            return targets
+        }, willCommit: { [weak self] in
+            guard let self else { throw CancellationError() }
+            try beforeCommit?()
+            // Includes any tabs opened while a native sheet was present.
+            restoredWindows = self.windows.map(\.session)
+            for context in participants { context.controller.model.approveWindowClose(transactionID) }
+        }, completion: { [weak self] accepted in
+            guard let self else { return }
+            for context in participants {
+                context.controller.model.finishWindowClose(transactionID, committed: accepted)
+            }
+            self.terminationTransaction = nil
+            if accepted {
+                for context in participants { context.closeAfterPreparedPages() }
+                do { try self.workspace.save(windows: restoredWindows, activeWindowID: restoredActiveID) }
+                catch { NSLog("Nous Browser: Could not preserve window workspace on quit: %@", error.localizedDescription) }
+                self.passwordImporter.dismiss()
+                self.history.flush()
+                self.spaceStore.save()
+            } else {
+                self.isTerminating = false
+                self.saveWorkspace()
+            }
+            self.finishTerminationRequest(accepted: accepted)
+        })
+        terminationTransaction = transaction
+        transaction.start()
+    }
+
+    private func finishTerminationRequest(accepted: Bool) {
+        let callbacks = terminationCallbacks
+        terminationCallbacks.removeAll()
+        for callback in callbacks { callback(accepted) }
     }
 
     private func makeWindow(session: BrowserWindowSession, restoring: Bool, initialTab: BrowserTab? = nil) -> BrowserWindowContext {
         let model = BrowserModel(sessionURL: workspace.sessionURL(for: session), restoreSession: restoring,
-                                 startWithBlankTab: !restoring || !session.usesLegacySession, initialTab: initialTab)
+                                 startWithBlankTab: !restoring || !session.usesLegacySession, initialTab: initialTab,
+                                 spaceStore: spaceStore)
         model.onVisit = { [weak self] url, title in self?.history.recordVisit(url: url, title: title) }
         model.onPageTitleChanged = { [weak self] url, title in self?.history.updateTitle(url: url, title: title) }
         if restoring {
@@ -273,8 +359,7 @@ final class BrowserWindowManager {
         let controller = BrowserController(model: model, appearance: appearance, preferences: preferences, history: history)
         controller.tabDragCoordinator = tabDragCoordinator
         let context = BrowserWindowContext(session: session, controller: controller,
-                                           cascadeFrom: activeWindow,
-                                           startsHibernationMonitor: startsHibernationMonitors)
+                                           cascadeFrom: activeWindow)
         context.onBecomeKey = { [weak self, weak context] in
             guard let self, let context, !self.isTerminating else { return }
             self.setActiveWindow(context.session.id)
@@ -293,6 +378,37 @@ final class BrowserWindowManager {
         controller.onCloseWindow = { [weak self] in self?.closeWindow(session.id) }
         model.onLastTabClosed = { [weak self] in self?.closeWindow(session.id) }
         model.onOpenLinkInNewWindow = { [weak self] url in _ = self?.openLinkInNewWindow(url, from: session.id) }
+        model.onLastChromiumTabClose = { [weak context] completion in
+            guard let context else { completion(false); return }
+            context.requestClose(completion: completion)
+        }
+        model.onOpenChromiumImageWindow = { [weak self] url in
+            guard let self, !self.isTerminating, BrowserNativeImageURL.allows(url),
+                  self.windows.contains(where: { $0.session.id == session.id }) else { return }
+            let destination = self.makeWindow(session: self.workspace.makeWindowSession(), restoring: false)
+            destination.controller.model.selectedTab?.load(url)
+            destination.controller.model.persistSession()
+            self.activate(destination)
+        }
+        model.onDownloadNotice = { [weak controller, weak context] message, isError in
+            guard let controller else { return }
+            if isError {
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = message
+                alert.addButton(withTitle: L10n.string("OK"))
+                if let window = context?.window, window.isVisible, window.attachedSheet == nil {
+                    alert.beginSheetModal(for: window)
+                } else { alert.runModal() }
+            } else { controller.showToast(message) }
+        }
+        model.onCreateChromiumPopupWindow = { [weak self] in
+            guard let self, !self.isTerminating else { return nil }
+            let tab = BrowserTab(owner: nil, isPopup: true)
+            let popup = self.makeWindow(session: self.workspace.makeWindowSession(), restoring: false, initialTab: tab)
+            self.activate(popup)
+            return tab
+        }
         controller.onMoveTabToNewWindow = { [weak self] id, point in
             self?.moveTabToNewWindow(id, from: session.id, at: point) != nil
         }
@@ -338,14 +454,14 @@ final class BrowserWindowContext: NSObject, NSWindowDelegate {
     var onBecomeKey: (() -> Void)?
     var onResignKey: (() -> Void)?
     var onClose: (() -> Void)?
-    private let hibernationMonitor: TabHibernationMonitor
     private var isShutDown = false
+    private var closeRequestPending = false
+    private var closeApproved = false
+    private var closeCallbacks: [(Bool) -> Void] = []
 
-    init(session: BrowserWindowSession, controller: BrowserController, cascadeFrom: NSWindow?,
-         startsHibernationMonitor: Bool) {
+    init(session: BrowserWindowSession, controller: BrowserController, cascadeFrom: NSWindow?) {
         self.session = session
         self.controller = controller
-        hibernationMonitor = TabHibernationMonitor(model: controller.model)
         window = BrowserWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 600),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
@@ -364,6 +480,7 @@ final class BrowserWindowContext: NSObject, NSWindowDelegate {
         window.collectionBehavior = [.fullScreenPrimary]
         window.tabbingMode = .disallowed
         window.delegate = self
+        controller.model.chromiumPresentationWindow = window
         window.contentView = NSHostingView(rootView: BrowserShell(controller: controller))
         let frameName = session.usesLegacySession ? "NousBrowserMainWindow" : "NousBrowserWindow-" + session.id.uuidString
         window.setFrameAutosaveName(frameName)
@@ -374,7 +491,6 @@ final class BrowserWindowContext: NSObject, NSWindowDelegate {
         }
         hideWindowButtons()
         observeWindowTitle()
-        if startsHibernationMonitor { hibernationMonitor.start() }
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
@@ -384,7 +500,62 @@ final class BrowserWindowContext: NSObject, NSWindowDelegate {
 
     func windowDidResignKey(_ notification: Notification) { onResignKey?() }
 
-    func windowWillClose(_ notification: Notification) { onClose?() }
+    func windowWillClose(_ notification: Notification) {
+        let callbacks = closeCallbacks
+        closeCallbacks.removeAll()
+        onClose?()
+        for callback in callbacks { callback(true) }
+    }
+
+    /// Called only after the global transaction observed every native page close.
+    func closeAfterPreparedPages() {
+        guard !isShutDown else { return }
+        closeApproved = true
+        closeRequestPending = false
+        window.close()
+    }
+
+    func requestClose(completion: @escaping (Bool) -> Void) {
+        guard !isShutDown else { completion(true); return }
+        closeCallbacks.append(completion)
+        beginCloseRequest()
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        if isShutDown || closeApproved { return true }
+        beginCloseRequest()
+        return false
+    }
+
+    private func beginCloseRequest() {
+        if ProcessInfo.processInfo.environment["NOUS_CHROMIUM_TRACE"] != nil {
+            NSLog("Nous Chromium: close window request, pending=%d approved=%d tabs=%ld delegate=%@", closeRequestPending, closeApproved, controller.model.tabs.count, String(describing: window.delegate))
+        }
+        // Programmatic quit/close must not depend on performClose dispatching
+        // another delegate message while AppKit is waiting for terminateLater.
+        if closeApproved { window.close(); return }
+        guard !closeRequestPending else { return }
+        closeRequestPending = true
+        controller.model.requestWindowClose { [weak self] accepted in
+            // The model may answer immediately for an empty window. Defer so
+            // NSWindow's original shouldClose call always returns before retry.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.isShutDown else { return }
+                if ProcessInfo.processInfo.environment["NOUS_CHROMIUM_TRACE"] != nil {
+                    NSLog("Nous Chromium: window close outcome, accepted=%d", accepted)
+                }
+                self.closeRequestPending = false
+                if accepted {
+                    self.closeApproved = true
+                    self.window.close()
+                } else {
+                    let callbacks = self.closeCallbacks
+                    self.closeCallbacks.removeAll()
+                    for callback in callbacks { callback(false) }
+                }
+            }
+        }
+    }
 
     func windowWillUseStandardFrame(_ sender: NSWindow, defaultFrame newFrame: NSRect) -> NSRect {
         sender.screen?.visibleFrame ?? newFrame
@@ -393,7 +564,11 @@ final class BrowserWindowContext: NSObject, NSWindowDelegate {
     func shutdown() {
         guard !isShutDown else { return }
         isShutDown = true
-        hibernationMonitor.stop()
+        let callbacks = closeCallbacks
+        closeCallbacks.removeAll()
+        if !callbacks.isEmpty {
+            DispatchQueue.main.async { for callback in callbacks { callback(true) } }
+        }
         controller.shutdown()
         if let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .abort) }
         window.contentView = nil

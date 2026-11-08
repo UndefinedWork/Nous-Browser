@@ -1,5 +1,4 @@
 import Foundation
-import WebKit
 
 /// Detection sends field metadata only. Credentials enter the page solely after
 /// the caller has completed native account selection and device authentication.
@@ -53,79 +52,7 @@ enum BrowserPasswordAutofill {
         case bridgeUnavailable
     }
 
-    private static let handlerName = "nousPasswordCandidate"
-    private static let marker = "nous-browser-password-autofill-v1"
-    private static let world = WKContentWorld.world(name: "NousBrowserPasswordAutofill")
-    private static let hubs = NSMapTable<WKUserContentController, MessageHub>(keyOptions: .weakMemory, valueOptions: .strongMemory)
-
-    static func install(configuration: WKWebViewConfiguration, allowLoopbackHTTPForTesting: Bool = false) {
-        let controller = configuration.userContentController
-        guard !controller.userScripts.contains(where: { $0.source.contains(marker) }) else { return }
-        controller.addUserScript(WKUserScript(source: detectionSource(allowLoopbackHTTPForTesting: testingHTTPAllowed(allowLoopbackHTTPForTesting)),
-                                             injectionTime: .atDocumentStart, forMainFrameOnly: true, in: world))
-    }
-
-    static func attach(to webView: WKWebView, allowLoopbackHTTPForTesting: Bool = false,
-                       onCandidate: @escaping (Candidate?) -> Void) -> Attachment {
-        let controller = webView.configuration.userContentController
-        let hub: MessageHub
-        if let existing = hubs.object(forKey: controller) { hub = existing }
-        else {
-            hub = MessageHub(controller: controller)
-            controller.add(hub, contentWorld: world, name: handlerName)
-            hubs.setObject(hub, forKey: controller)
-        }
-        let attachment = Attachment(webView: webView, hub: hub,
-                                    allowLoopbackHTTPForTesting: testingHTTPAllowed(allowLoopbackHTTPForTesting), onCandidate: onCandidate)
-        hub.attachments[ObjectIdentifier(webView)] = WeakAttachment(attachment)
-        attachment.refreshCandidate()
-        return attachment
-    }
-
-    static func fill(_ values: Values, in webView: WKWebView, expectedOrigin: Origin, token: String) async throws -> FillResult {
-        try Task.checkCancellation()
-        guard !values.password.isEmpty, !values.password.contains(where: { $0 == "\r" || $0 == "\n" }),
-              values.password.utf8.count <= 65_536, values.username.utf8.count <= 16_384 else {
-            throw Failure.invalidCredential
-        }
-        guard UUID(uuidString: token) != nil, let initialURL = webView.url, !webView.isLoading else { throw Failure.staleDocument }
-        // HTTP is never enabled for production; a candidate can contain it only
-        // when both script installation and attachment explicitly opt into tests.
-        let allowTestHTTP = testingHTTPAllowed(expectedOrigin.scheme == "http")
-        guard Origin(url: initialURL, allowLoopbackHTTPForTesting: allowTestHTTP) == expectedOrigin else { throw Failure.invalidOrigin }
-
-        try Task.checkCancellation()
-        let result: ParsedFill = await withCheckedContinuation { continuation in
-            webView.callAsyncJavaScript(fillSource,
-                                       arguments: ["username": values.username, "password": values.password,
-                                                   "expectedOrigin": expectedOrigin.serialized, "token": token],
-                                       in: nil, in: world, completionHandler: { result in
-                switch result {
-                case .success(let value):
-                    guard let response = value as? [String: Any] else { continuation.resume(returning: .unavailable); return }
-                    if response["ok"] as? Bool == true {
-                        continuation.resume(returning: .filled(response["didFillUsername"] as? Bool == true))
-                    } else {
-                        continuation.resume(returning: response["reason"] as? String == "stale" ? .stale : .noForm)
-                    }
-                case .failure:
-                    continuation.resume(returning: .unavailable)
-                }
-            })
-        }
-        try Task.checkCancellation()
-        guard webView.url == initialURL, !webView.isLoading else { throw Failure.staleDocument }
-        switch result {
-        case .filled(let username): return FillResult(didFillUsername: username)
-        case .stale: throw Failure.staleDocument
-        case .noForm: throw Failure.noCompatibleForm
-        case .unavailable: throw Failure.bridgeUnavailable
-        }
-    }
-
-    private enum ParsedFill: Sendable { case filled(Bool), stale, noForm, unavailable }
-
-    private static func testingHTTPAllowed(_ requested: Bool) -> Bool {
+    static func testingHTTPAllowed(_ requested: Bool) -> Bool {
         #if DEBUG
         requested
         #else
@@ -133,130 +60,21 @@ enum BrowserPasswordAutofill {
         #endif
     }
 
-    @MainActor
-    final class Attachment {
-        private weak var webView: WKWebView?
-        private var hub: MessageHub?
-        private let allowLoopbackHTTPForTesting: Bool
-        private var onCandidate: ((Candidate?) -> Void)?
-        private var observations: [NSKeyValueObservation] = []
-        private(set) var candidate: Candidate?
-
-        fileprivate init(webView: WKWebView, hub: MessageHub, allowLoopbackHTTPForTesting: Bool,
-                         onCandidate: @escaping (Candidate?) -> Void) {
-            self.webView = webView
-            self.hub = hub
-            self.allowLoopbackHTTPForTesting = allowLoopbackHTTPForTesting
-            self.onCandidate = onCandidate
-            observations = [
-                webView.observe(\.url, options: [.new]) { [weak self] _, _ in
-                    MainActor.assumeIsolated {
-                        self?.clearCandidate()
-                        self?.refreshCandidate()
-                    }
-                },
-                webView.observe(\.isLoading, options: [.new]) { [weak self] view, _ in
-                    MainActor.assumeIsolated {
-                        if view.isLoading { self?.clearCandidate() }
-                        else { self?.refreshCandidate() }
-                    }
-                }
-            ]
-        }
-
-        func invalidate() {
-            observations.forEach { $0.invalidate() }
-            observations.removeAll()
-            clearCandidate()
-            onCandidate = nil
-            if let webView, let hub {
-                hub.attachments[ObjectIdentifier(webView)] = nil
-                hub.prune()
-            }
-            hub = nil
-            webView = nil
-        }
-
-        /// A native navigation/BFCache handshake. This only requests metadata;
-        /// no username or password is read from the document or returned.
-        func refreshCandidate() {
-            guard hub != nil, let webView, !webView.isLoading, let url = webView.url,
-                  Origin(url: url, allowLoopbackHTTPForTesting: allowLoopbackHTTPForTesting) != nil else { return }
-            webView.evaluateJavaScript(BrowserPasswordAutofill.refreshSource, in: nil,
-                                       in: BrowserPasswordAutofill.world, completionHandler: nil)
-        }
-
-        private func clearCandidate() {
-            guard candidate != nil else { return }
-            candidate = nil
-            onCandidate?(nil)
-        }
-
-        fileprivate func receive(_ message: WKScriptMessage) {
-            guard let webView, message.webView === webView, message.frameInfo.isMainFrame,
-                  let body = message.body as? [String: Any], Set(body.keys) == ["token", "frameURL", "fieldTypes"],
-                  let token = body["token"] as? String, let urlText = body["frameURL"] as? String,
-                  urlText.utf8.count <= 32_768, let frameURL = URL(string: urlText),
-                  let origin = Origin(url: frameURL, allowLoopbackHTTPForTesting: allowLoopbackHTTPForTesting),
-                  let currentURL = webView.url,
-                  Origin(url: currentURL, allowLoopbackHTTPForTesting: allowLoopbackHTTPForTesting) == origin,
-                  currentURL == frameURL, let types = body["fieldTypes"] as? [String] else { clearCandidate(); return }
-            let securityOrigin = message.frameInfo.securityOrigin
-            let defaultPort = origin.scheme == "https" ? 443 : 80
-            guard securityOrigin.protocol.lowercased() == origin.scheme,
-                  securityOrigin.host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]")) == origin.host,
-                  (securityOrigin.port > 0 ? securityOrigin.port : defaultPort) == origin.port else { clearCandidate(); return }
-            if token.isEmpty && types.isEmpty { clearCandidate(); return }
-            guard UUID(uuidString: token) != nil, (1...2).contains(types.count), types.contains("password"),
-                  types.allSatisfy({ ["password", "text", "email", "tel"].contains($0) }) else { clearCandidate(); return }
-            let next = Candidate(token: token, frameURL: frameURL, origin: origin, fieldTypes: types)
-            guard candidate != next else { return }
-            candidate = next
-            onCandidate?(next)
-        }
-    }
-
-    @MainActor
-    fileprivate final class WeakAttachment {
-        weak var value: Attachment?
-        init(_ value: Attachment) { self.value = value }
-    }
-
-    @MainActor
-    fileprivate final class MessageHub: NSObject, WKScriptMessageHandler {
-        weak var controller: WKUserContentController?
-        var attachments: [ObjectIdentifier: WeakAttachment] = [:]
-
-        init(controller: WKUserContentController) { self.controller = controller }
-
-        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard message.name == handlerName, message.frameInfo.isMainFrame, let webView = message.webView else { return }
-            attachments[ObjectIdentifier(webView)]?.value?.receive(message)
-            prune()
-        }
-
-        func prune() {
-            attachments = attachments.filter { $0.value.value != nil }
-            if attachments.isEmpty, let controller {
-                controller.removeScriptMessageHandler(forName: handlerName, contentWorld: world)
-                hubs.removeObject(forKey: controller)
-            }
-        }
-    }
-
-    private static let fillSource = #"""
+    static let fillSource = #"""
     const bridge = globalThis.__nousBrowserPasswordAutofill;
     if (!bridge) return { ok: false, reason: 'unavailable' };
     return bridge.fill(username, password, expectedOrigin, token);
     """#
 
-    private static let refreshSource = #"""
-    globalThis.__nousBrowserPasswordAutofill?.refreshCandidate();
-    true;
-    """#
-
-    private static func detectionSource(allowLoopbackHTTPForTesting: Bool) -> String {
-        "const allowLoopbackHTTP = \(allowLoopbackHTTPForTesting ? "true" : "false");\n" + #"""
+    /// The detector runs only in Chromium's isolated script world. Page content
+    /// cannot select the native binding or enable HTTP credential handling.
+    static func detectionSource(allowLoopbackHTTPForTesting: Bool) -> String {
+        let reportSource = "globalThis.__nousPasswordCandidate(serialized);"
+        let pageShowSource = "window.addEventListener('pageshow', event => event.persisted ? refreshCandidate() : requestCandidate());"
+        let discoverSource = "resetDiscovery();"
+        let formsSource = "[...passwordForms].filter(form => form.isConnected).slice(0, 100)"
+        let observerSource = chromiumObservationSource
+        return "const allowLoopbackHTTP = \(allowLoopbackHTTPForTesting ? "true" : "false");\n" + #"""
         // nous-browser-password-autofill-v1
         (() => {
             if (window !== window.top || globalThis.__nousBrowserPasswordAutofill) return;
@@ -328,13 +146,11 @@ enum BrowserPasswordAutofill {
             }
             function candidate() {
                 if (discoveryDirty) {
-                    passwordInputs.clear();
-                    discoverPasswords(document);
-                    discoveryDirty = false;
+                    \#(discoverSource)
                 }
                 if (!passwordInputs.size) { entry = null; return null; }
                 const passwordForms = new Set([...passwordInputs].map(input => input.form).filter(Boolean));
-                const forms = [...document.forms].slice(0, 100).filter(form => passwordForms.has(form));
+                const forms = \#(formsSource);
                 let found = null;
                 for (const form of forms) { found = analyze(form); if (found) break; }
                 if (!found) { entry = null; return null; }
@@ -355,7 +171,7 @@ enum BrowserPasswordAutofill {
                 const serialized = JSON.stringify(payload);
                 if (serialized === lastSent) return;
                 lastSent = serialized;
-                try { window.webkit.messageHandlers.nousPasswordCandidate.postMessage(payload); } catch (_) {}
+                try { \#(reportSource) } catch (_) {}
             }
             function schedule() {
                 if (scheduled || document.visibilityState !== 'visible') return;
@@ -411,32 +227,170 @@ enum BrowserPasswordAutofill {
                 schedule();
                 return { ok: true, didFillUsername };
             }
-            function refreshCandidate() {
-                entry = null;
+            function requestCandidate() {
+                // A metadata handshake must not revoke an unchanged, unused
+                // form token while native state/load callbacks are in flight.
+                // candidate() still rechecks origin, URL, fields and form shape.
                 lastSent = '';
                 report();
             }
-            if (!secureDocument()) return;
-            Object.defineProperty(globalThis, '__nousBrowserPasswordAutofill', { value: Object.freeze({ fill, refreshCandidate }), configurable: false, writable: false });
-            const observer = new MutationObserver(observeChanges);
-            function start() {
-                observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true,
-                    attributeFilter: ['type', 'autocomplete', 'hidden', 'style', 'class', 'disabled', 'readonly', 'action', 'target', 'formaction', 'formtarget', 'inert', 'aria-hidden', 'form', 'id', 'name', 'aria-label', 'value'] });
-                schedule();
+            function refreshCandidate() {
+                entry = null;
+                requestCandidate();
             }
-            if (document.documentElement) start(); else document.addEventListener('DOMContentLoaded', start, { once: true });
+            if (!secureDocument()) return;
+            Object.defineProperty(globalThis, '__nousBrowserPasswordAutofill', { value: Object.freeze({ fill, refreshCandidate, requestCandidate }), configurable: false, writable: false });
+            \#(observerSource)
             document.addEventListener('DOMContentLoaded', schedule);
             document.addEventListener('focusin', schedule);
             window.addEventListener('resize', schedule);
             window.addEventListener('scroll', schedule, { passive: true });
             window.addEventListener('hashchange', schedule);
             window.addEventListener('popstate', schedule);
-            window.addEventListener('pageshow', refreshCandidate);
-            document.addEventListener('visibilitychange', () => {
-                discoveryDirty = true;
-                schedule();
-            });
+            \#(pageShowSource)
         })();
         """#
     }
+
+    /// Chromium does not need a document-wide style/text observer on editors.
+    /// Discovery is structural, coalesced and bounded; only indexed login forms
+    /// and their ancestors get the more expensive candidate-state observation.
+    private static let chromiumObservationSource = #"""
+        const pendingRoots = new Set();
+        let batch = [], batchRoots = null, walk = null;
+        let discoveryHandle = null, usingIdle = false, observing = false;
+        let watchedForms = new Set(), watchedAncestors = new Set();
+        const formAttributes = ['type', 'autocomplete', 'hidden', 'style', 'class', 'disabled', 'readonly', 'action', 'target', 'formaction', 'formtarget', 'inert', 'aria-hidden', 'form', 'id', 'name', 'aria-label', 'value'];
+        const ancestorAttributes = ['hidden', 'style', 'class', 'inert', 'aria-hidden'];
+        const candidateObserver = new MutationObserver(() => schedule());
+        function stopDiscovery() {
+            if (discoveryHandle !== null) {
+                if (usingIdle) cancelIdleCallback(discoveryHandle); else clearTimeout(discoveryHandle);
+            }
+            discoveryHandle = null;
+            pendingRoots.clear(); batch = []; batchRoots = null; walk = null;
+        }
+        function queueDiscovery(root) {
+            if (!(root instanceof Element || root instanceof Document) || !root.isConnected || !observing) return;
+            if (!pendingRoots.has(document)) {
+                // A mutation burst cannot retain an unbounded queue. Overflow
+                // becomes one budgeted document traversal, not a synchronous scan.
+                if (pendingRoots.size >= 256) { pendingRoots.clear(); pendingRoots.add(document); }
+                else pendingRoots.add(root);
+            }
+            scheduleDiscovery();
+        }
+        function scheduleDiscovery() {
+            if (discoveryHandle !== null || !observing || document.visibilityState !== 'visible') return;
+            usingIdle = typeof requestIdleCallback === 'function';
+            discoveryHandle = usingIdle ? requestIdleCallback(discoverChunk, {timeout:120}) : setTimeout(discoverChunk, 16);
+        }
+        function refreshFormObservers() {
+            const forms = new Set(), ancestors = new Set();
+            for (const input of passwordInputs) {
+                if (!input.isConnected || input.ownerDocument !== document || input.type !== 'password') { passwordInputs.delete(input); continue; }
+                const form = input.form;
+                if (!form || !form.contains(input) || forms.size >= 100) continue;
+                forms.add(form);
+                for (let node = form.parentElement; node; node = node.parentElement) ancestors.add(node);
+            }
+            const equal = (a,b) => a.size === b.size && [...a].every(item => b.has(item));
+            if (equal(forms, watchedForms) && equal(ancestors, watchedAncestors)) return;
+            candidateObserver.disconnect();
+            watchedForms = forms; watchedAncestors = ancestors;
+            if (!observing) return;
+            for (const form of forms) candidateObserver.observe(form, {subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:formAttributes});
+            // No subtree observation on ancestors: unrelated editor class/style
+            // and text changes do not schedule form analysis.
+            for (const node of ancestors) candidateObserver.observe(node, {attributes:true, attributeFilter:ancestorAttributes});
+        }
+        function discoverChunk() {
+            discoveryHandle = null;
+            if (!observing || document.visibilityState !== 'visible') return;
+            const started = performance.now();
+            let budget = 256, indexChanged = false;
+            while (budget > 0 && performance.now() - started < 3) {
+                budget--;
+                if (!walk) {
+                    if (!batch.length) {
+                        if (!pendingRoots.size) break;
+                        batch = [...pendingRoots]; batchRoots = new Set(batch); pendingRoots.clear();
+                    }
+                    const root = batch.pop();
+                    if (!root.isConnected) continue;
+                    let parent = root.parentNode, covered = false, depth = 0;
+                    while (parent && depth++ < 256) {
+                        if (batchRoots.has(parent)) { covered = true; break; }
+                        parent = parent.parentNode;
+                    }
+                    if (covered) continue;
+                    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+                    if (!(root instanceof Element)) budget--;
+                    walk = {walker, node:root instanceof Element ? root : walker.nextNode()};
+                }
+                const node = walk.node;
+                if (!node) { walk = null; continue; }
+                walk.node = walk.walker.nextNode();
+                if (node instanceof HTMLInputElement && node.isConnected && node.type === 'password' && !passwordInputs.has(node)) {
+                    passwordInputs.add(node); indexChanged = true;
+                }
+            }
+            if (indexChanged) { refreshFormObservers(); schedule(); }
+            if (walk || batch.length || pendingRoots.size) scheduleDiscovery();
+            else batchRoots = null;
+        }
+        const structureObserver = new MutationObserver(records => {
+            if (!observing) return;
+            let indexChanged = false, removed = false;
+            for (const record of records) {
+                if (record.type === 'attributes') {
+                    const input = record.target;
+                    if (input instanceof HTMLInputElement) {
+                        if (input.type === 'password') { passwordInputs.add(input); indexChanged = true; }
+                        else if (passwordInputs.delete(input)) indexChanged = true;
+                    }
+                } else {
+                    removed ||= record.removedNodes.length > 0;
+                    for (const node of record.addedNodes) {
+                        queueDiscovery(node);
+                        if (pendingRoots.has(document)) break;
+                    }
+                }
+            }
+            if (removed && passwordInputs.size) {
+                for (const input of passwordInputs) if (!input.isConnected) { passwordInputs.delete(input); indexChanged = true; }
+                // Reparenting may alter which ancestor controls form visibility.
+                if (passwordInputs.size) refreshFormObservers();
+            }
+            if (indexChanged) { refreshFormObservers(); schedule(); }
+        });
+        function resetDiscovery() {
+            discoveryDirty = false;
+            stopDiscovery();
+            passwordInputs.clear();
+            refreshFormObservers();
+            queueDiscovery(document);
+        }
+        function startObservation() {
+            if (!document.documentElement || document.visibilityState !== 'visible') return;
+            observing = true;
+            structureObserver.observe(document.documentElement, {childList:true, subtree:true, attributes:true, attributeFilter:['type','form']});
+            resetDiscovery();
+            schedule();
+        }
+        if (document.documentElement) startObservation(); else document.addEventListener('DOMContentLoaded', startObservation, {once:true});
+        document.addEventListener('visibilitychange', () => {
+            structureObserver.disconnect(); candidateObserver.disconnect();
+            observing = false; stopDiscovery();
+            watchedForms.clear(); watchedAncestors.clear();
+            entry = null; discoveryDirty = true;
+            if (document.visibilityState === 'visible') startObservation();
+        });
+        window.addEventListener('pagehide', () => {
+            structureObserver.disconnect(); candidateObserver.disconnect();
+            observing = false; stopDiscovery();
+            watchedForms.clear(); watchedAncestors.clear(); entry = null; discoveryDirty = true;
+        });
+        window.addEventListener('pageshow', event => { if (event.persisted) startObservation(); });
+        """#
 }

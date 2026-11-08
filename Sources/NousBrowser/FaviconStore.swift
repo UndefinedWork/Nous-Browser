@@ -217,7 +217,7 @@ final class FaviconStore {
         return record
     }
 
-    /// Saves an icon decoded in the page's own WebKit session, including blob,
+    /// Saves an icon decoded in the page's own Chromium session, including blob,
     /// authenticated and emoji/SVG icons which a separate URLSession cannot use.
     @discardableResult
     func storePageImage(_ data: Data, for pageURL: URL, sourceURL: URL) -> NSImage? {

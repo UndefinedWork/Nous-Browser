@@ -36,12 +36,12 @@ struct BrowserWindowManagerTests {
         let manager = BrowserWindowManager(workspace: BrowserWorkspaceStore(sessionURL: sessionURL),
                                            appearance: BrowserAppearanceSettings(defaults: defaults),
                                            preferences: BrowserPreferences(defaults: defaults),
-                                           showsWindows: false, startsHibernationMonitors: false)
+                                           showsWindows: false)
         return Fixture(directory: directory, sessionURL: sessionURL, defaults: defaults,
                        defaultsDomain: defaultsDomain, manager: manager)
     }
 
-    @Test func closingNewTabAlsoDismissesItsAddressPalette() throws {
+    @Test func closingNewTabAlsoDismissesItsAddressPalette() async throws {
         let fixture = try fixture()
         defer { fixture.cleanUp() }
         fixture.manager.restoreWindows()
@@ -52,6 +52,7 @@ struct BrowserWindowManagerTests {
         #expect(controller.isAddressPresented)
         #expect(controller.model.tabs.count == 2)
         controller.closeTab()
+        try await waitForBrowserTest { controller.model.tabs.count == 1 }
         #expect(!controller.isAddressPresented)
         #expect(controller.model.tabs.count == 1)
         #expect(controller.model.selectedTabID == originalID)
@@ -61,7 +62,7 @@ struct BrowserWindowManagerTests {
         #expect(controller.addressText.isEmpty)
     }
 
-    @Test func closingLastTabWithAddressPaletteStillClosesOnlyItsWindow() throws {
+    @Test func closingLastTabWithAddressPaletteStillClosesOnlyItsWindow() async throws {
         let fixture = try fixture()
         defer { fixture.cleanUp() }
         fixture.manager.restoreWindows()
@@ -69,6 +70,7 @@ struct BrowserWindowManagerTests {
         let other = try #require(fixture.manager.newWindow())
         first.controller.showAddress()
         first.controller.closeTab()
+        try await waitForBrowserTest { fixture.manager.windows.count == 1 }
         #expect(!first.controller.isAddressPresented)
         #expect(fixture.manager.windows.count == 1)
         #expect(fixture.manager.windows.first === other)
@@ -94,8 +96,6 @@ struct BrowserWindowManagerTests {
         let firstTab = try #require(first.controller.model.selectedTab)
         let secondTab = try #require(second.controller.model.selectedTab)
         #expect(firstTab.webView !== secondTab.webView)
-        #expect(firstTab.webView.configuration.websiteDataStore === secondTab.webView.configuration.websiteDataStore)
-        #expect(firstTab.webView.configuration.websiteDataStore.isPersistent)
 
         first.controller.addressText = "Window One"
         first.controller.toast = "First window only"
@@ -146,31 +146,34 @@ struct BrowserWindowManagerTests {
         #expect(reloaded.restoredActiveWindowID == second.session.id)
     }
 
-    @Test func closingOneWindowStopsItsPageAndKeepsTheOtherWindowIntact() throws {
+    @Test func closingOneWindowStopsItsPageAndKeepsTheOtherWindowIntact() async throws {
         let fixture = try fixture()
         defer { fixture.cleanUp() }
         let manager = fixture.manager
         manager.restoreWindows()
         let first = try #require(manager.activeContext)
         let second = try #require(manager.newWindow())
-        let survivingPage = try #require(first.controller.model.selectedTab?.webView)
-        let closingPage = try #require(second.controller.model.selectedTab?.webView)
+        let survivingTab = try #require(first.controller.model.selectedTab)
+        let closingTab = try #require(second.controller.model.selectedTab)
+        let survivingPage = survivingTab.webView
+        let closingPage = closingTab.webView
         second.controller.passwords.presentImport()
         manager.closeActiveWindow()
+        try await waitForBrowserTest { manager.windows.count == 1 }
 
         #expect(manager.windows.count == 1)
         #expect(manager.activeController === first.controller)
         #expect(first.controller.model.selectedTab?.webView === survivingPage)
-        #expect(survivingPage.navigationDelegate != nil)
-        #expect(closingPage.navigationDelegate == nil)
-        #expect(closingPage.uiDelegate == nil)
+        #expect(survivingTab.owner === first.controller.model)
+        #expect(closingTab.owner == nil && closingTab.passwordCandidate == nil)
+        #expect(closingPage.superview == nil)
         #expect(second.window.contentView == nil)
         #expect(!second.controller.passwords.isPresented)
         let reloaded = BrowserWorkspaceStore(sessionURL: fixture.sessionURL)
         #expect(reloaded.restoredWindows == [first.session])
     }
 
-    @Test func closingTabsClosesOnlyTheirOwnWindowWhenItsFinalTabIsReached() throws {
+    @Test func closingTabsClosesOnlyTheirOwnWindowWhenItsFinalTabIsReached() async throws {
         let fixture = try fixture()
         defer { fixture.cleanUp() }
         let manager = fixture.manager
@@ -183,24 +186,26 @@ struct BrowserWindowManagerTests {
         let otherPage = otherTab.webView
 
         first.controller.closeTab()
+        try await waitForBrowserTest { first.controller.model.tabs.count == 1 }
         #expect(manager.windows.count == 2)
         #expect(first.controller.model.tabs.count == 1)
         #expect(first.controller.model.selectedTab === remainingTab)
-        #expect(remainingTab.webView.navigationDelegate != nil)
+        #expect(remainingTab.owner === first.controller.model)
         #expect(second.controller.model.selectedTab === otherTab)
         #expect(second.controller.model.selectedTab?.webView === otherPage)
 
         // The manager's active window is the second one. The callback must
         // still close the first tab's owning window, never the active peer.
         first.controller.closeTab()
+        try await waitForBrowserTest { manager.windows.count == 1 }
         #expect(manager.windows.count == 1)
         #expect(manager.activeContext === second)
         #expect(first.controller.model.tabs.count == 1)
         #expect(first.controller.model.selectedTab === remainingTab)
         #expect(first.controller.model.onLastTabClosed == nil)
-        #expect(remainingTab.webView.navigationDelegate == nil)
+        #expect(remainingTab.owner == nil)
+        #expect(otherTab.owner === second.controller.model)
         #expect(second.controller.model.selectedTab?.webView === otherPage)
-        #expect(otherPage.navigationDelegate != nil)
         let store = BrowserWorkspaceStore(sessionURL: fixture.sessionURL)
         #expect(store.restoredWindows == [second.session])
         let saved = try JSONDecoder().decode(BrowserSession.self, from: Data(contentsOf: store.sessionURL(for: first.session)))
@@ -213,7 +218,7 @@ struct BrowserWindowManagerTests {
         #expect(first.controller.model.tabs.map(\.id) == [remainingTab.id])
     }
 
-    @Test func closingTheFinalWindowsLastTabPersistsNoWindowsAndNewTabStartsOneBlankTab() throws {
+    @Test func closingTheFinalWindowsLastTabPersistsNoWindowsAndNewTabStartsOneBlankTab() async throws {
         let fixture = try fixture()
         defer { fixture.cleanUp() }
         let manager = fixture.manager
@@ -221,6 +226,7 @@ struct BrowserWindowManagerTests {
         let closed = try #require(manager.activeContext)
         let lastID = try #require(closed.controller.model.selectedTabID)
         closed.controller.closeTab()
+        try await waitForBrowserTest { manager.windows.isEmpty }
 
         #expect(manager.windows.isEmpty)
         #expect(manager.activeController == nil)
@@ -239,7 +245,7 @@ struct BrowserWindowManagerTests {
         #expect(BrowserWorkspaceStore(sessionURL: fixture.sessionURL).restoredWindows == [fresh.session])
     }
 
-    @Test func keyBrowserControllerClearsForSettingsAndReturnsWithoutLosingTheActiveWindow() throws {
+    @Test func keyBrowserControllerClearsForSettingsAndReturnsWithoutLosingTheActiveWindow() async throws {
         let fixture = try fixture()
         defer { fixture.cleanUp() }
         let manager = fixture.manager
@@ -273,18 +279,20 @@ struct BrowserWindowManagerTests {
         #expect(manager.keyController === second.controller)
 
         manager.closeWindow(second.session.id)
+        try await waitForBrowserTest { !manager.windows.contains { $0 === second } }
         #expect(manager.keyWindowID == nil)
         #expect(manager.keyController == nil)
         #expect(manager.activeController === first.controller)
         #expect(second.onResignKey == nil)
     }
 
-    @Test func newTabWithNoWindowsCreatesExactlyOneBlankTabAndCallbacksTargetTheirWindow() throws {
+    @Test func newTabWithNoWindowsCreatesExactlyOneBlankTabAndCallbacksTargetTheirWindow() async throws {
         let fixture = try fixture()
         defer { fixture.cleanUp() }
         let manager = fixture.manager
         manager.restoreWindows()
         manager.closeActiveWindow()
+        try await waitForBrowserTest { manager.windows.isEmpty }
         #expect(manager.windows.isEmpty)
         #expect(BrowserWorkspaceStore(sessionURL: fixture.sessionURL).restoredWindows.isEmpty)
         manager.newTab()
@@ -299,11 +307,12 @@ struct BrowserWindowManagerTests {
         let second = try #require(manager.activeContext)
         #expect(second !== first)
         first.controller.closeWindow()
+        try await waitForBrowserTest { manager.windows.count == 1 }
         #expect(manager.windows.count == 1)
         #expect(manager.activeContext === second)
     }
 
-    @Test func externalHTMLOnFirstLaunchCreatesOneTargetTabWithoutAnApplePage() throws {
+    @Test func externalHTMLOnFirstLaunchCreatesOneTargetTabWithoutAnApplePage() async throws {
         let fixture = try fixture(restoringBlankWindow: false)
         defer { fixture.cleanUp() }
         let page = fixture.directory.appendingPathComponent("target.html")
@@ -317,6 +326,7 @@ struct BrowserWindowManagerTests {
         manager.restoreWindows()
         #expect(manager.windows.count == 1)
         manager.closeActiveWindow()
+        try await waitForBrowserTest { manager.windows.isEmpty }
         manager.open([page])
         #expect(manager.windows.count == 1)
         #expect(manager.activeController?.model.tabs.count == 1)
@@ -347,6 +357,98 @@ struct BrowserWindowManagerTests {
             let saved = try JSONDecoder().decode(BrowserSession.self, from: data)
             #expect(saved.tabs.map(\.id) == expectedTabs[index])
         }
+    }
+
+    @Test func restartPersistenceSavesAllWindowsWithoutClosingThem() throws {
+        let fixture = try fixture()
+        defer { fixture.cleanUp() }
+        let manager = fixture.manager
+        manager.restoreWindows()
+        let first = try #require(manager.activeContext)
+        let second = try #require(manager.newWindow())
+        first.controller.model.selectedTab?.title = "First latest title"
+        second.controller.model.selectedTab?.title = "Second latest title"
+        manager.activate(first)
+        let contexts = manager.windows
+        try manager.persistForRestart()
+        let restored = BrowserWorkspaceStore(sessionURL: fixture.sessionURL)
+        #expect(restored.restoredWindows == contexts.map(\.session))
+        #expect(restored.restoredActiveWindowID == first.session.id)
+        for context in contexts {
+            let saved = try JSONDecoder().decode(BrowserSession.self,
+                from: Data(contentsOf: restored.sessionURL(for: context.session)))
+            #expect(saved.tabs.map(\.title) == context.controller.model.tabs.map(\.title))
+            #expect(context.controller.model.tabs.allSatisfy { $0.isOwned(by: context.controller.model) })
+        }
+        #expect(manager.windows.map(ObjectIdentifier.init) == contexts.map(ObjectIdentifier.init))
+        #expect(manager.newWindow() != nil)
+    }
+
+    @Test func sessionWriteFailureKeepsEveryLiveWindowAndDoesNotPublishWorkspace() throws {
+        let fixture = try fixture()
+        defer { fixture.cleanUp() }
+        let manager = fixture.manager
+        manager.restoreWindows()
+        let first = try #require(manager.activeContext)
+        let second = try #require(manager.newWindow())
+        let store = BrowserWorkspaceStore(sessionURL: fixture.sessionURL)
+        let manifestBefore = try Data(contentsOf: store.manifestURL)
+        let blocked = store.sessionURL(for: second.session)
+        if FileManager.default.fileExists(atPath: blocked.path) { try FileManager.default.removeItem(at: blocked) }
+        try FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: true)
+        first.controller.model.selectedTab?.title = "Must retain this live tab"
+        let contexts = manager.windows
+        #expect(throws: (any Error).self) { try manager.persistForRestart() }
+        #expect(try Data(contentsOf: store.manifestURL) == manifestBefore)
+        #expect(manager.windows.map(ObjectIdentifier.init) == contexts.map(ObjectIdentifier.init))
+        #expect(first.controller.model.selectedTab?.title == "Must retain this live tab")
+        #expect(contexts.allSatisfy { context in
+            context.controller.model.tabs.allSatisfy { $0.isOwned(by: context.controller.model) }
+        })
+        try FileManager.default.removeItem(at: blocked)
+        try manager.persistForRestart()
+    }
+
+    @Test func workspaceWriteFailureIsReportedBeforeAnyWindowShutdown() throws {
+        let fixture = try fixture()
+        defer { fixture.cleanUp() }
+        let manager = fixture.manager
+        manager.restoreWindows()
+        let context = try #require(manager.activeContext)
+        let store = BrowserWorkspaceStore(sessionURL: fixture.sessionURL)
+        try FileManager.default.removeItem(at: store.manifestURL)
+        try FileManager.default.createDirectory(at: store.manifestURL, withIntermediateDirectories: true)
+        context.controller.model.selectedTab?.title = "Session reached disk"
+        #expect(throws: (any Error).self) { try manager.persistForRestart() }
+        let saved = try JSONDecoder().decode(BrowserSession.self,
+            from: Data(contentsOf: store.sessionURL(for: context.session)))
+        #expect(saved.tabs.first?.title == "Session reached disk")
+        #expect(manager.windows.first === context)
+        #expect(context.controller.model.tabs.allSatisfy { $0.isOwned(by: context.controller.model) })
+        try FileManager.default.removeItem(at: store.manifestURL)
+        try manager.persistForRestart()
+    }
+
+    @Test func failedRestartHookCancelsApprovedCloseAndKeepsWindowsUsable() throws {
+        enum SaveFailure: Error { case denied }
+        let fixture = try fixture()
+        defer { fixture.cleanUp() }
+        let manager = fixture.manager
+        manager.restoreWindows()
+        _ = try #require(manager.newWindow())
+        let contexts = manager.windows
+        var called = false
+        var results: [Bool] = []
+        manager.requestTermination(beforeCommit: {
+            called = true
+            throw SaveFailure.denied
+        }) { results.append($0) }
+        #expect(called && results == [false])
+        #expect(manager.windows.map(ObjectIdentifier.init) == contexts.map(ObjectIdentifier.init))
+        #expect(contexts.allSatisfy { context in
+            context.controller.model.tabs.allSatisfy { $0.isOwned(by: context.controller.model) }
+        })
+        #expect(manager.newWindow() != nil)
     }
 
     @Test func standardZoomUsesTheWindowsCurrentScreensVisibleFrameWithoutChangingItsFrame() throws {

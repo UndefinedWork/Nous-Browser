@@ -1,0 +1,5 @@
+declare_args() {
+  # Build //chrome as NousCore.framework with the //nous embedding layer
+  # (Dia-style ADK embedding). Off for stock Chromium builds.
+  nous_core = false
+}

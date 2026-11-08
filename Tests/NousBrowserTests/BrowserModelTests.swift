@@ -1,12 +1,11 @@
 import Foundation
 import Testing
-import WebKit
 @testable import NousBrowser
 
 @Suite("Selection search stays in Nous", .serialized)
 @MainActor
 struct BrowserSelectionSearchTests {
-    @Test func controllerSearchPreferencesDriveAdjacentSearchTabs() throws {
+    @Test func controllerSearchPreferencesDriveAdjacentSearchTabs() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let defaultsDomain = "NousBrowserSelectionSearch-" + UUID().uuidString
         let defaults = try #require(UserDefaults(suiteName: defaultsDomain))
@@ -20,29 +19,26 @@ struct BrowserSelectionSearchTests {
             try? FileManager.default.removeItem(at: directory)
         }
         let source = try #require(model.selectedTab)
-        let view = try #require(source.webView as? BrowserWebView)
         model.newTab()
         let following = try #require(model.selectedTabID)
         #expect(model.searchEngineProvider() == .google)
         controller.preferences.selectSearchEngine(.duckDuckGo)
-        #expect(view.searchEngineTitle?() == BrowserSearchEngine.duckDuckGo.title)
         let query = "C++ 中文 & test"
-        view.onSearchSelection?(query)
+        try await searchSelection(query, from: source, in: model)
         let result = try #require(model.selectedTab)
         result.webView.stopLoading()
         #expect(model.tabs.map(\.id) == [source.id, result.id, following])
         #expect(result.url == BrowserSearchEngine.duckDuckGo.searchURL(query: query))
         #expect(URLComponents(url: try #require(result.url), resolvingAgainstBaseURL: false)?.queryItems?.first?.value == query)
         controller.preferences.selectSearchEngine(.bing)
-        #expect(view.searchEngineTitle?() == BrowserSearchEngine.bing.title)
-        view.onSearchSelection?("Updated default")
+        try await searchSelection("Updated default", from: source, in: model)
         let updated = try #require(model.selectedTab)
         updated.webView.stopLoading()
         #expect(model.tabs.map(\.id) == [source.id, updated.id, result.id, following])
         #expect(updated.url == BrowserSearchEngine.bing.searchURL(query: "Updated default"))
     }
 
-    @Test func transferredPagesUseTheDestinationSearchEngineAndTabList() throws {
+    @Test func transferredPagesUseTheDestinationSearchEngineAndTabList() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let source = BrowserModel(sessionURL: directory.appendingPathComponent("source.json"), restoreSession: false,
                                   loadSelectedTab: false, startWithBlankTab: true)
@@ -56,17 +52,27 @@ struct BrowserSelectionSearchTests {
         source.searchEngineProvider = { .google }
         destination.searchEngineProvider = { .baidu }
         let moving = try #require(source.selectedTab)
-        let view = try #require(moving.webView as? BrowserWebView)
         let existing = try #require(destination.selectedTabID)
         #expect(source.takeTabForTransfer(moving.id) === moving)
         #expect(destination.adoptTransferredTab(moving, at: 0))
-        #expect(view.searchEngineTitle?() == BrowserSearchEngine.baidu.title)
-        view.onSearchSelection?("Moved selection")
+        try await searchSelection("Moved selection", from: moving, in: destination)
         let result = try #require(destination.selectedTab)
         result.webView.stopLoading()
         #expect(source.tabs.isEmpty)
         #expect(destination.tabs.map(\.id) == [moving.id, result.id, existing])
         #expect(result.url == BrowserSearchEngine.baidu.searchURL(query: "Moved selection"))
+    }
+
+    private func searchSelection(_ text: String, from tab: BrowserTab, in model: BrowserModel) async throws {
+        try #require(tab.isOwned(by: model))
+        let count = model.tabs.count
+        // Exercise Chromium's real queued native-event routing without starting
+        // the engine or navigating a fixture in the user's browser.
+        tab.webView.eventHandler?("search", ["text": text])
+        for _ in 0..<100 where model.tabs.count == count {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        try #require(model.tabs.count == count + 1)
     }
 }
 
@@ -97,6 +103,40 @@ struct BrowserAddressTests {
 
 @Suite("Session restoration")
 struct BrowserSessionTests {
+    @Test @MainActor func restartSaveWritesCurrentSessionAndKeepsTheModelAlive() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let file = directory.appendingPathComponent("session.json")
+        let model = BrowserModel(sessionURL: file, restoreSession: false, loadSelectedTab: false,
+                                 startWithBlankTab: true)
+        defer { model.shutdown(); try? FileManager.default.removeItem(at: directory) }
+        model.newTab()
+        let selected = try #require(model.selectedTab)
+        selected.title = "Latest unscheduled title"
+        try model.persistForRestart()
+        let saved = try JSONDecoder().decode(BrowserSession.self, from: Data(contentsOf: file))
+        #expect(saved.tabs.map(\.id) == model.tabs.map(\.id))
+        #expect(saved.selectedTabID == selected.id && saved.tabs.last?.title == selected.title)
+        #expect(selected.isOwned(by: model))
+        model.newTab()
+        #expect(model.tabs.count == 3)
+    }
+
+    @Test @MainActor func restartSaveThrowsForUnwritableDestinationAndShutdownModel() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let file = directory.appendingPathComponent("session.json")
+        let model = BrowserModel(sessionURL: file, restoreSession: false, loadSelectedTab: false,
+                                 startWithBlankTab: true)
+        defer { model.shutdown(); try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: file, withIntermediateDirectories: true)
+        let original = try #require(model.selectedTab)
+        #expect(throws: (any Error).self) { try model.persistForRestart() }
+        #expect(model.selectedTab === original && original.isOwned(by: model))
+        try FileManager.default.removeItem(at: file)
+        try model.persistForRestart()
+        model.shutdown()
+        #expect(throws: (any Error).self) { try model.persistForRestart() }
+    }
+
     @Test @MainActor func restoresOlderSessionsWithoutDiscardingTabs() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let file = directory.appendingPathComponent("session.json")
@@ -171,15 +211,17 @@ struct BrowserSessionTests {
         #expect(restored.selectedTab?.url == nil)
     }
 
-    @Test @MainActor func closeLastTabLeavesAUsableBlankTabAndCanRestore() {
+    @Test @MainActor func closeLastTabLeavesAUsableBlankTabAndCanRestore() async throws {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("session.json")
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
         let browser = BrowserModel(sessionURL: file, restoreSession: false, loadSelectedTab: false)
         let initialID = browser.selectedTabID!
         browser.newTab()
         browser.closeTab(initialID)
+        try await waitForBrowserTest { !browser.tabs.contains { $0.id == initialID } }
         let firstID = browser.selectedTabID!
         browser.closeTab(firstID)
+        try await waitForBrowserTest { !browser.tabs.contains { $0.id == firstID } }
         #expect(browser.tabs.count == 1)
         #expect(browser.selectedTab?.url == nil)
         #expect(browser.selectedTabID != firstID)

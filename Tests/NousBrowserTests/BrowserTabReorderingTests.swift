@@ -74,7 +74,7 @@ struct BrowserTabReorderingTests {
         #expect(model.tabs.allSatisfy { $0.webView.url == nil && !$0.isLoading && $0.favicon === icon })
         let file = setup.directory.appendingPathComponent("session.json")
         let saved = try JSONDecoder().decode(BrowserSession.self, from: Data(contentsOf: file))
-        #expect(saved.tabs.map(\.id) == expected)
+        #expect(saved.tabs.map(\.id) == Array(expected.dropFirst(2)))
         let restored = BrowserModel(sessionURL: file, loadSelectedTab: false)
         #expect(restored.tabs.map(\.id) == expected)
         #expect(restored.tabs.map(\.isPinned) == [true, true, false, false, false])

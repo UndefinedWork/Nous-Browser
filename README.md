@@ -2,30 +2,26 @@
 
 给网页多一点空间。
 
-Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI、WebKit、SF Symbols 和系统 Liquid Glass。把标签页放在可收起的侧边栏里，保留熟悉的网页浏览方式。
+Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI、Liquid Glass、SF Symbols 与 Chromium。内核 NousCore 参照 Dia/Arc 的路线，把 Chromium 的 `//chrome` 层与自研嵌入层 `//nous` 编译成 `NousCore.framework` 直接嵌入。
 
 [下载开发预览版](https://github.com/UndefinedWork/Nous-Browser/releases) · [查看所有 Release](https://github.com/UndefinedWork/Nous-Browser/releases)
 
 ## 功能
 
-- **应用内更新**：GitHub 发行版发现新版本后显示更新按钮，点击下载、验证并重启；悬停显示更新提示。发布流程见 [更新说明](Docs/Updates.md)。
-
-- **三种侧边栏状态**：展开、60 pt 图标竖条、完全隐藏。⌘/ 切换展开与竖条，⌘. 独立隐藏并恢复上一次状态；展开时可拖动右边缘调整宽度、双击恢复默认宽度，每个窗口分别保存布局。
-- **标签页管理**：跟随网页动态更新 favicon，保留文档自定义图标，按页面分别缓存；支持复制、置顶、拖拽排序和恢复最近关闭的标签页。拖动到列表边缘可自动滚动，按 Esc 取消拖动。
-- **多窗口**：新建窗口与新建标签页分开操作，每个窗口分别管理自己的标签页；把侧边栏中的标签拖出窗口，可将当前页面移到一个独立窗口；拖入另一窗口的标签列表时，按落点插入。窗口菜单中的名称随选中标签的标题更新。
-- **窗口缩放**：双击侧边栏顶部空白区域铺满当前桌面的可用空间，再次双击恢复原大小，保留菜单栏与 Dock 的空间。
-- **原生外观**：Liquid Glass、Spring 弹性过渡和 SF Symbols；侧边栏与网页隐藏滚动条，仍可正常滚动。
-- **保留浏览状态**：恢复标签页、顺序和侧边栏状态；通过 WebKit 持久化网站数据保留网站自身的登录会话。
-- **Google Workspace 兼容**：在 macOS 26.4 及以上，Gmail、Google Docs、Slides、Sheets 使用统一的站点兼容身份，改善浏览器版本识别；其他网站保留原生 WebKit 身份。
-- **中文输入法兼容**：Zoom Slides 画布中的回车确认输入按输入法事件识别，避免确认字母时额外换行；确认后的下一次普通回车仍可换行。
-- **密码导入与填写**：手动导入 Apple「密码」或 Chrome 导出的 CSV，经设备验证后填写支持的 HTTPS 登录表单。
-- **跟随系统**：界面语言和外观默认跟随 macOS，支持浅色、深色以及 11 种界面语言。
-- **浏览器设置**：选择 Google、Bing、DuckDuckGo 或百度作为默认搜索引擎；配置 ⌘L 快捷访问的网站及顺序。快捷入口会发现网页声明的 favicon，支持页面跳转和相对图标地址。
-- **地址输入与网页推荐**：识别 `x。com`、`x．com` 等中文标点网址；按网页标题、网址关键词匹配已打开和常访问的网页，参考访问频率及最近访问时间排序。
-- **常用网页能力**：前进、后退、下载、网页全屏、本机 HTML/XHTML 文件和用户主动打开的新标签页；拦截脚本自动弹出的窗口。
-- **选择下载位置**：下载链接、附件，以及右键下载图片、视频和音频时，使用 macOS 系统保存框选择文件名和位置。右键下载在点击 Save 后发起；取消或下载失败不会覆盖已有文件。
-- **图片复制**：右键 Copy Image 保留原生复制行为；遇到 SVG 等原生复制未写入剪贴板的图片时，补充 PNG/TIFF 格式供其他应用粘贴。
-- **AI 助手连接**：通过标准 MCP stdio 接口，让支持本机 MCP 的 AI agent 查看标签和操作网页；在设置中开启或停止访问。
+- **空间（Spaces）**：每个空间有独立的固定项、文件夹和标签页。在侧边栏左右双指滑动或点底部圆点切换（⌥⌘← / ⌥⌘→）；右键圆点可改名、换图标或删除。
+- **固定（Pin）**：固定的网页以图标方块显示，关闭所有窗口后依然保留，并在各窗口间共享。关闭固定页只会卸载它，图标仍在原处。
+- **文件夹**：右键新建，拖入／拖出标签，拖动排序；可改名、换图标（SF Symbol 或 emoji）、整体固定。收起时仍显示当前所在的标签；拖着标签停在收起的文件夹上会自动展开。
+- **三合一导航**：后退、前进、刷新合并为一个玻璃控件；竖条状态下纵向排列。
+- **资料库（⇧⌘L）**：书签、截图、录屏、历史记录、下载进度与结果、应用更新集中在一处，默认通过 iCloud 云盘同步。
+- **书签（⌘D）**：书签在资料库中查看与管理；地址栏推荐和历史记录中带星标。
+- **截图（⌥⇧⌘S）**：选取区域后在新标签中打开编辑器：背景、边距、圆角、阴影、比例，以及箭头、形状、文字、序号、马赛克、裁剪等标注。
+- **录屏（⌥⇧⌘R）**：录制时遮罩非录制区域；结束后打开编辑器：自动跟随点击缩放、平滑光标、点击效果、剪辑与导出。
+- **自定义快捷键**：在 **设置 → 截图与录屏** 修改截图、录屏与网页截取的快捷键；截图与录屏快捷键在任何应用中都可用。
+- **三种侧边栏状态**：展开、60 pt 图标竖条、完全隐藏（⌘/、⌘.）。
+- **多窗口与标签拖放**：标签可拖出成为新窗口，或拖入其他窗口的指定位置，页面状态不丢失。
+- **登录状态与密码**：更新版本后网站登录和保存的密码继续保留，不弹出钥匙串密码框；可导入 Apple「密码」或 Chrome 导出的 CSV。
+- **跟随系统**：外观与 11 种界面语言默认跟随 macOS。
+- **AI 助手连接**：通过标准 MCP stdio 接口让本机 AI agent 查看与操作网页，默认关闭。
 
 ## 连接 AI agent（MCP）
 
@@ -36,10 +32,10 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 ## 系统要求
 
 - **macOS 26 或更新版本**。
-- 当前首个预编译包为 **Apple Silicon** 版本；Intel Mac 可在满足系统与开发环境要求时从源码构建。
-- 从源码构建需要 **Xcode 26 或更新版本、Swift 6.2 或更新版本**。
+- 当前发布包与受支持构建目标为 **Apple Silicon（arm64）**，没有 Intel 发行包。
+- 宿主需要 **Swift 6.2+** 及匹配 SDK；从头构建 NousCore 需要本机 Chromium 源码树与 depot_tools，具体要求见 [Chromium 构建说明](Docs/Chromium-Build.md)。
 
-当前源码版本：**1.1.11（Build 51）**。预编译安装包的构建号见对应 Release。
+当前源码版本：**1.4.0（Build 56）**。预编译安装包的构建号见对应 Release。
 
 ## 下载与安装
 
@@ -96,12 +92,21 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 | Esc | 关闭地址／查找浮层；没有浮层时停止加载 |
 | ⌘ ⇧ C | 复制当前网址 |
 | ⌘ ⇧ P | 验证并填写当前网站保存的密码 |
+| ⌘ D | 添加／移除书签 |
+| ⇧ ⌘ L / ⌘ Y / ⇧ ⌘ J / ⌥ ⌘ B | 资料库／历史记录／下载／书签 |
+| ⌥ ⇧ ⌘ S / ⌥ ⇧ ⌘ R / ⌥ ⇧ ⌘ P | 截图／录屏／截取当前网页（可在设置中修改） |
+| ⌥ ⌘ → / ⌥ ⌘ ← | 下一个／上一个空间 |
+| ⌥ ⌘ N | 新建文件夹 |
 
 ## 登录状态与密码
 
 ### 保留网站登录状态
 
-Cookie、Local Storage 等网站数据由 WebKit 的持久化存储管理。正常退出并重新打开应用后，网站可继续使用已有会话；有效期和是否需要重新登录由网站决定。Nous Browser 不会直接继承 Safari、Chrome 或其他浏览器的登录状态。
+1.4.0 起，网站登录、Chromium 保存的密码与导入的密码库在**更新后继续保留**，且不会弹出钥匙串密码框。
+
+当前发行包采用 ad-hoc 签名，macOS 会把钥匙串条目绑定到某一个具体构建，因此 Nous 不再把加密密钥放在钥匙串，而是保存在 `~/Library/Application Support/Nous Browser/Secrets/storage.key`（仅当前用户可读）。这与 WebKit 浏览器把网站数据保存在用户资料目录中的方式相当；请像保护整个用户目录一样保护它。
+
+**从 1.1.x（WebKit）或更早的 Chromium 构建升级到 1.4.0 时需要再登录一次**：旧构建的密钥只能由旧构建读取。之后的更新不再需要。
 
 ### 从 Apple「密码」或 Chrome 导入
 
@@ -116,24 +121,23 @@ Cookie、Local Storage 等网站数据由 WebKit 的持久化存储管理。正�
 
 ### 存储与限制
 
-- 导入的密码库保存在**本机登录钥匙串**。应用在每次导入或读取密码前执行新的设备验证；未完成验证时不继续读取或写入密码库。
+- 导入的密码库以 AES-GCM 加密保存在 `~/Library/Application Support/Nous Browser/Passwords.vault`。每次导入或读取前都要求 Touch ID 或 Mac 登录密码验证。
 - 密码不会写入标签页文件、日志或剪贴板。解锁后的账号列表会在关闭、切换到后台、页面变化或超时后清除。
-- CSV 导入是用户主动进行的迁移；此版本没有直接读取 Safari／Chrome 内部密码库或 iCloud Passwords、同步其他设备密码、迁移登录 Cookie、通行密钥或验证码的功能。
-- 当前 ad-hoc 签名没有稳定的开发者签名身份。**首次使用钥匙串或升级应用后，macOS 可能另外要求钥匙串访问许可**，该提示与每次填写前的设备验证不同。
-- 当前实现使用登录钥匙串及应用执行的设备验证；不宣称使用数据保护钥匙串的 `userPresence` 访问控制。后续正式签名发布仍需处理升级时的钥匙串信任。
+- CSV 导入是用户主动进行的迁移；不读取 Safari／Chrome 内部密码库或 iCloud 钥匙串，不迁移通行密钥或验证码。
 
 ## 本地数据
 
 | 数据 | 位置 |
 | --- | --- |
-| 标签页、排序和侧边栏状态 | `~/Library/Application Support/Nous Browser/session.json` |
-| 多窗口清单与当前窗口 | `~/Library/Application Support/Nous Browser/session.windows.json` |
-| 其他窗口的标签页和布局 | `~/Library/Application Support/Nous Browser/session-windows/` |
+| 窗口、标签页、文件夹 | `~/Library/Application Support/Nous Browser/session*.json`、`session-windows/` |
+| 空间与固定项（各窗口共享） | `~/Library/Application Support/Nous Browser/session-spaces.json` |
 | 本机访问记录与网页推荐 | `~/Library/Application Support/Nous Browser/history.json` |
+| 资料库（截图、录屏、书签、历史与下载记录） | iCloud 云盘 `Nous Browser/`；未开启 iCloud 云盘时为 `~/Library/Application Support/Nous Browser/Library/` |
+| Cookie、网站存储、Chromium 保存的密码 | `~/Library/Application Support/Nous Browser/Chromium/Local/GitHub/` |
+| 加密密钥 | `~/Library/Application Support/Nous Browser/Secrets/storage.key` |
+| 导入的密码库 | `~/Library/Application Support/Nous Browser/Passwords.vault` |
 | 网站图标缓存 | `~/Library/Caches/Nous Browser/Favicons/` |
-| 外观等应用偏好 | macOS `UserDefaults`，应用标识为 `com.cellier.nous-browser` |
-| 导入的密码库 | 本机登录钥匙串，服务名为 `com.nous.browser.password-vault` |
-| Cookie、网站本地存储等 | 由 WebKit 的持久化网站数据存储管理 |
+| 应用偏好与快捷键 | macOS `UserDefaults`，应用标识 `com.cellier.nous-browser` |
 
 删除应用文件不会自动清除以上数据。
 
@@ -146,24 +150,20 @@ Cookie、Local Storage 等网站数据由 WebKit 的持久化存储管理。正�
 安装 Xcode 并完成首次启动配置，在仓库根目录运行：
 
 ```sh
-zsh Scripts/build.sh
+zsh Scripts/build.sh                              # NousCore 引擎 + Swift + 打包
+NOUS_SKIP_ENGINE_BUILD=1 zsh Scripts/build.sh     # 只改 Swift 时跳过引擎
 open "build/Nous Browser.app"
 ```
 
-脚本默认构建当前 Mac 架构的 Release 版本，生成 `build/Nous Browser.app` 并添加 ad-hoc 签名。也可使用 Xcode 打开 `Package.swift` 查看和修改代码。
+`Scripts/build-nouscore.sh` 把 `Engine/nous` 链入 Chromium 源码树、应用 `Engine/patches/apply_chromium_patches.py`，编译出 `.build/nouscore/sdk/NousCore.framework`；`Scripts/build-chromium.sh` 编译 Swift、打包并添加无需私钥的 ad-hoc 签名，不安装应用。架构与补丁说明见 [Engine/README.md](Engine/README.md) 和 [Chromium 构建说明](Docs/Chromium-Build.md)。
 
 ## 测试
 
-验证记录：[1.1.8 画布输入法回车](Docs/QA-IME-1.1.8.md) · [1.1.7 图片复制](Docs/QA-Copy-Image-1.1.7.md) · [1.1.6 紧凑侧边栏](Docs/QA-Sidebar-1.1.6.md) · [1.1.5 中文输入兼容性](Docs/QA-IME-1.1.5.md) · [1.1.4 下载保存框](Docs/QA-1.1.4.md)。[快捷键核对与待补功能](Docs/KeyboardShortcuts.md)。
-
 ```sh
-swift test
-zsh Scripts/run-password-autofill-tests.sh
+zsh Scripts/test.sh          # 需先运行 Scripts/build-nouscore.sh 生成 NousCore SDK
 ```
 
-`swift test` 运行自动化测试。部分需要可见网页和完整应用事件循环的填写场景会在命令行环境中跳过；第二个脚本使用独立的原生测试窗口补充这些场景，需要当前 Mac 的图形桌面会话。
-
-密码测试使用虚构账号、测试存储和模拟设备验证，不读取真实浏览器密码或真实钥匙串数据。自动检查不能替代真人确认 Touch ID／Mac 登录密码验证、首次钥匙串许可、真实网站兼容性及升级后的行为。
+单元测试使用合成数据和模拟凭据后端，不能替代真实中文输入法、Finder 拖放、网站登录、升级与长时间性能验收。快捷键核对见 [KeyboardShortcuts](Docs/KeyboardShortcuts.md)。**目前没有充分配对测量证明性能与 Chrome 相同。**
 
 需要手动检查导航、下载和登录状态保留时，可启动本机测试页面：
 

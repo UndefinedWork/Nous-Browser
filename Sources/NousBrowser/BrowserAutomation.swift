@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import NousAutomation
-import WebKit
 
 /// The app side of MCP. Every page action names a tab explicitly, so another
 /// window becoming key can never redirect an agent's operation.
@@ -11,7 +10,7 @@ final class BrowserAutomationExecutor {
     private var busyTabs = Set<UUID>()
     private var latestSnapshots: [UUID: UUID] = [:]
     private var generation = UUID()
-    private static let world = WKContentWorld.world(name: "NousBrowserAutomation")
+    private static let world = "NousBrowserAutomation"
 
     init(windows: BrowserWindowManager) { self.windows = windows }
 
@@ -63,7 +62,7 @@ final class BrowserAutomationExecutor {
             var insertionIndex: Int?
             if args["after_tab_id"] != nil {
                 let source = try uuid(args, "after_tab_id")
-                guard let index = model.tabs.firstIndex(where: { $0.id == source }) else {
+                guard let index = model.visibleTabs.firstIndex(where: { $0.id == source }) else {
                     throw AutomationFailure("after_tab_id is not in the requested window.")
                 }
                 insertionIndex = index + 1
@@ -84,7 +83,14 @@ final class BrowserAutomationExecutor {
             let (context, tab) = try target(args)
             guard !busyTabs.contains(tab.id) else { throw AutomationFailure("The tab has another operation in progress. Try again after it completes.") }
             latestSnapshots[tab.id] = nil
-            context.controller.model.closeTab(tab.id)
+            busyTabs.insert(tab.id)
+            defer { busyTabs.remove(tab.id) }
+            let operationGeneration = generation
+            let accepted: Bool = await withCheckedContinuation { continuation in
+                context.controller.model.requestTabClose(tab.id) { continuation.resume(returning: $0) }
+            }
+            guard generation == operationGeneration else { throw AutomationFailure("Automation access was revoked during this operation.") }
+            guard accepted else { throw AutomationFailure("Closing this tab was cancelled.") }
             return value(.object(["closed_tab_id": .string(tab.id.uuidString)]))
         case "browser_navigate":
             let (context, tab) = try target(args)
@@ -97,16 +103,26 @@ final class BrowserAutomationExecutor {
         case "browser_back", "browser_forward", "browser_reload":
             let (context, tab) = try target(args)
             try requireWebPage(tab)
-            guard !busyTabs.contains(tab.id) else { throw AutomationFailure("The tab has another operation in progress. Try again after it completes.") }
+            guard busyTabs.insert(tab.id).inserted else { throw AutomationFailure("The tab has another operation in progress. Try again after it completes.") }
+            defer { busyTabs.remove(tab.id) }
+            let operationGeneration = generation
             latestSnapshots[tab.id] = nil
             tab.loadIfNeeded()
             if request.tool == "browser_back" {
-                guard let item = tab.webView.backForwardList.backItem else { throw AutomationFailure("This tab has no previous page.") }
-                _ = try url(item.url.absoluteString)
+                guard let destination = try await tab.webView.navigationDestination(backwards: true) else {
+                    throw AutomationFailure("This tab has no previous page.")
+                }
+                _ = try url(destination.absoluteString)
+                try requireCurrent(tab, webView: tab.webView)
+                guard generation == operationGeneration else { throw AutomationFailure("Automation access was revoked during this operation.") }
                 tab.webView.goBack()
             } else if request.tool == "browser_forward" {
-                guard let item = tab.webView.backForwardList.forwardItem else { throw AutomationFailure("This tab has no next page.") }
-                _ = try url(item.url.absoluteString)
+                guard let destination = try await tab.webView.navigationDestination(backwards: false) else {
+                    throw AutomationFailure("This tab has no next page.")
+                }
+                _ = try url(destination.absoluteString)
+                try requireCurrent(tab, webView: tab.webView)
+                guard generation == operationGeneration else { throw AutomationFailure("Automation access was revoked during this operation.") }
                 tab.webView.goForward()
             } else {
                 let bypass = try boolean(args, "bypass_cache", default: false)
@@ -213,7 +229,7 @@ final class BrowserAutomationExecutor {
         _ = try url(candidate.absoluteString)
     }
 
-    private func requireCurrent(_ tab: BrowserTab, webView: WKWebView) throws {
+    private func requireCurrent(_ tab: BrowserTab, webView: BrowserPageView) throws {
         try Task.checkCancellation()
         guard tab.webView === webView,
               windows.windows.contains(where: { $0.controller.model.tabs.contains(where: { $0 === tab }) }) else {
@@ -223,7 +239,7 @@ final class BrowserAutomationExecutor {
         _ = try url(current.absoluteString)
     }
 
-    private func waitForPage(_ tab: BrowserTab, webView: WKWebView) async throws {
+    private func waitForPage(_ tab: BrowserTab, webView: BrowserPageView) async throws {
         for _ in 0..<100 {
             try Task.checkCancellation()
             if !webView.isLoading, webView.url != nil {
@@ -235,43 +251,25 @@ final class BrowserAutomationExecutor {
         throw AutomationFailure("The page is still loading. Wait for it to finish, then request a new snapshot.")
     }
 
-    private func script(_ arguments: [String: Any], in webView: WKWebView) async throws -> JSONValue {
+    private func script(_ arguments: [String: Any], in webView: BrowserPageView) async throws -> JSONValue {
         try Task.checkCancellation()
         var arguments = arguments
         arguments["deadline"] = Date().addingTimeInterval(10).timeIntervalSince1970 * 1_000
-        return try await withCheckedThrowingContinuation { continuation in
-            let pending = AutomationPending<JSONValue>(continuation)
-            webView.callAsyncJavaScript(Self.scriptSource, arguments: arguments, in: nil, in: Self.world) { result in
-                switch result {
-                case .success(let object):
-                    do {
-                        let data = try JSONSerialization.data(withJSONObject: object as Any, options: [.fragmentsAllowed])
-                        pending.finish(.success(try JSONDecoder().decode(JSONValue.self, from: data)))
-                    } catch { pending.finish(.failure(AutomationFailure("The page returned an unsupported result."))) }
-                case .failure: pending.finish(.failure(AutomationFailure("The page changed or its content could not be read. Request a new snapshot.")))
-                }
-            }
-        }
+        let object = try await webView.callAsyncJavaScript(Self.scriptSource, arguments: arguments, world: Self.world)
+        let data = try JSONSerialization.data(withJSONObject: object as Any, options: [.fragmentsAllowed])
+        return try JSONDecoder().decode(JSONValue.self, from: data)
     }
 
-    private func screenshot(_ webView: WKWebView) async throws -> String {
+    private func screenshot(_ webView: BrowserPageView) async throws -> String {
         try Task.checkCancellation()
         guard webView.bounds.width > 0, webView.bounds.height > 0 else {
             throw AutomationFailure("Select this tab before taking its screenshot.")
         }
-        return try await withCheckedThrowingContinuation { continuation in
-            let pending = AutomationPending<String>(continuation)
-            let configuration = WKSnapshotConfiguration()
-            configuration.snapshotWidth = NSNumber(value: min(1_440, webView.bounds.width))
-            webView.takeSnapshot(with: configuration) { image, _ in
-                guard let image, let png = Self.pngData(image),
-                      png.count <= 8 * 1_024 * 1_024 else {
-                    pending.finish(.failure(AutomationFailure("A screenshot is unavailable. Select this tab, then try again.")))
-                    return
-                }
-                pending.finish(.success(png.base64EncodedString()))
-            }
+        let data = try await webView.captureImage()
+        guard let image = NSImage(data: data), let png = Self.pngData(image), png.count <= 8 * 1_024 * 1_024 else {
+            throw AutomationFailure("A screenshot is unavailable. Select this tab, then try again.")
         }
+        return png.base64EncodedString()
     }
 
     private static func pngData(_ image: NSImage) -> Data? {

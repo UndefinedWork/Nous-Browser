@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import Testing
-import WebKit
 @testable import NousBrowser
 
 @Suite("Reload, page zoom and numbered tab shortcuts", .serialized)
@@ -23,7 +22,7 @@ struct BrowserReloadZoomShortcutTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let file = directory.appendingPathComponent("session.json")
         // Restoring unopened about:blank pages gives each tab its own real
-        // WKWebView without network requests, user history or a password store.
+        // Chromium child view without network requests, user history or a password store.
         let tabs = (0..<tabCount).map { index in
             BrowserSession.Tab(id: UUID(), title: "Synthetic tab \(index + 1)",
                                url: blank ? nil : URL(string: "about:blank"))

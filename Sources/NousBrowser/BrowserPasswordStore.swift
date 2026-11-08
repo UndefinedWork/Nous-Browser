@@ -253,7 +253,7 @@ actor BrowserPasswordKeychainBackend: BrowserPasswordVaultBackend {
     private let service: String
     private let account: String
 
-    init(service: String = "com.nous.browser.password-vault", account: String = "vault-v1") {
+    init(service: String, account: String = "vault-v1") {
         self.service = service
         self.account = account
     }
@@ -291,17 +291,89 @@ actor BrowserPasswordKeychainBackend: BrowserPasswordVaultBackend {
     }
 }
 
+/// The vault as one AES-GCM sealed file under the distribution's folder,
+/// keyed from `NousLocalSecret`. Ad-hoc builds use this instead of a keychain
+/// item, so every update opens the same vault without a keychain prompt.
+actor BrowserPasswordFileBackend: BrowserPasswordVaultBackend {
+    private let url: URL
+    private let key: SymmetricKey
+
+    init(url: URL, key: SymmetricKey) {
+        self.url = url
+        self.key = key
+    }
+
+    func load() throws -> Data? {
+        try Task.checkCancellation()
+        guard let sealed = try? Data(contentsOf: url) else { return nil }
+        do { return try AES.GCM.open(AES.GCM.SealedBox(combined: sealed), using: key) }
+        catch { throw BrowserPasswordStoreError.corruptVault }
+    }
+
+    func save(_ data: Data) throws {
+        try Task.checkCancellation()
+        guard let sealed = try AES.GCM.seal(data, using: key).combined else { throw BrowserPasswordStoreError.corruptVault }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        try sealed.write(to: url, options: [.atomic])
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+}
+
+/// Only explicitly configured Chromium distributions may open a vault. The
+/// previous WebKit production service is deliberately never selected here.
+nonisolated enum BrowserPasswordVaultScope {
+    enum Distribution: String, Sendable { case github, preview }
+    static let legacyProductionService = "com.nous.browser.password-vault"
+    static let chromiumProductionService = "com.cellier.nous-browser.chromium.password-vault"
+    static let chromiumPreviewService = "com.cellier.nous-browser.chromium-preview.password-vault"
+    static let storagePolicy = "local-key"
+
+    static func distribution(bundleIdentifier: String?, distributionChannel: String?,
+                             storagePolicy: String?) -> Distribution? {
+        guard storagePolicy == Self.storagePolicy else { return nil }
+        switch (bundleIdentifier, distributionChannel) {
+        case ("com.cellier.nous-browser", "github"): return .github
+        case ("com.cellier.nous-browser.chromium-preview", "chromium-preview"): return .preview
+        default: return nil
+        }
+    }
+
+    /// Team-signed builds only: one keychain item per team and distribution.
+    static func teamService(_ distribution: Distribution, teamFingerprint: String) -> String {
+        (distribution == .github ? chromiumProductionService : chromiumPreviewService) + ".v4.team." + teamFingerprint
+    }
+
+    static func fileURL(in directory: URL) -> URL { directory.appendingPathComponent("Passwords.vault") }
+}
+
+/// A distribution without a valid storage policy never opens any vault.
+actor BrowserUnavailablePreviewPasswordBackend: BrowserPasswordVaultBackend {
+    func load() throws -> Data? { throw BrowserPasswordStoreError.keychain(errSecCSInternalError) }
+    func save(_ data: Data) throws { throw BrowserPasswordStoreError.keychain(errSecCSInternalError) }
+}
+
 @MainActor
 final class BrowserPasswordStore {
     static let shared: BrowserPasswordStore = {
-        #if DEBUG
-        if let identifier = Bundle.main.bundleIdentifier,
-           identifier.hasPrefix("com.cellier.nous-browser.") {
-            // Isolated UI review apps must never open the installed app's vault.
-            return BrowserPasswordStore(backend: BrowserPasswordKeychainBackend(service: identifier + ".password-vault"))
+        let bundle = Bundle.main
+        guard let distribution = BrowserPasswordVaultScope.distribution(bundleIdentifier: bundle.bundleIdentifier,
+            distributionChannel: bundle.object(forInfoDictionaryKey: "NousDistributionChannel") as? String,
+            storagePolicy: bundle.object(forInfoDictionaryKey: "NousCredentialStorage") as? String) else {
+            return BrowserPasswordStore(backend: BrowserUnavailablePreviewPasswordBackend())
         }
-        #endif
-        return BrowserPasswordStore()
+        if let team = NousStableSigning.verifiedTeam(bundle: bundle), let identifier = bundle.bundleIdentifier {
+            let fingerprint = NousStableSigning.fingerprint(team: team, bundleIdentifier: identifier)
+            return BrowserPasswordStore(backend: BrowserPasswordKeychainBackend(
+                service: BrowserPasswordVaultScope.teamService(distribution, teamFingerprint: fingerprint)))
+        }
+        let directory = BrowserRuntimePaths.current.directory
+        guard let secret = try? NousLocalSecret.load(in: directory) else {
+            return BrowserPasswordStore(backend: BrowserUnavailablePreviewPasswordBackend())
+        }
+        return BrowserPasswordStore(backend: BrowserPasswordFileBackend(
+            url: BrowserPasswordVaultScope.fileURL(in: directory),
+            key: NousLocalSecret.derive(secret, purpose: "password-vault")))
     }()
     private let backend: any BrowserPasswordVaultBackend
     private let authentication: any BrowserPasswordAuthenticating
@@ -309,7 +381,7 @@ final class BrowserPasswordStore {
     private var importing = false
     private var importWaiters: [CheckedContinuation<Void, Never>] = []
 
-    init(backend: any BrowserPasswordVaultBackend = BrowserPasswordKeychainBackend(),
+    init(backend: any BrowserPasswordVaultBackend,
          authentication: any BrowserPasswordAuthenticating = BrowserPasswordDeviceAuthentication(),
          maximumVaultBytes: Int = 32 * 1024 * 1024) {
         self.backend = backend

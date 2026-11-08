@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import Observation
-import WebKit
 
 nonisolated enum SidebarSizing {
     static let defaultWidth: Double = 243
@@ -24,7 +23,7 @@ nonisolated enum SidebarSizing {
     }
 }
 
-/// Tabs are restored separately from WebKit's persistent cookie and website-data store.
+/// Tabs are restored separately from Chromium's persistent cookie and website-data store.
 /// Credentials are never serialized into this file.
 struct BrowserSession: Codable, Equatable {
     struct Tab: Codable, Equatable {
@@ -54,6 +53,14 @@ struct BrowserSession: Codable, Equatable {
         }
     }
 
+    /// The ordinary (unpinned) tabs and folders of one space in this window.
+    struct Space: Codable, Equatable {
+        var id: UUID
+        var regular: [SidebarNodeRecord]
+        var selectedTabID: UUID?
+    }
+
+    /// Every ordinary tab, flattened. Earlier versions read only this list.
     var tabs: [Tab]
     var selectedTabID: UUID?
     var isSidebarVisible: Bool
@@ -61,18 +68,23 @@ struct BrowserSession: Codable, Equatable {
     /// Kept independently of visibility so fully hiding the sidebar can restore
     /// the user's previous expanded or icon-only presentation.
     var isSidebarCompact: Bool
+    var activeSpaceID: UUID?
+    /// nil for sessions written before spaces existed.
+    var spaces: [Space]?
 
     init(tabs: [Tab], selectedTabID: UUID?, isSidebarVisible: Bool, sidebarWidth: Double = SidebarSizing.defaultWidth,
-         isSidebarCompact: Bool = false) {
+         isSidebarCompact: Bool = false, activeSpaceID: UUID? = nil, spaces: [Space]? = nil) {
         self.tabs = tabs
         self.selectedTabID = selectedTabID
         self.isSidebarVisible = isSidebarVisible
         self.sidebarWidth = sidebarWidth
         self.isSidebarCompact = isSidebarCompact
+        self.activeSpaceID = activeSpaceID
+        self.spaces = spaces
     }
 
     private enum CodingKeys: String, CodingKey {
-        case tabs, selectedTabID, isSidebarVisible, sidebarWidth, isSidebarCompact
+        case tabs, selectedTabID, isSidebarVisible, sidebarWidth, isSidebarCompact, activeSpaceID, spaces
     }
 
     init(from decoder: Decoder) throws {
@@ -84,6 +96,45 @@ struct BrowserSession: Codable, Equatable {
         // An invalid layout value must not discard the user's tabs either.
         sidebarWidth = (try? container.decode(Double.self, forKey: .sidebarWidth)) ?? SidebarSizing.defaultWidth
         isSidebarCompact = (try? container.decode(Bool.self, forKey: .isSidebarCompact)) ?? false
+        activeSpaceID = try? container.decodeIfPresent(UUID.self, forKey: .activeSpaceID)
+        spaces = try? container.decodeIfPresent([Space].self, forKey: .spaces)
+    }
+}
+
+/// What the sidebar drags: a tab or a whole folder.
+nonisolated enum SidebarItemRef: Equatable, Hashable, Sendable {
+    case tab(UUID)
+    case group(UUID)
+
+    var id: UUID {
+        switch self {
+        case .tab(let id), .group(let id): id
+        }
+    }
+}
+
+/// A drop position: an index in a section, or inside a folder.
+nonisolated struct SidebarDropTarget: Equatable, Sendable {
+    var section: SidebarSection
+    var groupID: UUID?
+    var index: Int
+}
+
+extension SpaceLayout {
+    /// Removing the item first makes `target.index` independent of where it came from.
+    func moving(_ item: SidebarItemRef, to target: SidebarDropTarget) -> SpaceLayout {
+        var layout = self
+        switch item {
+        case .tab(let id):
+            guard layout.removeTab(id) else { return self }
+            layout.insertTab(id, section: target.section, groupID: target.groupID, index: target.index)
+        case .group(let id):
+            guard let (group, _, _) = layout.removeGroup(id) else { return self }
+            layout.update(target.section) { nodes in
+                nodes.insert(.group(group), at: min(max(0, target.index), nodes.count))
+            }
+        }
+        return layout
     }
 }
 
@@ -94,11 +145,20 @@ final class BrowserModel {
     private(set) var selectedTabID: UUID? {
         didSet {
             guard oldValue != selectedTabID else { return }
-            // Both the tab being left and the one shown were in use until now.
-            let now = now()
-            for tab in tabs where tab.id == oldValue || tab.id == selectedTabID { tab.lastActiveAt = now }
+            // Only the old/new selection changes. Do not resubmit metadata for
+            // every background renderer on each keyboard tab switch.
+            if let selectedTab { synchronizeChromiumLifecycleState(for: selectedTab) }
+            if let previous = tabs.first(where: { $0.id == oldValue }) {
+                synchronizeChromiumLifecycleState(for: previous)
+            }
+            if let selectedTabID, let space = tab(selectedTabID)?.spaceID { selectionBySpace[space] = selectedTabID }
         }
     }
+    /// Each space's tabs and folders, in display order.
+    private(set) var layouts: [UUID: SpaceLayout] = [:] {
+        didSet { orderTabsLikeSidebar() }
+    }
+    private(set) var activeSpaceID: UUID
     private(set) var sidebarWidth = SidebarSizing.defaultWidth
     var isSidebarVisible = true {
         didSet { scheduleSave() }
@@ -106,70 +166,254 @@ final class BrowserModel {
     var isSidebarCompact = false {
         didSet { scheduleSave() }
     }
+    var isPageFullscreen: Bool {
+        selectedTab?.isPageFullscreen == true
+    }
+    // HTML fullscreen temporarily hides browser chrome without changing the
+    // saved expanded/compact/hidden sidebar preference.
+    var isSidebarPresented: Bool { isSidebarVisible && !isPageFullscreen }
 
+    let spaceStore: BrowserSpaceStore
+    @ObservationIgnored private var selectionBySpace: [UUID: UUID] = [:]
     @ObservationIgnored private let sessionURL: URL
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var closedTabs: [BrowserSession.Tab] = []
     @ObservationIgnored private var isRestoring = true
     @ObservationIgnored private var isShutDown = false
+    @ObservationIgnored private var storeObserver: NSObjectProtocol?
     @ObservationIgnored var onLastTabClosed: (() -> Void)?
     @ObservationIgnored var onVisit: ((URL, String) -> Void)?
     @ObservationIgnored var onPageTitleChanged: ((URL, String) -> Void)?
     @ObservationIgnored var onOpenLinkInNewWindow: ((URL) -> Void)?
+    @ObservationIgnored weak var chromiumPresentationWindow: NSWindow? {
+        didSet {
+            for tab in tabs { tab.webView.dialogPresentationWindow = chromiumPresentationWindow }
+        }
+    }
+    @ObservationIgnored var onCreateChromiumPopupWindow: (() -> BrowserTab?)?
+    @ObservationIgnored var onOpenChromiumImageWindow: ((URL) -> Void)?
+    @ObservationIgnored var onDownloadNotice: ((String, Bool) -> Void)?
+    @ObservationIgnored var onLastChromiumTabClose: ((@escaping (Bool) -> Void) -> Void)?
+    @ObservationIgnored private var pendingTabCloses: Set<UUID> = []
+    @ObservationIgnored private var windowCloseTransactionID: UUID?
+    @ObservationIgnored private var windowCloseTransaction: ChromiumCloseTransaction?
+    @ObservationIgnored private var closedWindowTabIDs: Set<UUID> = []
+    @ObservationIgnored private var windowCloseApproved = false
     @ObservationIgnored var searchEngineProvider: () -> BrowserSearchEngine = { .google }
-    /// Injectable so tests can age tabs without waiting.
-    @ObservationIgnored var now: () -> Date = Date.init
 
     var selectedTab: BrowserTab? { tabs.first { $0.id == selectedTabID } }
     var addressDisplay: String { selectedTab?.url?.absoluteString ?? "" }
     var canRestoreClosedTab: Bool { !closedTabs.isEmpty }
+    var spaces: [BrowserSpaceRecord] { spaceStore.spaces }
+    var activeSpace: BrowserSpaceRecord? { spaceStore.space(activeSpaceID) }
+    var activeLayout: SpaceLayout { layouts[activeSpaceID] ?? SpaceLayout() }
+    func layout(for spaceID: UUID) -> SpaceLayout { layouts[spaceID] ?? SpaceLayout() }
+    func tab(_ id: UUID) -> BrowserTab? { tabs.first { $0.id == id } }
+
+    /// The active space's tabs in sidebar order, including folder contents.
+    var visibleTabs: [BrowserTab] { activeLayout.allTabIDs.compactMap(tab) }
 
     init(sessionURL: URL? = nil, restoreSession: Bool = true, loadSelectedTab: Bool = true, startWithBlankTab: Bool = false,
-         initialTab: BrowserTab? = nil) {
+         initialTab: BrowserTab? = nil, spaceStore: BrowserSpaceStore? = nil) {
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Nous Browser", isDirectory: true)
         self.sessionURL = sessionURL ?? directory.appendingPathComponent("session.json")
-        if let initialTab {
-            tabs = [initialTab]
-            selectedTabID = initialTab.id
-            initialTab.owner = self
-        } else if restoreSession,
-           let data = try? Data(contentsOf: self.sessionURL),
-           let session = try? JSONDecoder().decode(BrowserSession.self, from: data),
-           !session.tabs.isEmpty {
-            let orderedTabs = session.tabs.filter(\.isPinned) + session.tabs.filter { !$0.isPinned }
-            tabs = orderedTabs.map { BrowserTab(id: $0.id, title: $0.title, url: $0.url, isPinned: $0.isPinned, owner: self) }
-            selectedTabID = tabs.contains(where: { $0.id == session.selectedTabID }) ? session.selectedTabID : tabs.first?.id
+        // A standalone model keeps its spaces and pins beside its session file.
+        let store = spaceStore ?? BrowserSpaceStore(fileURL: sessionURL.map(BrowserSpaceStore.fileURL(besideSession:)))
+        self.spaceStore = store
+        activeSpaceID = store.defaultSpaceID
+        for space in store.spaces { layouts[space.id] = SpaceLayout() }
+
+        let session = restoreSession && initialTab == nil
+            ? (try? Data(contentsOf: self.sessionURL)).flatMap { try? JSONDecoder().decode(BrowserSession.self, from: $0) }
+            : nil
+        if let session {
             isSidebarVisible = session.isSidebarVisible
             isSidebarCompact = session.isSidebarCompact
             sidebarWidth = SidebarSizing.clampedWidth(session.sidebarWidth)
-        } else {
+            if let activeID = session.activeSpaceID, store.space(activeID) != nil { activeSpaceID = activeID }
+        }
+        // Migrate pins from a session written before pins were shared.
+        if let session, session.spaces == nil {
+            let legacyPins = session.tabs.filter(\.isPinned)
+            if !legacyPins.isEmpty, store.acceptsLegacyPins || store.spaces.allSatisfy({ $0.pinned.isEmpty }) {
+                var pinned = store.spaces[0].pinned
+                let known = Set(pinned.flatMap(\.tabs).compactMap(\.url))
+                for pin in legacyPins {
+                    // Same rules as the session: no image bytes or temporary URLs.
+                    let url = Self.persistableURL(pin.url)
+                    if let url, known.contains(url) { continue }
+                    let temporary = ["data", "blob"].contains(pin.url?.scheme?.lowercased() ?? "")
+                    pinned.append(.tab(SidebarTabRecord(id: pin.id, title: temporary ? L10n.string("New Tab") : pin.title, url: url)))
+                }
+                store.setPinned(pinned, in: store.spaces[0].id, origin: nil)
+            }
+        }
+        rebuildPinnedFromStore()
+
+        if let initialTab {
+            initialTab.owner = self
+            initialTab.isPinned = false
+            initialTab.spaceID = activeSpaceID
+            tabs.append(initialTab)
+            layouts[activeSpaceID, default: SpaceLayout()].regular.append(.tab(initialTab.id))
+            selectedTabID = initialTab.id
+        } else if let session {
+            if let spaces = session.spaces {
+                for saved in spaces {
+                    // A space that no longer exists (deleted elsewhere, or a lost spaces
+                    // file) hands its tabs to the default space instead of dropping them.
+                    let known = store.space(saved.id) != nil
+                    let space = known ? saved.id : store.defaultSpaceID
+                    if !known, session.activeSpaceID == saved.id { activeSpaceID = space }
+                    var layout = layouts[space] ?? SpaceLayout()
+                    for node in saved.regular {
+                        switch node {
+                        case .tab(let record):
+                            if let tab = makeRestoredTab(record, space: space) { layout.regular.append(.tab(tab.id)) }
+                        case .group(let record):
+                            let ids = record.tabs.compactMap { makeRestoredTab($0, space: space)?.id }
+                            layout.regular.append(.group(TabGroup(id: record.id, name: record.name, icon: record.icon,
+                                                                  isExpanded: record.isExpanded, tabIDs: ids)))
+                        }
+                    }
+                    layouts[space] = layout
+                    if let selected = saved.selectedTabID, known || selectionBySpace[space] == nil { selectionBySpace[space] = selected }
+                }
+            } else {
+                let space = store.spaces[0].id
+                for record in session.tabs where !record.isPinned {
+                    if let tab = makeRestoredTab(SidebarTabRecord(id: record.id, title: record.title, url: record.url), space: space) {
+                        layouts[space, default: SpaceLayout()].regular.append(.tab(tab.id))
+                    }
+                }
+                activeSpaceID = space
+            }
+            if let selected = session.selectedTabID, tab(selected)?.spaceID == activeSpaceID {
+                selectedTabID = selected
+            } else {
+                selectedTabID = preferredSelection(in: activeSpaceID)
+            }
+        }
+        // A new window, or a session with nothing left in it, starts with one page.
+        if initialTab == nil, session == nil || tabs.isEmpty {
             let tab = startWithBlankTab
                 ? BrowserTab(owner: self)
                 : BrowserTab(title: "Apple", url: URL(string: "https://www.apple.com"), owner: self)
-            tabs = [tab]
+            add(tab, to: activeSpaceID)
             selectedTabID = tab.id
         }
         isRestoring = false
+        store.finishLegacyMigration()
+        initialTab?.finishNativeLifecycleTransfer()
+        synchronizeChromiumLifecycleStates()
         if loadSelectedTab, initialTab == nil { selectedTab?.loadIfNeeded() }
+        storeObserver = NotificationCenter.default.addObserver(forName: .nousSpacesDidChange, object: nil, queue: .main) { [weak self] note in
+            let origin = note.object.map { ObjectIdentifier($0 as AnyObject) }
+            MainActor.assumeIsolated {
+                guard let self, origin != ObjectIdentifier(self) else { return }
+                self.storeDidChange()
+            }
+        }
     }
 
-    func newTab(url: URL? = nil) {
-        let tab = BrowserTab(url: url, owner: self)
+    /// `tabs` reads in sidebar order (space by space: pins, then the list), so
+    /// automation, ⌘1–9 and the saved session agree with what is on screen.
+    private func orderTabsLikeSidebar() {
+        let order = spaceStore.spaces.flatMap { layouts[$0.id]?.allTabIDs ?? [] }
+        guard tabs.map(\.id) != order else { return }
+        let rank = Dictionary(order.enumerated().map { ($0.element, $0.offset) }, uniquingKeysWith: { first, _ in first })
+        let ordered = tabs.enumerated().sorted { lhs, rhs in
+            let left = rank[lhs.element.id] ?? order.count + lhs.offset
+            let right = rank[rhs.element.id] ?? order.count + rhs.offset
+            return left < right
+        }.map(\.element)
+        if ordered.map(\.id) != tabs.map(\.id) { tabs = ordered }
+    }
+
+    private func makeRestoredTab(_ record: SidebarTabRecord, space: UUID) -> BrowserTab? {
+        guard tab(record.id) == nil else { return nil }
+        let tab = BrowserTab(id: record.id, title: record.title, url: record.url, owner: self)
+        tab.spaceID = space
         tabs.append(tab)
+        return tab
+    }
+
+    private func add(_ tab: BrowserTab, to space: UUID, after anchor: UUID? = nil) {
+        tab.spaceID = space
+        tab.isPinned = false
+        tabs.append(tab)
+        var layout = layouts[space] ?? SpaceLayout()
+        if let anchor, let location = layout.location(of: anchor) {
+            if location.section == .regular, let groupID = location.groupID, let group = layout.group(groupID),
+               let index = group.tabIDs.firstIndex(of: anchor) {
+                layout.insertTab(tab.id, section: .regular, groupID: groupID, index: index + 1)
+            } else if location.section == .regular, let index = layout.regular.firstIndex(of: .tab(anchor)) {
+                layout.regular.insert(.tab(tab.id), at: index + 1)
+            } else {
+                // Links from a pinned page start the ordinary list.
+                layout.regular.insert(.tab(tab.id), at: 0)
+            }
+        } else {
+            layout.regular.append(.tab(tab.id))
+        }
+        layouts[space] = layout
+    }
+
+    private func preferredSelection(in space: UUID) -> UUID? {
+        let layout = layout(for: space)
+        if let remembered = selectionBySpace[space], layout.contains(tab: remembered) { return remembered }
+        return layout.regularTabIDs.last ?? nil
+    }
+
+    // MARK: Tabs
+
+    func newTab(url: URL? = nil) {
+        guard !isShutDown, !windowCloseApproved else { return }
+        let tab = BrowserTab(url: url, owner: self)
+        add(tab, to: activeSpaceID)
         selectedTabID = tab.id
         tab.loadIfNeeded()
         persistSession()
     }
 
     @discardableResult
-    func openLinkInNewTab(_ url: URL, after sourceID: UUID) -> BrowserTab? {
-        guard !isShutDown, Self.canOpenExternalURL(url),
-              let source = tabs.firstIndex(where: { $0.id == sourceID }) else { return nil }
+    func openLinkInNewTab(_ url: URL, after sourceID: UUID, activate: Bool = true) -> BrowserTab? {
+        guard Self.canOpenExternalURL(url) else { return nil }
+        return insertLinkTab(url, after: sourceID, activate: activate)
+    }
+
+    /// Library and capture pages: reuse an open tab showing the same page.
+    func openNativePage(_ page: NativePage) {
+        guard !isShutDown, !windowCloseApproved else { return }
+        if let existing = visibleTabs.first(where: { $0.nativePage == page }) {
+            selectTab(existing.id)
+            return
+        }
+        // One Library tab per space; it switches to the requested section.
+        if page.isLibrary, let library = visibleTabs.first(where: { $0.nativePage?.isLibrary == true }) {
+            library.load(page.url)
+            selectTab(library.id)
+            return
+        }
+        if let selectedTab, !selectedTab.hasWebContent, selectedTab.url == nil {
+            selectedTab.load(page.url)
+        } else {
+            newTab(url: page.url)
+        }
+        persistSession()
+    }
+
+    private func insertLinkTab(_ url: URL, after sourceID: UUID, activate: Bool = true) -> BrowserTab? {
+        guard !windowCloseApproved else { return nil }
+        guard !isShutDown, let source = tab(sourceID) else { return nil }
         let tab = BrowserTab(url: url, owner: self)
-        // Links from a pinned page start the normal group, like duplicated pins.
-        tabs.insert(tab, at: tabs[source].isPinned ? firstNormalTabIndex : source + 1)
-        selectedTabID = tab.id
+        prepareChromiumDestination(tab, source: source, activate: activate)
+        add(tab, to: source.spaceID ?? activeSpaceID, after: sourceID)
+        if activate { selectedTabID = tab.id }
+        // No selection didSet runs for a new background tab. Supply its real
+        // lifecycle state before loadIfNeeded can create the native browser.
+        if !activate { synchronizeChromiumLifecycleState(for: tab) }
         tab.loadIfNeeded()
         persistSession()
         return tab
@@ -181,115 +425,519 @@ final class BrowserModel {
         onOpenLinkInNewWindow?(url)
     }
 
+    /// The bridge emits this only for a user's image context-menu command.
+    /// Keep page-owned blobs/data separate from Launch Services and MCP input.
+    func openChromiumImage(_ url: URL, after sourceID: UUID, inNewWindow: Bool, activate: Bool = true) {
+        guard !isShutDown, BrowserNativeImageURL.allows(url),
+              tabs.contains(where: { $0.id == sourceID }) else { return }
+        if inNewWindow { onOpenChromiumImageWindow?(url) }
+        else { _ = insertLinkTab(url, after: sourceID, activate: activate) }
+    }
+
     /// A transfer changes ownership without closing, pausing or reloading the page.
-    /// The manager saves the destination first, then this source session.
+    /// Pinned tabs are shared by every window, so only ordinary tabs move.
     func takeTabForTransfer(_ id: UUID) -> BrowserTab? {
-        guard !isShutDown, let index = tabs.firstIndex(where: { $0.id == id }),
+        guard windowCloseTransactionID == nil, !windowCloseApproved, !pendingTabCloses.contains(id) else { return nil }
+        guard !isShutDown, let index = tabs.firstIndex(where: { $0.id == id }), !tabs[index].isPinned,
               tabs[index].webView.fullscreenState == .notInFullscreen else { return nil }
+        // Protect a previously background tab before detaching it. Ownership
+        // can be nil while a new window is constructed or a transfer rolls back.
+        tabs[index].prepareForNativeLifecycleTransfer()
+        let siblings = activeLayout.regularTabIDs
+        let previousIndex = siblings.firstIndex(of: id) ?? 0
         let tab = tabs.remove(at: index)
+        if let space = tab.spaceID { layouts[space]?.removeTab(id) }
         tab.owner = nil
         tab.webView.removeFromSuperview()
         if selectedTabID == id {
-            selectedTabID = tabs.isEmpty ? nil : tabs[min(index, tabs.count - 1)].id
+            // The neighbour below takes over, as when closing a tab.
+            let remaining = activeLayout.regularTabIDs
+            selectedTabID = remaining.isEmpty ? preferredSelection(in: activeSpaceID)
+                : remaining[min(previousIndex, remaining.count - 1)]
             selectedTab?.loadIfNeeded()
         }
         return tab
     }
 
     func canAdoptTransferredTab(withID id: UUID) -> Bool {
-        !isShutDown && !tabs.contains(where: { $0.id == id })
+        guard windowCloseTransactionID == nil, !windowCloseApproved else { return false }
+        return !isShutDown && !tabs.contains(where: { $0.id == id })
     }
 
-    /// `index` is an insertion slot in the destination before the transfer.
-    /// Keep the incoming pin status and the existing tabs' relative order.
+    /// `index` is a slot in the active space's ordinary list.
     @discardableResult
     func adoptTransferredTab(_ tab: BrowserTab, at index: Int) -> Bool {
         guard tab.owner == nil, canAdoptTransferredTab(withID: tab.id) else { return false }
-        let boundary = firstNormalTabIndex
-        let destination = tab.isPinned
-            ? min(boundary, max(0, index))
-            : min(tabs.count, max(boundary, index))
         tab.owner = self
-        tabs.insert(tab, at: destination)
+        tab.spaceID = activeSpaceID
+        tab.isPinned = false
+        tabs.append(tab)
+        layouts[activeSpaceID, default: SpaceLayout()].update(.regular) { nodes in
+            nodes.insert(.tab(tab.id), at: min(max(0, index), nodes.count))
+        }
         selectedTabID = tab.id
+        tab.finishNativeLifecycleTransfer()
         persistSession()
         return true
     }
 
     func selectTab(_ id: UUID) {
-        guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        guard let tab = tab(id) else { return }
+        if let space = tab.spaceID, space != activeSpaceID {
+            activeSpaceID = space
+            spaceStore.noteActive(space)
+        }
         selectedTabID = id
         tab.loadIfNeeded()
         persistSession()
     }
 
     func duplicateTab(_ id: UUID) {
-        guard let sourceIndex = tabs.firstIndex(where: { $0.id == id }) else { return }
-        let source = tabs[sourceIndex]
+        guard let source = tab(id) else { return }
         let duplicate = BrowserTab(title: source.title, url: source.url, owner: self)
         duplicate.title = source.title
-        // A duplicated pinned page is a normal tab below the pinned group.
-        // Normal pages duplicate directly beside their source.
-        let index = source.isPinned ? firstNormalTabIndex : sourceIndex + 1
-        tabs.insert(duplicate, at: index)
+        // A duplicated pinned page is an ordinary tab; others sit beside their source.
+        add(duplicate, to: source.spaceID ?? activeSpaceID, after: id)
         selectedTabID = duplicate.id
         duplicate.loadIfNeeded()
         persistSession()
     }
 
     func togglePin(_ id: UUID) {
+        guard let tab = tab(id), let space = tab.spaceID, var layout = layouts[space],
+              let location = layout.location(of: id) else { return }
+        layout.removeTab(id)
+        if location.section == .pinned { layout.regular.insert(.tab(id), at: 0) }
+        else { layout.pinned.append(.tab(id)) }
+        applyLayout(layout, to: space, pinnedChanged: true)
+    }
+
+    /// Accessibility and automation: one step within the tab's own list.
+    func moveTab(_ id: UUID, by step: Int) {
+        guard let space = tab(id)?.spaceID, let layout = layouts[space], let location = layout.location(of: id) else { return }
+        let siblings: [UUID] = location.groupID.flatMap { layout.group($0)?.tabIDs }
+            ?? layout.nodes(location.section).map(\.id)
+        guard let index = siblings.firstIndex(of: id) else { return }
+        let destination = index + step
+        guard siblings.indices.contains(destination) else { return }
+        move(.tab(id), to: SidebarDropTarget(section: location.section, groupID: location.groupID, index: destination))
+    }
+
+    func canMoveTab(_ id: UUID, by step: Int) -> Bool {
+        guard let space = tab(id)?.spaceID, let layout = layouts[space], let location = layout.location(of: id) else { return false }
+        let siblings: [UUID] = location.groupID.flatMap { layout.group($0)?.tabIDs }
+            ?? layout.nodes(location.section).map(\.id)
+        guard let index = siblings.firstIndex(of: id) else { return false }
+        return siblings.indices.contains(index + step)
+    }
+
+    /// Automation: move a tab so it ends up at `destination` in the visible order.
+    func moveTab(_ id: UUID, to destination: Int) {
+        let others = visibleTabs.map(\.id).filter { $0 != id }
+        guard let layout = layouts[activeSpaceID], layout.contains(tab: id), !others.isEmpty, destination >= 0 else { return }
+        var without = layout
+        _ = without.removeTab(id)
+        // Before the first tab, or after the tab that will precede it.
+        let before = destination == 0
+        let anchorID = before ? others[0] : others[min(destination - 1, others.count - 1)]
+        guard let anchor = without.location(of: anchorID), let own = layout.location(of: id)?.section else { return }
+        // Automation reorders within a list (pinning is its own command): a
+        // destination across the pins/list boundary clamps to that edge.
+        guard anchor.section == own else {
+            let index = own == .regular ? 0 : without.pinned.count
+            move(.tab(id), to: SidebarDropTarget(section: own, groupID: nil, index: index))
+            return
+        }
+        let siblings: [UUID] = anchor.groupID.flatMap { without.group($0)?.tabIDs } ?? without.nodes(anchor.section).map(\.id)
+        let index = (siblings.firstIndex(of: anchorID) ?? 0) + (before ? 0 : 1)
+        move(.tab(id), to: SidebarDropTarget(section: anchor.section, groupID: anchor.groupID, index: index))
+    }
+
+    /// The single entry point for drag and drop in the sidebar.
+    func move(_ item: SidebarItemRef, to target: SidebarDropTarget, in space: UUID? = nil) {
+        let space = space ?? activeSpaceID
+        guard let layout = layouts[space] else { return }
+        let before = layout
+        let after = layout.moving(item, to: target)
+        guard after != before else { return }
+        applyLayout(after, to: space, pinnedChanged: after.pinned != before.pinned)
+    }
+
+    func moveTab(_ id: UUID, toSpace destination: UUID) {
+        guard let tab = tab(id), let source = tab.spaceID, source != destination,
+              spaceStore.space(destination) != nil, var sourceLayout = layouts[source] else { return }
+        let wasPinned = sourceLayout.location(of: id)?.section == .pinned
+        sourceLayout.removeTab(id)
+        var destinationLayout = layouts[destination] ?? SpaceLayout()
+        destinationLayout.regular.append(.tab(id))
+        tab.spaceID = destination
+        if selectedTabID == id { selectedTabID = preferredSelection(in: source) }
+        applyLayout(sourceLayout, to: source, pinnedChanged: wasPinned)
+        applyLayout(destinationLayout, to: destination, pinnedChanged: false)
+    }
+
+    private func applyLayout(_ layout: SpaceLayout, to space: UUID, pinnedChanged: Bool) {
+        var layout = layout
+        // Pinned tabs show as tiles before pinned folders; keep the array in that order.
+        layout.pinned = layout.pinned.filter { $0.group == nil } + layout.pinned.filter { $0.group != nil }
+        layouts[space] = layout
+        let pinned = Set(layout.pinnedTabIDs)
+        for id in layout.allTabIDs {
+            guard let tab = tab(id) else { continue }
+            let isPinned = pinned.contains(id)
+            if tab.isPinned != isPinned { tab.isPinned = isPinned }
+        }
+        if pinnedChanged { publishPinned(space) }
+        persistSession()
+    }
+
+    // MARK: Folders
+
+    @discardableResult
+    func newGroup(containing ids: [UUID] = [], section: SidebarSection = .regular, name: String? = nil) -> UUID? {
+        let space = ids.first.flatMap { tab($0)?.spaceID } ?? activeSpaceID
+        guard var layout = layouts[space] else { return nil }
+        let members = ids.filter { layout.contains(tab: $0) }
+        let section = members.first.flatMap { layout.location(of: $0)?.section } ?? section
+        // The folder takes the place of its first tab.
+        let anchor = members.first.flatMap { id in layout.nodes(section).firstIndex { $0.tabIDs.contains(id) } }
+        for id in members { layout.removeTab(id) }
+        let group = TabGroup(name: name ?? L10n.string("New Folder"), tabIDs: members)
+        layout.update(section) { nodes in nodes.insert(.group(group), at: min(anchor ?? nodes.count, nodes.count)) }
+        applyLayout(layout, to: space, pinnedChanged: section == .pinned || layout.pinned != layouts[space]?.pinned)
+        return group.id
+    }
+
+    func updateGroup(_ id: UUID, name: String? = nil, icon: String? = nil, isExpanded: Bool? = nil) {
+        guard let space = spaceID(ofGroup: id), var layout = layouts[space] else { return }
+        layout.updateGroup(id) { group in
+            if let name {
+                let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { group.name = trimmed }
+            }
+            if let icon { group.icon = icon }
+            if let isExpanded { group.isExpanded = isExpanded }
+        }
+        applyLayout(layout, to: space, pinnedChanged: layout.section(ofGroup: id) == .pinned)
+    }
+
+    func toggleGroupPinned(_ id: UUID) {
+        guard let space = spaceID(ofGroup: id), var layout = layouts[space],
+              let (group, section, _) = layout.removeGroup(id) else { return }
+        if section == .pinned { layout.regular.insert(.group(group), at: 0) }
+        else { layout.pinned.append(.group(group)) }
+        applyLayout(layout, to: space, pinnedChanged: true)
+    }
+
+    /// The folder's tabs take its place.
+    func ungroup(_ id: UUID) {
+        guard let space = spaceID(ofGroup: id), var layout = layouts[space],
+              let (group, section, index) = layout.removeGroup(id) else { return }
+        layout.update(section) { nodes in nodes.insert(contentsOf: group.tabIDs.map(SidebarNode.tab), at: min(index, nodes.count)) }
+        applyLayout(layout, to: space, pinnedChanged: section == .pinned)
+    }
+
+    /// Closes the folder's pages and removes the folder.
+    func closeGroup(_ id: UUID) {
+        guard let space = spaceID(ofGroup: id), var layout = layouts[space],
+              let (group, section, _) = layout.removeGroup(id) else { return }
+        if section == .pinned {
+            for tabID in group.tabIDs { discardTab(tabID) }
+            applyLayout(layout, to: space, pinnedChanged: true)
+            return
+        }
+        layout.update(.regular) { nodes in nodes.append(contentsOf: group.tabIDs.map(SidebarNode.tab)) }
+        applyLayout(layout, to: space, pinnedChanged: false)
+        for tabID in group.tabIDs { closeTab(tabID) }
+    }
+
+    private func spaceID(ofGroup id: UUID) -> UUID? {
+        layouts.first { $0.value.groups.contains { $0.id == id } }?.key
+    }
+
+    // MARK: Spaces
+
+    func switchSpace(to id: UUID) {
+        guard id != activeSpaceID, spaceStore.space(id) != nil else { return }
+        activeSpaceID = id
+        spaceStore.noteActive(id)
+        selectedTabID = preferredSelection(in: id)
+        selectedTab?.loadIfNeeded()
+        persistSession()
+    }
+
+    func switchSpace(by offset: Int) {
+        let ids = spaces.map(\.id)
+        guard let index = ids.firstIndex(of: activeSpaceID) else { return }
+        let next = index + offset
+        guard ids.indices.contains(next) else { return }
+        switchSpace(to: ids[next])
+    }
+
+    func newSpace() {
+        let id = spaceStore.addSpace(origin: self)
+        layouts[id] = SpaceLayout()
+        switchSpace(to: id)
+    }
+
+    /// Closes the space's ordinary tabs in this window; other windows discard theirs.
+    func deleteSpace(_ id: UUID) {
+        guard spaces.count > 1 else { return }
+        if activeSpaceID == id {
+            let fallback = spaces.first { $0.id != id }!.id
+            switchSpace(to: fallback)
+        }
+        spaceStore.removeSpace(id)
+        storeDidChange()
+    }
+
+    // MARK: Shared pins
+
+    /// Mirrors the store's pinned items as live tabs; ordinary tabs stay as they are.
+    private func rebuildPinnedFromStore() {
+        let records = spaceStore.spaces
+        let ids = Set(records.map(\.id))
+        for (space, layout) in layouts where !ids.contains(space) {
+            for id in layout.allTabIDs { discardTab(id, updatingLayout: false) }
+            layouts[space] = nil
+        }
+        for record in records {
+            var layout = layouts[record.id] ?? SpaceLayout()
+            var desired: [SidebarNode] = []
+            for node in record.pinned {
+                switch node {
+                case .tab(let pin):
+                    desired.append(.tab(pinnedTab(pin, space: record.id).id))
+                case .group(let group):
+                    desired.append(.group(TabGroup(id: group.id, name: group.name, icon: group.icon, isExpanded: group.isExpanded,
+                                                   tabIDs: group.tabs.map { pinnedTab($0, space: record.id).id })))
+                }
+            }
+            let desiredIDs = Set(desired.flatMap(\.tabIDs))
+            for id in layout.pinnedTabIDs where !desiredIDs.contains(id) && !layoutContainsElsewhere(id, except: record.id) {
+                discardTab(id, updatingLayout: false)
+            }
+            layout.regular = layout.regular.compactMap { node in
+                switch node {
+                case .tab(let id): return desiredIDs.contains(id) ? nil : node
+                case .group(var group):
+                    group.tabIDs.removeAll { desiredIDs.contains($0) }
+                    return .group(group)
+                }
+            }
+            layout.pinned = desired
+            layouts[record.id] = layout
+        }
+        for tab in tabs {
+            let pinned = tab.spaceID.map { layouts[$0]?.pinnedTabIDs.contains(tab.id) ?? false } ?? false
+            if tab.isPinned != pinned { tab.isPinned = pinned }
+        }
+    }
+
+    private func layoutContainsElsewhere(_ id: UUID, except space: UUID) -> Bool {
+        layouts.contains { $0.key != space && $0.value.contains(tab: id) }
+    }
+
+    private func pinnedTab(_ record: SidebarTabRecord, space: UUID) -> BrowserTab {
+        if let existing = tab(record.id) {
+            if let previous = existing.spaceID, previous != space { layouts[previous]?.removeTab(record.id) }
+            existing.spaceID = space
+            return existing
+        }
+        let tab = BrowserTab(id: record.id, title: record.title, url: record.url, isPinned: true, owner: self)
+        tab.spaceID = space
+        tabs.append(tab)
+        if !isRestoring { synchronizeChromiumLifecycleState(for: tab) }
+        return tab
+    }
+
+    private func storeDidChange() {
+        guard !isShutDown else { return }
+        rebuildPinnedFromStore()
+        if spaceStore.space(activeSpaceID) == nil {
+            activeSpaceID = spaceStore.defaultSpaceID
+            selectedTabID = preferredSelection(in: activeSpaceID)
+        } else if let selectedTabID, tab(selectedTabID) == nil {
+            self.selectedTabID = preferredSelection(in: activeSpaceID)
+        }
+        persistSession()
+    }
+
+    private func publishPinned(_ space: UUID) {
+        guard let layout = layouts[space] else { return }
+        let existing = Dictionary(spaceStore.space(space)?.pinned.flatMap(\.tabs).map { ($0.id, $0) } ?? [],
+                                  uniquingKeysWith: { first, _ in first })
+        func record(_ id: UUID) -> SidebarTabRecord? {
+            guard let tab = tab(id) else { return existing[id] }
+            // A pin keeps the address it was pinned with; closing it returns there.
+            let url = existing[id]?.url ?? Self.persistableURL(tab.url)
+            return SidebarTabRecord(id: id, title: tab.displayTitle, url: url)
+        }
+        let nodes: [SidebarNodeRecord] = layout.pinned.compactMap { node in
+            switch node {
+            case .tab(let id): record(id).map(SidebarNodeRecord.tab)
+            case .group(let group):
+                .group(SidebarGroupRecord(id: group.id, name: group.name, icon: group.icon, isExpanded: group.isExpanded,
+                                          tabs: group.tabIDs.compactMap(record)))
+            }
+        }
+        spaceStore.setPinned(nodes, in: space, origin: self)
+    }
+
+    /// Removes a page without beforeunload: a pin removed in another window.
+    private func discardTab(_ id: UUID, updatingLayout: Bool = true) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         let tab = tabs.remove(at: index)
-        tab.isPinned.toggle()
-        tabs.insert(tab, at: tab.isPinned ? 0 : firstNormalTabIndex)
-        // Keep the selected tab and each live WebView intact while reordering.
-        persistSession()
+        if updatingLayout, let space = tab.spaceID { layouts[space]?.removeTab(id) }
+        pendingTabCloses.remove(id)
+        tab.shutdown()
+        if selectedTabID == id { selectedTabID = nil }
     }
 
-    func moveTab(_ id: UUID, to destination: Int) {
-        let order = tabs.map(\.id)
-        let pinnedIDs = Set(tabs.filter(\.isPinned).map(\.id))
-        guard let source = tabs.firstIndex(where: { $0.id == id }),
-              let destination = TabReordering.destinationIndex(for: id, in: order, pinnedIDs: pinnedIDs, proposedIndex: destination),
-              source != destination else { return }
-        let tab = tabs.remove(at: source)
-        tabs.insert(tab, at: destination)
-        persistSession()
-    }
-
-    private var firstNormalTabIndex: Int { tabs.firstIndex { !$0.isPinned } ?? tabs.count }
+    // MARK: Closing
 
     func closeTab(_ id: UUID) {
-        guard !isShutDown, let index = tabs.firstIndex(where: { $0.id == id }) else { return }
-        if tabs.count == 1, let onLastTabClosed {
-            // The window owns the final tab's lifetime and saves its intact
-            // session during shutdown. Standalone models retain the fallback.
+        requestTabClose(id) { _ in }
+    }
+
+    /// Only an ordinary tab can be a window's last page; pins outlive windows.
+    private func isLastPage(_ id: UUID) -> Bool {
+        tabs.count == 1 && tabs[0].id == id && !tabs[0].isPinned
+    }
+
+    func requestTabClose(_ id: UUID, completion: @escaping (Bool) -> Void) {
+        guard !isShutDown, !windowCloseApproved, windowCloseTransactionID == nil,
+              let tab = tabs.first(where: { $0.id == id }) else { completion(false); return }
+        if isLastPage(id), let onLastChromiumTabClose {
+            onLastChromiumTabClose(completion)
+            return
+        }
+        guard pendingTabCloses.insert(id).inserted else { completion(false); return }
+        tab.requestClose { [weak self, weak tab] accepted in
+            guard let self else { completion(accepted); return }
+            self.pendingTabCloses.remove(id)
+            if accepted, let tab, tab.isOwned(by: self), !self.isShutDown {
+                self.chromiumTabDidClose(id)
+            }
+            completion(accepted)
+        }
+    }
+
+    /// Handles both an approved user close and native window.close(). The host
+    /// stays in the model until Chromium actually finishes closing it.
+    func chromiumTabDidClose(_ id: UUID) {
+        guard !isShutDown, tabs.contains(where: { $0.id == id }) else { return }
+        if windowCloseTransactionID != nil {
+            closedWindowTabIDs.insert(id)
+            return
+        }
+        guard !windowCloseApproved else { return }
+        pendingTabCloses.remove(id)
+        if isLastPage(id), let onLastTabClosed {
             onLastTabClosed()
             return
         }
-        let tab = tabs[index]
-        closedTabs.append(.init(id: tab.id, title: tab.title, url: tab.url, isPinned: tab.isPinned))
-        if closedTabs.count > 20 { closedTabs.removeFirst() }
-        tab.cancelFaviconLoading()
-        tab.detachPageNavigationShortcuts()
-        (tab.webView as? BrowserWebView)?.invalidateContextMenu()
-        let closingWebView = tab.webView
-        closingWebView.stopLoading()
-        closingWebView.pauseAllMediaPlayback(completionHandler: nil)
-        closingWebView.closeAllMediaPresentations { [closingWebView] in
-            // Let WebKit restore its own fullscreen view hierarchy first.
-            // Capture the old view, since reopening a tab can reuse its ID.
-            closingWebView.removeFromSuperview()
+        removeClosedChromiumTabs([id])
+    }
+
+    /// One-window close uses the same reversible transaction as app-wide quit.
+    func requestWindowClose(completion: @escaping (Bool) -> Void) {
+        guard !isShutDown, !windowCloseApproved else { completion(true); return }
+        guard windowCloseTransactionID == nil else { completion(false); return }
+        let transactionID = UUID()
+        let transaction = ChromiumCloseTransaction(id: transactionID, targets: { [weak self] in
+            self?.targetsForWindowClose(transactionID)
+        }, willCommit: { [weak self] in
+            self?.approveWindowClose(transactionID)
+        }, completion: { [weak self] accepted in
+            self?.finishWindowClose(transactionID, committed: accepted)
+            self?.windowCloseTransaction = nil
+            completion(accepted)
+        })
+        windowCloseTransaction = transaction
+        transaction.start()
+    }
+
+    /// Acquires this model for a local or cross-window transaction. Already
+    /// requested single-tab closes must finish first; they cannot be rolled back.
+    func targetsForWindowClose(_ transactionID: UUID) -> [ChromiumCloseTransaction.Target]? {
+        guard !isShutDown, !windowCloseApproved, pendingTabCloses.isEmpty,
+              windowCloseTransactionID == nil || windowCloseTransactionID == transactionID else { return nil }
+        if windowCloseTransactionID == nil { closedWindowTabIDs.removeAll() }
+        windowCloseTransactionID = transactionID
+        return tabs.filter { !closedWindowTabIDs.contains($0.id) }.map { tab in
+            .init(id: tab.id, prepare: { [weak self, weak tab] answer in
+                guard let self, let tab, tab.isOwned(by: self) else { answer(false); return }
+                tab.webView.prepareClose { [weak self, weak tab] accepted in
+                    if !accepted, let self, let tab, tab.isOwned(by: self) { self.selectTab(tab.id) }
+                    answer(accepted)
+                }
+            }, validate: { [weak self, weak tab] in
+                guard let self, let tab, tab.isOwned(by: self) else { return false }
+                return tab.webView.validatePreparedClose()
+            }, cancel: { [weak tab] in tab?.webView.cancelPreparedClose() },
+            commit: { [weak self, weak tab] answer in
+                guard let self, let tab, tab.isOwned(by: self) else { answer(false); return }
+                tab.webView.commitPreparedClose { [weak self, weak tab] closed in
+                    if closed, let self, let tab, tab.isOwned(by: self) { self.chromiumTabDidClose(tab.id) }
+                    answer(closed)
+                }
+            })
         }
-        tabs.remove(at: index)
-        if tabs.isEmpty {
-            newTab()
-        } else if selectedTabID == id {
-            selectedTabID = tabs[min(index, tabs.count - 1)].id
+    }
+
+    func approveWindowClose(_ transactionID: UUID) {
+        guard windowCloseTransactionID == transactionID else { return }
+        windowCloseApproved = true
+    }
+
+    func finishWindowClose(_ transactionID: UUID, committed: Bool) {
+        guard windowCloseTransactionID == transactionID else { return }
+        windowCloseTransactionID = nil
+        windowCloseApproved = committed
+        let independentlyClosed = closedWindowTabIDs
+        closedWindowTabIDs.removeAll()
+        // window.close() is an independent page action, not a destructive
+        // preflight. Remove only those native pages if the transaction cancels.
+        if !committed { removeClosedChromiumTabs(independentlyClosed) }
+    }
+
+    /// Ordinary tabs are removed. A closed pin stays in place, unloaded and back
+    /// at the address it was pinned with.
+    private func removeClosedChromiumTabs(_ ids: Set<UUID>) {
+        let removed = tabs.filter { ids.contains($0.id) }
+        guard !removed.isEmpty else { return }
+        let wasSelected = selectedTabID.map(ids.contains) ?? false
+        let siblings = activeLayout.regularTabIDs
+        let previousIndex = selectedTabID.flatMap { siblings.firstIndex(of: $0) } ?? 0
+        for tab in removed {
+            pendingTabCloses.remove(tab.id)
+            if tab.isPinned, let space = tab.spaceID {
+                let pin = spaceStore.space(space)?.pinned.flatMap(\.tabs).first { $0.id == tab.id }
+                let fresh = BrowserTab(id: tab.id, title: pin?.title ?? tab.title, url: pin?.url ?? tab.url,
+                                       isPinned: true, owner: self)
+                fresh.spaceID = space
+                tab.shutdown()
+                if let index = tabs.firstIndex(where: { $0 === tab }) { tabs[index] = fresh }
+                synchronizeChromiumLifecycleState(for: fresh)
+                continue
+            }
+            closedTabs.append(.init(id: tab.id, title: tab.title, url: tab.url, isPinned: false))
+            if let space = tab.spaceID { layouts[space]?.removeTab(tab.id) }
+            tabs.removeAll { $0 === tab }
+            tab.shutdown()
+        }
+        if closedTabs.count > 20 { closedTabs.removeFirst(closedTabs.count - 20) }
+        if tabs.isEmpty { newTab() }
+        else if wasSelected {
+            let remaining = activeLayout.regularTabIDs
+            selectedTabID = remaining.isEmpty ? nil : remaining[min(previousIndex, remaining.count - 1)]
             selectedTab?.loadIfNeeded()
         }
         persistSession()
     }
+
+    // MARK: Navigation
 
     func navigate(_ input: String, searchEngine: BrowserSearchEngine = .google) {
         guard let url = Self.normalizeAddress(input, searchEngine: searchEngine) else { return }
@@ -324,6 +972,17 @@ final class BrowserModel {
     nonisolated static func normalizeAddress(_ input: String, searchEngine: BrowserSearchEngine = .google) -> URL? {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
+        // Explicit address entry may inspect Chromium's own diagnostics. These
+        // are not external URL handlers or a permission for websites to open
+        // privileged browser pages.
+        if let components = URLComponents(string: text), components.scheme?.lowercased() == "chrome",
+           ["version", "gpu", "discards"].contains(components.host?.lowercased() ?? ""),
+           components.user == nil, components.password == nil, components.port == nil,
+           components.path.isEmpty || components.path == "/",
+           components.query == nil, components.fragment == nil {
+            return components.url
+        }
+        if let url = URL(string: text), let page = NativePage(url: url) { return page.url }
         if let url = BrowserAddressInput.websiteURL(for: text) { return url }
         let lower = text.lowercased()
         if text.contains("://") || lower.hasPrefix("javascript:") || lower.hasPrefix("data:") || lower.hasPrefix("file:") {
@@ -335,7 +994,7 @@ final class BrowserModel {
     func goBack() { selectedTab?.webView.goBack() }
     func goForward() { selectedTab?.webView.goForward() }
     func reload(bypassingCache: Bool = false) {
-        guard let tab = selectedTab else { return }
+        guard let tab = selectedTab, tab.hasWebContent else { return }
         let failed = tab.errorDescription != nil
         tab.errorDescription = nil
         if failed || tab.webView.url == nil {
@@ -390,49 +1049,87 @@ final class BrowserModel {
 
     func restoreClosedTab() {
         guard let saved = closedTabs.popLast() else { return }
-        let tab = BrowserTab(id: saved.id, title: saved.title, url: saved.url, isPinned: saved.isPinned, owner: self)
-        tabs.insert(tab, at: tab.isPinned ? firstNormalTabIndex : tabs.count)
+        let tab = BrowserTab(id: self.tab(saved.id) == nil ? saved.id : UUID(), title: saved.title, url: saved.url, owner: self)
+        add(tab, to: activeSpaceID)
         selectedTabID = tab.id
         tab.loadIfNeeded()
         persistSession()
     }
 
     func selectNextTab(backward: Bool = false) {
-        guard !tabs.isEmpty else { return }
-        let current = tabs.firstIndex { $0.id == selectedTabID } ?? 0
-        let next = (current + (backward ? -1 : 1) + tabs.count) % tabs.count
-        selectTab(tabs[next].id)
+        let order = visibleTabs.map(\.id)
+        guard !order.isEmpty else { return }
+        let current = selectedTabID.flatMap { order.firstIndex(of: $0) } ?? (backward ? 0 : order.count - 1)
+        let next = (current + (backward ? -1 : 1) + order.count) % order.count
+        selectTab(order[next])
     }
 
     /// Browser convention: 1–8 select a position; 9 always selects the last tab.
     func selectTab(number: Int) {
-        guard (1...9).contains(number) else { return }
-        let index = number == 9 ? tabs.count - 1 : number - 1
-        guard tabs.indices.contains(index) else { return }
-        selectTab(tabs[index].id)
+        let order = visibleTabs.map(\.id)
+        guard (1...9).contains(number), !order.isEmpty else { return }
+        let index = number == 9 ? order.count - 1 : number - 1
+        guard order.indices.contains(index) else { return }
+        selectTab(order[index])
     }
+
+    // MARK: Persistence
 
     func persistSession() {
         guard !isRestoring, !isShutDown else { return }
+        do { try persistForRestart() }
+        catch { NSLog("Nous Browser: Could not save tab session: %@", error.localizedDescription) }
+    }
+
+    private func sessionRecord(_ id: UUID) -> SidebarTabRecord? {
+        guard let tab = tab(id) else { return nil }
+        // Image documents can include their data URL in the title too.
+        // Preserve the slot and selection, without storing image bytes.
+        let temporary = ["data", "blob"].contains(tab.url?.scheme?.lowercased() ?? "")
+        return SidebarTabRecord(id: id, title: temporary ? L10n.string("New Tab") : tab.title, url: Self.persistableURL(tab.url))
+    }
+
+    /// A restart must be canceled if the live session cannot be saved. Ordinary
+    /// autosaves retain their best-effort wrapper above; this path never reports
+    /// success for an already shut-down or still-restoring model.
+    func persistForRestart() throws {
+        guard !isRestoring, !isShutDown else {
+            throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: sessionURL.path])
+        }
         saveTask?.cancel()
+        // Pins and spaces are restored from the shared store; flush it with the session.
+        spaceStore.save()
+        let spaces: [BrowserSession.Space] = spaceStore.spaces.map { space in
+            let layout = layouts[space.id] ?? SpaceLayout()
+            let regular: [SidebarNodeRecord] = layout.regular.compactMap { node in
+                switch node {
+                case .tab(let id): sessionRecord(id).map(SidebarNodeRecord.tab)
+                case .group(let group):
+                    .group(SidebarGroupRecord(id: group.id, name: group.name, icon: group.icon,
+                                              isExpanded: group.isExpanded, tabs: group.tabIDs.compactMap(sessionRecord)))
+                }
+            }
+            return .init(id: space.id, regular: regular, selectedTabID: selectionBySpace[space.id])
+        }
         let session = BrowserSession(
-            tabs: tabs.map { .init(id: $0.id, title: $0.title, url: Self.persistableURL($0.url), isPinned: $0.isPinned) },
+            tabs: spaces.flatMap { $0.regular.flatMap(\.tabs) }.map { .init(id: $0.id, title: $0.title, url: $0.url) },
             selectedTabID: selectedTabID,
             isSidebarVisible: isSidebarVisible,
             sidebarWidth: sidebarWidth,
-            isSidebarCompact: isSidebarCompact
+            isSidebarCompact: isSidebarCompact,
+            activeSpaceID: activeSpaceID,
+            spaces: spaces
         )
-        do {
-            try FileManager.default.createDirectory(at: sessionURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let data = try JSONEncoder().encode(session)
-            try data.write(to: sessionURL, options: .atomic)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: sessionURL.path)
-        } catch {
-            NSLog("Nous Browser: Could not save tab session: %@", error.localizedDescription)
-        }
+        try FileManager.default.createDirectory(at: sessionURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let data = try JSONEncoder().encode(session)
+        try data.write(to: sessionURL, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: sessionURL.path)
+        var titles: [UUID: String] = [:]
+        for tab in tabs where tab.isPinned && tab.hasWebContent { titles[tab.id] = tab.title }
+        spaceStore.refreshPinnedTitles(titles)
     }
 
-    fileprivate func scheduleSave() {
+    func scheduleSave() {
         guard !isRestoring, !isShutDown else { return }
         saveTask?.cancel()
         saveTask = Task { [weak self] in
@@ -443,610 +1140,88 @@ final class BrowserModel {
     }
 
     /// Closing a window preserves its final session without closing its tabs
-    /// one by one or allowing late WebKit observations to rewrite the snapshot.
+    /// one by one or allowing late page observations to rewrite the snapshot.
     func shutdown() {
         guard !isShutDown else { return }
         persistSession()
         isShutDown = true
+        if let storeObserver { NotificationCenter.default.removeObserver(storeObserver) }
+        storeObserver = nil
         onLastTabClosed = nil
         onVisit = nil
         onPageTitleChanged = nil
         onOpenLinkInNewWindow = nil
+        chromiumPresentationWindow = nil
+        onCreateChromiumPopupWindow = nil
+        onOpenChromiumImageWindow = nil
+        onDownloadNotice = nil
+        onLastChromiumTabClose = nil
+        pendingTabCloses.removeAll()
+        windowCloseTransaction?.cancel()
+        windowCloseTransaction = nil
+        windowCloseTransactionID = nil
+        closedWindowTabIDs.removeAll()
         saveTask?.cancel()
         saveTask = nil
         tabs.forEach { $0.shutdown() }
     }
 
-    fileprivate func recordVisit(_ url: URL, title: String) {
+    func recordVisit(_ url: URL, title: String) {
         guard !isShutDown else { return }
         onVisit?(url, title)
     }
 
-    fileprivate func recordPageTitleChange(_ url: URL, title: String) {
+    func recordPageTitleChange(_ url: URL, title: String) {
         guard !isShutDown else { return }
         onPageTitleChanged?(url, title)
     }
 
-    /// Strip embedded basic-auth credentials before storing an address on disk.
-    nonisolated private static func persistableURL(_ url: URL?) -> URL? {
+    /// Strip credentials and non-restorable page-owned URLs before writing a
+    /// session. The live tab is untouched; a temporary image restores blank.
+    nonisolated static func persistableURL(_ url: URL?) -> URL? {
+        if ["data", "blob"].contains(url?.scheme?.lowercased() ?? "") { return nil }
         guard let url, var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
         components.user = nil
         components.password = nil
         return components.url
     }
 
-    /// Unloads background pages chosen by `TabHibernation`. Pages playing audio
-    /// or video are skipped; asking WebKit for that state is asynchronous.
-    @discardableResult
-    func hibernateBackgroundTabs(for pressure: TabHibernation.Pressure) async -> [UUID] {
-        guard !isShutDown else { return [] }
-        let candidates = tabs.map {
-            TabHibernation.Candidate(id: $0.id, isSelected: $0.id == selectedTabID, isPinned: $0.isPinned,
-                                     isLoaded: $0.isHibernatable, isCapturingMedia: $0.isCapturingMedia,
-                                     lastActiveAt: $0.lastActiveAt)
+    /// Run inside the model transaction, before view rendering or asynchronous
+    /// graph decisions. Protect the destination selection before releasing the
+    /// former one; each window keeps its own selected page active.
+    func synchronizeChromiumLifecycleStates() {
+        guard !isShutDown else { return }
+        if let selectedTab { synchronizeChromiumLifecycleState(for: selectedTab) }
+        for tab in tabs where tab.id != selectedTabID {
+            synchronizeChromiumLifecycleState(for: tab)
         }
-        var hibernated: [UUID] = []
-        for id in TabHibernation.tabsToHibernate(candidates, pressure: pressure, now: now()) {
-            guard let tab = tabs.first(where: { $0.id == id }) else { continue }
-            let playback = await tab.webView.requestMediaPlaybackState()
-            // The tab may have been shown or closed while WebKit answered.
-            guard !isShutDown else { return hibernated }
-            guard playback != .playing, tabs.contains(where: { $0 === tab }), selectedTabID != id else { continue }
-            tab.hibernate()
-            hibernated.append(id)
-        }
-        return hibernated
     }
 
-    fileprivate func openPopup(configuration: WKWebViewConfiguration, after sourceID: UUID) -> WKWebView {
-        let tab = BrowserTab(owner: self, configuration: configuration)
-        let index = tabs.firstIndex { $0.id == sourceID }
-        let destination = index.map { tabs[$0].isPinned ? firstNormalTabIndex : $0 + 1 } ?? tabs.count
-        tabs.insert(tab, at: destination)
-        selectedTabID = tab.id
+    func synchronizeChromiumLifecycleState(for tab: BrowserTab) {
+        guard !isShutDown, tab.isOwned(by: self) else { return }
+        tab.synchronizeNativeLifecycle(activeInWindow: tab.id == selectedTabID)
+    }
+
+    private func prepareChromiumDestination(_ tab: BrowserTab, source: BrowserTab, activate: Bool) {
+        // Inherit a useful viewport without mounting or flashing the new page.
+        // A selected source normally supplies the exact content dimensions.
+        let sourceBounds = source.webView.bounds
+        let fallback = chromiumPresentationWindow?.contentLayoutRect.size ?? NSSize(width: 800, height: 600)
+        tab.webView.frame = NSRect(origin: .zero, size: sourceBounds.width > 0 && sourceBounds.height > 0 ? sourceBounds.size : fallback)
+        tab.webView.isHidden = !activate
+    }
+
+    func openChromiumPopup(after sourceID: UUID, newWindow: Bool, activate: Bool = true) -> ChromiumPageView? {
+        guard !isShutDown, !windowCloseApproved, let source = tab(sourceID) else { return nil }
+        if newWindow {
+            return onCreateChromiumPopupWindow?()?.webView
+        }
+        let tab = BrowserTab(owner: self, isPopup: true)
+        prepareChromiumDestination(tab, source: source, activate: activate)
+        add(tab, to: source.spaceID ?? activeSpaceID, after: sourceID)
+        if activate { selectedTabID = tab.id }
+        else { synchronizeChromiumLifecycleState(for: tab) }
         persistSession()
         return tab.webView
-    }
-}
-
-@MainActor
-@Observable
-final class BrowserTab: NSObject, Identifiable {
-    let id: UUID
-    var title: String
-    var url: URL?
-    fileprivate(set) var isPinned: Bool
-    var isLoading = false
-    var estimatedProgress = 0.0
-    var canGoBack = false
-    var canGoForward = false
-    var errorDescription: String?
-    var favicon: NSImage?
-    var passwordCandidate: BrowserPasswordAutofill.Candidate?
-    /// A popup may render document.write content at about:blank without a URL.
-    var hasWebContent: Bool
-    /// Replaced by a fresh, unloaded view when the tab hibernates.
-    private(set) var webView: WKWebView
-    /// The page was unloaded to free memory and is restored when shown again.
-    private(set) var isHibernated = false
-    /// When this tab was last shown; background tabs hibernate after long idle periods.
-    @ObservationIgnored var lastActiveAt = Date()
-
-    @ObservationIgnored fileprivate weak var owner: BrowserModel?
-    func isOwned(by model: BrowserModel) -> Bool { owner === model }
-    @ObservationIgnored private var observations: [NSKeyValueObservation] = []
-    @ObservationIgnored private var hasLoaded = false
-    @ObservationIgnored private var pendingInteractionState: Any?
-    @ObservationIgnored private var needsReloadAfterTermination = false
-    @ObservationIgnored private var lastTerminationReload: Date?
-    @ObservationIgnored private var faviconTask: Task<Void, Never>?
-    @ObservationIgnored private var faviconPageURL: URL?
-    @ObservationIgnored private var faviconRequestID = UUID()
-    @ObservationIgnored private var faviconObservation: BrowserFaviconObservation.Attachment?
-    @ObservationIgnored private var passwordAutofill: BrowserPasswordAutofill.Attachment?
-    @ObservationIgnored private var pageNavigationShortcuts: BrowserPageNavigationShortcuts.Attachment?
-
-    var displayTitle: String {
-        !hasWebContent && url == nil ? L10n.string("New Tab") : title
-    }
-
-    var pageTitle: BrowserPageTitle { BrowserPageTitle(displayTitle) }
-
-    init(id: UUID = UUID(), title: String? = nil, url: URL? = nil, isPinned: Bool = false, owner: BrowserModel?, configuration: WKWebViewConfiguration? = nil) {
-        self.id = id
-        self.isPinned = isPinned
-        // A restored empty tab follows the current language, even when its
-        // saved placeholder came from a previous app/system language.
-        self.title = url == nil && configuration == nil
-            ? L10n.string("New Tab")
-            : title ?? Self.fallbackTitle(for: url) ?? L10n.string("New Tab")
-        self.url = url
-        self.hasWebContent = configuration != nil || url != nil
-        self.owner = owner
-        webView = Self.makeWebView(configuration: configuration)
-        super.init()
-        attach(webView)
-        if let url { refreshFavicon(for: url) }
-    }
-
-    private static func makeWebView(configuration: WKWebViewConfiguration?) -> WKWebView {
-        let config = configuration ?? WKWebViewConfiguration()
-        if configuration == nil { config.websiteDataStore = .default() }
-        // WebKit's popup blocker: link targets and window.open during a click
-        // or key press still open tabs; scripts without user activation cannot.
-        config.preferences.javaScriptCanOpenWindowsAutomatically = false
-        // Lets video players and other pages use the HTML Fullscreen API.
-        config.preferences.isElementFullscreenEnabled = true
-        BrowserScrollbars.install(in: config)
-        BrowserUserAgent.configure(config)
-        BrowserPasswordAutofill.install(configuration: config)
-        BrowserPageNavigationShortcuts.install(in: config)
-        BrowserFaviconObservation.install(in: config)
-        return BrowserWebView(frame: .zero, configuration: config)
-    }
-
-    private func attach(_ webView: WKWebView) {
-        faviconObservation = BrowserFaviconObservation.attach(to: webView) { [weak self, weak webView] snapshot in
-            guard let self, self.webView === webView, self.url == snapshot.pageURL else { return }
-            self.updateFavicon(snapshot)
-        }
-        if let browserView = webView as? BrowserWebView {
-            browserView.onOpenLinkInNewTab = { [weak self, weak webView] url in
-                guard let self, self.webView === webView else { return }
-                self.owner?.openLinkInNewTab(url, after: self.id)
-            }
-            browserView.onOpenLinkInNewWindow = { [weak self, weak webView] url in
-                guard let self, self.webView === webView else { return }
-                self.owner?.openLinkInNewWindow(url, from: self.id)
-            }
-            browserView.searchEngineTitle = { [weak self] in self?.owner?.searchEngineProvider().title ?? BrowserSearchEngine.google.title }
-            browserView.onSearchSelection = { [weak self, weak webView] text in
-                guard let self, self.webView === webView, let owner = self.owner else { return }
-                owner.openLinkInNewTab(owner.searchEngineProvider().searchURL(query: text), after: self.id)
-            }
-            browserView.onDownload = { [weak self, weak webView] request in
-                guard let self, let webView, self.webView === webView else { return }
-                BrowserDownloadCoordinator.shared.startDownload(request: request, from: webView)
-            }
-        }
-        pageNavigationShortcuts = BrowserPageNavigationShortcuts.attach(to: webView) { [weak self, weak webView] direction in
-            guard let self, let webView, self.webView === webView,
-                  let owner = self.owner, owner.selectedTab === self,
-                  let window = webView.window, window.isKeyWindow, window.attachedSheet == nil,
-                  let responder = window.firstResponder as? NSView,
-                  responder === webView || responder.isDescendant(of: webView),
-                  webView.inputContext == nil else { return }
-            if let controller = (window as? BrowserWindow)?.browserController {
-                guard controller.model === owner, !controller.isAddressPresented, !controller.passwords.isPresented else { return }
-            }
-            switch direction {
-            case .back: if self.canGoBack { owner.goBack() }
-            case .forward: if self.canGoForward { owner.goForward() }
-            }
-        }
-        passwordAutofill = BrowserPasswordAutofill.attach(to: webView) { [weak self] candidate in
-            self?.passwordCandidate = candidate
-        }
-        webView.navigationDelegate = self
-        webView.uiDelegate = self
-        webView.allowsBackForwardNavigationGestures = true
-        webView.isInspectable = false
-        webView.underPageBackgroundColor = .windowBackgroundColor
-        observations = [
-            webView.observe(\.title, options: [.new]) { [weak self] view, _ in
-                MainActor.assumeIsolated {
-                    guard let self, view === self.webView else { return }
-                    self.title = view.title.flatMap { $0.isEmpty ? nil : $0 } ?? Self.fallbackTitle(for: self.url) ?? L10n.string("New Tab")
-                    if !view.isLoading, self.errorDescription == nil, let url = view.url {
-                        self.owner?.recordPageTitleChange(url, title: self.title)
-                    }
-                    self.owner?.scheduleSave()
-                }
-            },
-            webView.observe(\.url, options: [.new]) { [weak self] view, _ in
-                MainActor.assumeIsolated {
-                    guard let self, view === self.webView else { return }
-                    if let url = view.url {
-                        if url.absoluteString != "about:blank" {
-                            self.url = url
-                            if !view.isLoading, self.errorDescription == nil {
-                                self.owner?.recordVisit(url, title: self.title)
-                            }
-                        }
-                        if self.faviconPageURL != url {
-                            self.refreshFavicon(for: url)
-                            // History API changes do not produce didFinish. Ask
-                            // the live document for its icon after an SPA route changes.
-                            if !view.isLoading { self.faviconObservation?.refresh() }
-                        }
-                    }
-                    self.owner?.scheduleSave()
-                }
-            },
-            webView.observe(\.isLoading, options: [.new]) { [weak self] view, _ in
-                MainActor.assumeIsolated { self?.isLoading = view.isLoading }
-            },
-            webView.observe(\.estimatedProgress, options: [.new]) { [weak self] view, _ in
-                MainActor.assumeIsolated { self?.estimatedProgress = view.estimatedProgress }
-            },
-            webView.observe(\.canGoBack, options: [.new]) { [weak self] view, _ in
-                MainActor.assumeIsolated { self?.canGoBack = view.canGoBack }
-            },
-            webView.observe(\.canGoForward, options: [.new]) { [weak self] view, _ in
-                MainActor.assumeIsolated { self?.canGoForward = view.canGoForward }
-            }
-        ]
-    }
-
-    private func detachWebView() {
-        cancelFaviconLoading()
-        faviconObservation?.invalidate()
-        faviconObservation = nil
-        (webView as? BrowserWebView)?.invalidateContextMenu()
-        detachPageNavigationShortcuts()
-        observations.forEach { $0.invalidate() }
-        observations = []
-        passwordAutofill?.invalidate()
-        passwordAutofill = nil
-        passwordCandidate = nil
-        webView.navigationDelegate = nil
-        webView.uiDelegate = nil
-    }
-
-    fileprivate func detachPageNavigationShortcuts() {
-        pageNavigationShortcuts?.invalidate()
-        pageNavigationShortcuts = nil
-    }
-
-    func prepareAfterTransfer() {
-        guard errorDescription == nil else { return }
-        // Live views keep their DOM/history untouched. Only an unloaded page
-        // needs its first load or its hibernated interaction state restored.
-        if isHibernated || (!hasLoaded && webView.url == nil && !webView.isLoading) { loadIfNeeded() }
-    }
-
-    func loadIfNeeded(force: Bool = false) {
-        if needsReloadAfterTermination {
-            reloadAfterTermination()
-            return
-        }
-        if !hasLoaded, !force, let state = pendingInteractionState {
-            // Restores the back/forward list and reloads its current page.
-            pendingInteractionState = nil
-            isHibernated = false
-            hasLoaded = true
-            webView.interactionState = state
-            return
-        }
-        guard (!hasLoaded || force), let url else { return }
-        load(url)
-    }
-
-    /// Whether the page is currently doing something the user would notice
-    /// stopping. Audio and video playback is checked separately (it is async).
-    var isCapturingMedia: Bool {
-        webView.cameraCaptureState != .none || webView.microphoneCaptureState != .none
-    }
-
-    /// Whether this tab holds a live page that hibernating would release.
-    var isHibernatable: Bool { hasLoaded && !isHibernated }
-
-    /// Releases the page and its web content process. The back/forward list and
-    /// current page are kept, and come back when the tab is shown again.
-    func hibernate() {
-        guard isHibernatable else { return }
-        let oldWebView = webView
-        // Local files need loadFileURL's read access, which a restored state lacks.
-        let state = url?.isFileURL == true ? nil : oldWebView.interactionState
-        detachWebView()
-        oldWebView.stopLoading()
-        oldWebView.pauseAllMediaPlayback(completionHandler: nil)
-        oldWebView.removeFromSuperview()
-        webView = Self.makeWebView(configuration: nil)
-        webView.pageZoom = oldWebView.pageZoom
-        attach(webView)
-        pendingInteractionState = state
-        needsReloadAfterTermination = false
-        hasLoaded = false
-        isHibernated = true
-        isLoading = false
-        estimatedProgress = 0
-        canGoBack = false
-        canGoForward = false
-        errorDescription = nil
-    }
-
-    /// A page whose content process ended (memory pressure or a crash) reloads
-    /// when shown. Repeated failures stop and show the error instead of looping.
-    private func reloadAfterTermination() {
-        needsReloadAfterTermination = false
-        let now = owner?.now() ?? Date()
-        if let last = lastTerminationReload, now.timeIntervalSince(last) < Self.terminationReloadWindow {
-            isLoading = false
-            errorDescription = L10n.string("The webpage stopped responding. Reload to continue.")
-            return
-        }
-        lastTerminationReload = now
-        errorDescription = nil
-        if webView.backForwardList.currentItem != nil { webView.reload() }
-        else if let url { load(url) }
-    }
-
-    static let terminationReloadWindow: TimeInterval = 10
-
-    func load(_ url: URL, cachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy) {
-        let wasBlankTab = !hasWebContent && self.url == nil
-        let hadPlaceholderTitle = ["New Tab", "新标签页", "新標籤頁", L10n.string("New Tab")].contains(title)
-        hasLoaded = true
-        hasWebContent = true
-        self.url = url
-        refreshFavicon(for: url)
-        errorDescription = nil
-        // A real website may itself be titled “New Tab”; only replace an
-        // actual empty-tab placeholder when beginning its first navigation.
-        if wasBlankTab && hadPlaceholderTitle { title = Self.fallbackTitle(for: url) ?? url.absoluteString }
-        if url.isFileURL {
-            webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
-        } else {
-            webView.load(URLRequest(url: url, cachePolicy: cachePolicy))
-        }
-        owner?.scheduleSave()
-    }
-
-    nonisolated private static func fallbackTitle(for url: URL?) -> String? {
-        guard let url else { return nil }
-        return url.isFileURL ? url.lastPathComponent : url.host
-    }
-
-    func cancelFaviconLoading() {
-        faviconTask?.cancel()
-        faviconTask = nil
-        faviconRequestID = UUID()
-    }
-
-    fileprivate func shutdown() {
-        cancelFaviconLoading()
-        detachWebView()
-        owner = nil
-        pendingInteractionState = nil
-        webView.stopLoading()
-        webView.pauseAllMediaPlayback(completionHandler: nil)
-        let closingView = webView
-        closingView.closeAllMediaPresentations { [closingView] in
-            closingView.removeFromSuperview()
-        }
-    }
-
-    private func refreshFavicon(for pageURL: URL) {
-        cancelFaviconLoading()
-        let changedPage = faviconPageURL != pageURL
-        faviconPageURL = pageURL
-        guard Self.iconOrigin(for: pageURL) != nil else {
-            favicon = nil
-            return
-        }
-        let cached = FaviconStore.shared.cachedImage(for: pageURL)
-        if changedPage || favicon == nil { favicon = cached }
-        let requestID = faviconRequestID
-        faviconTask = Task { [weak self] in
-            // Avoid starting work for tabs already discarded before this task ran.
-            guard self != nil, !Task.isCancelled else { return }
-            let image = await FaviconStore.shared.image(for: pageURL)
-            guard !Task.isCancelled, let self, self.faviconRequestID == requestID,
-                  self.url == pageURL else { return }
-            if let image { self.favicon = image }
-        }
-    }
-
-    nonisolated private static func iconOrigin(for url: URL) -> String? {
-        guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
-              let host = url.host?.lowercased(), !host.isEmpty else { return nil }
-        return "\(scheme)://\(host):\(url.port ?? (scheme == "https" ? 443 : 80))"
-    }
-
-    private func updateFavicon(_ snapshot: BrowserFaviconObservation.Snapshot) {
-        let pageURL = snapshot.pageURL
-        guard webView.url == pageURL, url == pageURL,
-              Self.iconOrigin(for: pageURL) != nil, let observer = faviconObservation else { return }
-        cancelFaviconLoading()
-        faviconPageURL = pageURL
-        let requestID = faviconRequestID
-        faviconTask = Task { [weak self] in
-            guard !Task.isCancelled, self?.faviconRequestID == requestID, observer.isCurrent(snapshot) else { return }
-            for candidate in snapshot.candidates {
-                guard !Task.isCancelled, self?.faviconRequestID == requestID, observer.isCurrent(snapshot) else { return }
-                // WebKit renders document-generated SVG/emoji and blob icons,
-                // and uses the page's authenticated image-loading context.
-                let rendered = await observer.rasterize(candidate, snapshot: snapshot)
-                guard !Task.isCancelled, self?.faviconRequestID == requestID, observer.isCurrent(snapshot) else { return }
-                if let rendered, let image = FaviconStore.shared.storePageImage(rendered, for: pageURL, sourceURL: candidate) {
-                    self?.favicon = image
-                    return
-                }
-                // Cross-origin images may taint the canvas. Download that exact
-                // declared candidate before considering the next or a site fallback.
-                let image = await FaviconStore.shared.image(for: pageURL, candidates: [candidate], allowRootFallback: false)
-                guard !Task.isCancelled, self?.faviconRequestID == requestID, observer.isCurrent(snapshot) else { return }
-                if let image { self?.favicon = image; return }
-            }
-            guard !Task.isCancelled, self?.faviconRequestID == requestID, observer.isCurrent(snapshot) else { return }
-            let image = await FaviconStore.shared.image(for: pageURL, usePageCache: false)
-            guard !Task.isCancelled, self?.faviconRequestID == requestID, observer.isCurrent(snapshot) else { return }
-            self?.favicon = image
-        }
-    }
-
-    private func present(_ alert: NSAlert, completion: @escaping @MainActor @Sendable (NSApplication.ModalResponse) -> Void) {
-        if let window = webView.window ?? NSApp.keyWindow {
-            alert.beginSheetModal(for: window, completionHandler: completion)
-        } else { completion(alert.runModal()) }
-    }
-}
-
-extension BrowserTab: WKNavigationDelegate {
-    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-        passwordCandidate = nil
-        hasLoaded = true
-        hasWebContent = true
-        errorDescription = nil
-    }
-
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard webView === self.webView else { return }
-        errorDescription = nil
-        if let url = webView.url { owner?.recordVisit(url, title: webView.title ?? title) }
-        faviconObservation?.refresh()
-        owner?.scheduleSave()
-    }
-
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        record(error)
-    }
-
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { record(error) }
-
-    private func record(_ error: Error) {
-        let nsError = error as NSError
-        guard nsError.code != NSURLErrorCancelled, nsError.code != 102 else { return }
-        isLoading = false
-        errorDescription = error.localizedDescription
-    }
-
-    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        guard webView === self.webView else { return }
-        isLoading = false
-        needsReloadAfterTermination = true
-        // A background tab reloads when it is shown, like Safari; the visible one now.
-        if owner?.selectedTabID == id { reloadAfterTermination() }
-    }
-
-    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
-        guard webView === self.webView else { decisionHandler(.cancel); return }
-        guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
-        let scheme = url.scheme?.lowercased() ?? ""
-        if scheme == "x-safari-https" {
-            decisionHandler(.cancel)
-            guard navigationAction.navigationType == .linkActivated || navigationAction.sourceFrame.isMainFrame,
-                  let website = BrowserModel.unwrappedSafariWebsite(url) else { return }
-            if navigationAction.targetFrame?.isMainFrame == true { load(website) }
-            else { owner?.openLinkInNewTab(website, after: id) }
-            return
-        }
-        if !["https", "http", "about", "blob", "data", "file"].contains(scheme) {
-            decisionHandler(.cancel)
-            guard navigationAction.navigationType == .linkActivated || navigationAction.sourceFrame.isMainFrame else { return }
-            let alert = NSAlert()
-            alert.messageText = L10n.string("Open another app?")
-            alert.informativeText = L10n.format("This webpage wants to open a link using the %@ app.", scheme)
-            alert.addButton(withTitle: L10n.string("Open App"))
-            alert.addButton(withTitle: L10n.string("Cancel"))
-            present(alert) { response in
-                if response == .alertFirstButtonReturn { NSWorkspace.shared.open(url) }
-            }
-            return
-        }
-        if navigationAction.modifierFlags.contains(.command), navigationAction.navigationType == .linkActivated {
-            owner?.openLinkInNewTab(url, after: id)
-            decisionHandler(.cancel)
-            return
-        }
-        let policy: WKNavigationActionPolicy = navigationAction.shouldPerformDownload ? .download : .allow
-        decisionHandler(policy)
-    }
-
-    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void) {
-        guard webView === self.webView else { decisionHandler(.cancel); return }
-        let disposition = (navigationResponse.response as? HTTPURLResponse)?
-            .value(forHTTPHeaderField: "Content-Disposition")?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased() ?? ""
-        let isAttachment = disposition.split(separator: ";", maxSplits: 1).first?
-            .trimmingCharacters(in: .whitespacesAndNewlines) == "attachment"
-        let policy: WKNavigationResponsePolicy = isAttachment || !navigationResponse.canShowMIMEType ? .download : .allow
-        decisionHandler(policy)
-    }
-
-    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
-        BrowserDownloadCoordinator.shared.accept(download, from: webView)
-    }
-    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
-        BrowserDownloadCoordinator.shared.accept(download, from: webView)
-    }
-
-    func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        let method = challenge.protectionSpace.authenticationMethod
-        guard [NSURLAuthenticationMethodHTTPBasic, NSURLAuthenticationMethodHTTPDigest].contains(method) else {
-            completionHandler(.performDefaultHandling, nil)
-            return
-        }
-        let alert = NSAlert()
-        alert.messageText = L10n.format("Sign in to %@", challenge.protectionSpace.host)
-        alert.informativeText = challenge.previousFailureCount > 0
-            ? L10n.string("The username or password was not accepted. Try again.")
-            : L10n.string("This website requires a username and password.")
-        alert.addButton(withTitle: L10n.string("Sign In"))
-        alert.addButton(withTitle: L10n.string("Cancel"))
-        let username = NSTextField(frame: NSRect(x: 0, y: 34, width: 280, height: 24))
-        username.placeholderString = L10n.string("Username")
-        let password = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
-        password.placeholderString = L10n.string("Password")
-        let form = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 58))
-        form.addSubview(username)
-        form.addSubview(password)
-        alert.accessoryView = form
-        alert.window.initialFirstResponder = username
-        present(alert) { response in
-            if response == .alertFirstButtonReturn {
-                completionHandler(.useCredential, URLCredential(user: username.stringValue, password: password.stringValue, persistence: .forSession))
-            } else { completionHandler(.cancelAuthenticationChallenge, nil) }
-        }
-    }
-}
-
-extension BrowserTab: WKUIDelegate {
-    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        owner?.openPopup(configuration: configuration, after: id)
-    }
-
-    func webViewDidClose(_ webView: WKWebView) { owner?.closeTab(id) }
-
-    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable () -> Void) {
-        let alert = NSAlert()
-        alert.messageText = frame.request.url?.host ?? L10n.string("Website")
-        alert.informativeText = message
-        alert.addButton(withTitle: L10n.string("OK"))
-        present(alert) { _ in completionHandler() }
-    }
-
-    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable (Bool) -> Void) {
-        let alert = NSAlert()
-        alert.messageText = frame.request.url?.host ?? L10n.string("Website")
-        alert.informativeText = message
-        alert.addButton(withTitle: L10n.string("OK"))
-        alert.addButton(withTitle: L10n.string("Cancel"))
-        present(alert) { completionHandler($0 == .alertFirstButtonReturn) }
-    }
-
-    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable (String?) -> Void) {
-        let alert = NSAlert()
-        alert.messageText = frame.request.url?.host ?? L10n.string("Website")
-        alert.informativeText = prompt
-        alert.addButton(withTitle: L10n.string("OK"))
-        alert.addButton(withTitle: L10n.string("Cancel"))
-        let input = NSTextField(string: defaultText ?? "")
-        input.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
-        alert.accessoryView = input
-        alert.window.initialFirstResponder = input
-        present(alert) { completionHandler($0 == .alertFirstButtonReturn ? input.stringValue : nil) }
-    }
-
-    func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable ([URL]?) -> Void) {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = parameters.allowsDirectories
-        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
-        if let window = webView.window {
-            panel.beginSheetModal(for: window) { completionHandler($0 == .OK ? panel.urls : nil) }
-        } else { completionHandler(panel.runModal() == .OK ? panel.urls : nil) }
     }
 }

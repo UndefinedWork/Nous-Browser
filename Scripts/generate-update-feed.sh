@@ -4,7 +4,7 @@ set -euo pipefail
 PROJECT_DIR="${0:A:h:h}"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PROJECT_DIR/Resources/Info.plist")"
 ARCHIVE="$PROJECT_DIR/dist/Nous-Browser-$VERSION-macOS-arm64.zip"
-TOOLS="$PROJECT_DIR/.build/artifacts/sparkle/Sparkle/bin"
+TOOLS="${NOUS_SPARKLE_TOOLS:-$PROJECT_DIR/.build/chromium/swift/artifacts/sparkle/Sparkle/bin}"
 [[ -f "$ARCHIVE" && -x "$TOOLS/generate_appcast" ]] || { print -u2 'Build and package the release first.'; exit 1; }
 SIGNING_KEY="${NOUS_UPDATE_SIGNING_KEY:-$HOME/.local/share/NousBrowserRelease/update-signing-key}"
 [[ -f "$SIGNING_KEY" ]] || { print -u2 'Update signing key is missing. See Docs/Updates.md.'; exit 1; }
@@ -12,7 +12,16 @@ xcrun swift "$PROJECT_DIR/Scripts/verify-update-key.swift" "$SIGNING_KEY" "$PROJ
 STAGING="$(mktemp -d "$PROJECT_DIR/.build/update-feed.XXXXXX")"
 trap 'rm -rf "$STAGING"' EXIT
 cp "$ARCHIVE" "$STAGING/"
-"$TOOLS/generate_appcast" --ed-key-file "$SIGNING_KEY" --maximum-deltas 0 \
+# Embed the migration notice before signing, never edit a signed feed afterward.
+python3 - "$PROJECT_DIR/Docs/releases/$VERSION.md" "$STAGING/${ARCHIVE:t:r}.html" <<'NOTES'
+import html
+from pathlib import Path
+import sys
+source=Path(sys.argv[1])
+if source.is_file():
+    Path(sys.argv[2]).write_text('<pre>'+html.escape(source.read_text())+'</pre>')
+NOTES
+"$TOOLS/generate_appcast" --ed-key-file "$SIGNING_KEY" --maximum-deltas 0 --embed-release-notes \
   --download-url-prefix "https://github.com/UndefinedWork/Nous-Browser/releases/download/v$VERSION/" "$STAGING"
 [[ -s "$STAGING/appcast.xml" ]] || { print -u2 'Signed feed was not produced.'; exit 1; }
 cp "$STAGING/appcast.xml" "$PROJECT_DIR/dist/appcast.xml"

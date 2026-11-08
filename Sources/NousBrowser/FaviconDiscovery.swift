@@ -1,7 +1,7 @@
 import Foundation
 
 /// Reads public HTML declarations for an unloaded shortcut. No page scripts,
-/// user cookies, external XML entities, or authenticated WebKit state are used.
+/// user cookies, external XML entities, or authenticated browser state are used.
 enum FaviconDiscovery {
     static let maximumHTMLBytes = 512 * 1024
 

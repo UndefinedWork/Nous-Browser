@@ -69,6 +69,7 @@ print(f"App metadata: {info['CFBundleShortVersionString']} ({info['CFBundleVersi
       f"macOS {info['LSMinimumSystemVersion']} or later")
 PY
 
+python3 "$PROJECT_DIR/Scripts/validate-release-app.py" "$APP_DIR"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 SIGNATURE_DETAILS="$(/usr/bin/codesign --display --verbose=4 "$APP_DIR" 2>&1)"
 print -r -- "$SIGNATURE_DETAILS"
@@ -114,6 +115,7 @@ trap 'exit 143' TERM
 
 verify_packaged_app() {
     local candidate="$1"
+    python3 "$PROJECT_DIR/Scripts/validate-release-app.py" "$candidate" --reference "$APP_DIR"
     /usr/bin/codesign --verify --deep --strict --verbose=2 "$candidate"
     [[ "$(/usr/bin/lipo -archs "$candidate/Contents/MacOS/$EXECUTABLE_NAME" | /usr/bin/tr ' ' '\n' | /usr/bin/sort | /usr/bin/xargs)" == "$ARCHITECTURES" ]] || fail "Packaged architectures changed."
     [[ "$(/usr/bin/shasum -a 256 "$candidate/Contents/MacOS/$EXECUTABLE_NAME" | /usr/bin/awk '{print $1}')" == "$EXECUTABLE_SHA" ]] || fail "Packaged executable changed."

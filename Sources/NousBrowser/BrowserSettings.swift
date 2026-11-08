@@ -1,4 +1,5 @@
 import SwiftUI
+import NousCore
 
 struct BrowserSettingsView: View {
     let preferences: BrowserPreferences
@@ -16,6 +17,12 @@ struct BrowserSettingsView: View {
                 .tabItem { Label(L10n.string("Passwords"), systemImage: "key") }
             AppearanceSettingsView(appearance: appearance)
                 .tabItem { Label(L10n.string("Appearance"), systemImage: "circle.lefthalf.filled") }
+            CaptureShortcutsSettingsView()
+                .tabItem { Label(L10n.string("Capture"), systemImage: "camera.viewfinder") }
+            if NBChromiumRuntime.hasNativeTabLifecycle() {
+                ChromiumPerformanceSettingsView()
+                    .tabItem { Label(L10n.string("Performance"), systemImage: "gauge.with.dots.needle.50percent") }
+            }
             BrowserAutomationSettingsView(service: automation)
                 .tabItem { Label(L10n.string("AI Agents (MCP)"), systemImage: "point.3.connected.trianglepath.dotted") }
         }

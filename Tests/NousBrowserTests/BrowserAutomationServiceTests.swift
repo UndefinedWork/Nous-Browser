@@ -97,7 +97,7 @@ struct BrowserAutomationServiceTests {
         let manager = BrowserWindowManager(workspace: BrowserWorkspaceStore(sessionURL: directory.appendingPathComponent("session.json")),
                                            appearance: BrowserAppearanceSettings(defaults: defaults),
                                            preferences: BrowserPreferences(defaults: defaults),
-                                           showsWindows: false, startsHibernationMonitors: false)
+                                           showsWindows: false)
         let service = BrowserAutomationService(windows: manager, defaults: defaults,
                                                 socketPath: directory.appendingPathComponent("bridge.sock").path)
         defer {

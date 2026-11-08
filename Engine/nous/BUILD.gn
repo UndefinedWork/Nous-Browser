@@ -1,0 +1,61 @@
+# //nous — the Nous Core embedding layer (Dia's equivalent lives in //arc).
+#
+# Compiled into the renamed Chrome framework (NousCore.framework) together
+# with //chrome. The Swift host links that framework and imports the
+# Objective-C API in public/ through the NousCore Clang module.
+
+# Zero-dependency hooks consulted by the small patches inside //chrome.
+source_set("embedder") {
+  sources = [
+    "common/nous_embedder.cc",
+    "common/nous_embedder.h",
+  ]
+}
+
+config("public_api") {
+  include_dirs = [ "public" ]
+}
+
+source_set("browser") {
+  sources = [
+    "browser/NBChromiumFocusPolicy.h",
+    "browser/nous_application.mm",
+    "browser/nous_downloads.mm",
+    "browser/nous_internal.h",
+    "browser/nous_tab.mm",
+    "public/NBChromiumDownloads.h",
+    "public/NousBrowserApplication.h",
+    "public/NousChromium.h",
+    "public/NousCore.h",
+  ]
+  public_configs = [ ":public_api" ]
+  deps = [
+    ":embedder",
+    "//base",
+    "//chrome/browser",
+    "//chrome/browser/download",
+    "//chrome/browser/printing",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/ui",
+    "//components/favicon/content",
+    "//components/find_in_page",
+    "//components/input",
+    "//components/keep_alive_registry",
+    "//components/os_crypt/common:keychain_password_mac",
+    "//components/permissions",
+    "//components/prefs",
+    "//components/version_info",
+    "//components/web_modal",
+    "//components/zoom",
+    "//content/public/browser",
+    "//crypto",
+    "//net",
+    "//third_party/blink/public/common",
+    "//ui/gfx",
+    "//url",
+  ]
+  frameworks = [
+    "AppKit.framework",
+    "Foundation.framework",
+  ]
+}

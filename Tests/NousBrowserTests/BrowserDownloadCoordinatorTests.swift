@@ -89,54 +89,12 @@ struct BrowserDownloadCoordinatorTests {
     }
 
     @Test @MainActor func filenamesRemainFilenamesAndKeepTheirMediaExtension() {
-        #expect(BrowserDownloadCoordinator.filename("../../clip.mp4", hint: nil, mimeType: "video/mp4") == "clip.mp4")
-        #expect(BrowserDownloadCoordinator.filename("folder\\picture.png", hint: nil, mimeType: "image/png") == "picture.png")
-        #expect(BrowserDownloadCoordinator.filename("Unknown", hint: "my clip.mp4", mimeType: "video/mp4") == "my clip.mp4")
-        #expect(BrowserDownloadCoordinator.filename("report", hint: nil, mimeType: "application/pdf") == "report.pdf")
-        #expect(BrowserDownloadCoordinator.filename("..", hint: nil, mimeType: nil) == "download")
-        #expect(BrowserDownloadCoordinator.filename("bad\u{0}name.txt", hint: nil, mimeType: nil) == "badname.txt")
-    }
-
-    @Test @MainActor func contextDownloadDoesNotStartUntilSaveAndCancellationIsFinal() throws {
-        let folder = try temporaryFolder()
-        defer { try? FileManager.default.removeItem(at: folder) }
-        let chosen = folder.appendingPathComponent("selected.mp4")
-        var started: [BrowserDownloadDestination] = []
-        let cancelled = BrowserDownloadStartDecision { started.append($0) }
-        #expect(started.isEmpty)
-        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).isEmpty)
-        try cancelled.choose(nil)
-        // A late duplicate completion cannot start a cancelled request.
-        try cancelled.choose(chosen)
-        #expect(started.isEmpty)
-        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).isEmpty)
-
-        let saved = BrowserDownloadStartDecision { started.append($0) }
-        try saved.choose(chosen)
-        try saved.choose(chosen)
-        #expect(started.count == 1)
-        #expect(started.first?.url == chosen)
-        #expect(!FileManager.default.fileExists(atPath: chosen.path))
-        started.forEach { $0.cancel() }
-    }
-
-    @Test @MainActor func contextDownloadRejectsInvalidDestinationBeforeNetworking() throws {
-        let folder = try temporaryFolder()
-        defer { try? FileManager.default.removeItem(at: folder) }
-        var didStart = false
-        let decision = BrowserDownloadStartDecision { _ in didStart = true }
-        #expect(throws: CocoaError.self) { try decision.choose(folder) }
-        #expect(!didStart)
-        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).isEmpty)
-    }
-
-    @Test @MainActor func contextFilenameUsesHintOrURLAndDataMediaType() {
-        #expect(BrowserDownloadCoordinator.filename(for: .init(url: URL(string: "https://example.test/clip.mp4?token=synthetic")!)) == "clip.mp4")
-        #expect(BrowserDownloadCoordinator.filename(for: .init(url: URL(string: "https://example.test/download")!, suggestedFilename: "my video.mp4")) == "my video.mp4")
-        #expect(BrowserDownloadCoordinator.filename(for: .init(url: URL(string: "https://example.test/")!)) == "download")
-        #expect(BrowserDownloadCoordinator.filename(for: .init(url: URL(string: "data:image/png;base64,AAAA")!)) == "download.png")
-        #expect(BrowserDownloadCoordinator.filename(for: .init(url: URL(string: "data:,hello")!)) == "download.txt")
-        #expect(BrowserDownloadCoordinator.filename(for: .init(url: URL(string: "blob:https://example.test/1234")!)) == "download")
+        #expect(BrowserDownloadFilename.filename("../../clip.mp4", hint: nil, mimeType: "video/mp4") == "clip.mp4")
+        #expect(BrowserDownloadFilename.filename("folder\\picture.png", hint: nil, mimeType: "image/png") == "picture.png")
+        #expect(BrowserDownloadFilename.filename("Unknown", hint: "my clip.mp4", mimeType: "video/mp4") == "my clip.mp4")
+        #expect(BrowserDownloadFilename.filename("report", hint: nil, mimeType: "application/pdf") == "report.pdf")
+        #expect(BrowserDownloadFilename.filename("..", hint: nil, mimeType: nil) == "download")
+        #expect(BrowserDownloadFilename.filename("bad\u{0}name.txt", hint: nil, mimeType: nil) == "badname.txt")
     }
 
     private func temporaryFolder() throws -> URL {

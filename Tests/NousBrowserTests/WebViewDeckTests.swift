@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import Testing
-import WebKit
 @testable import NousBrowser
 
 @Suite("Web view deck")
@@ -50,7 +49,7 @@ struct WebViewDeckTests {
         #expect(tabs[0].webView.isHidden && !tabs[2].webView.isHidden)
     }
 
-    @Test @MainActor func blankSelectionHidesEveryPageAndClosedTabsAreReleased() throws {
+    @Test @MainActor func blankSelectionHidesEveryPageAndClosedTabsAreReleased() async throws {
         let setup = try makeModel(tabCount: 3)
         defer { try? FileManager.default.removeItem(at: setup.directory) }
         let (deck, _) = hostedDeck()
@@ -61,6 +60,7 @@ struct WebViewDeckTests {
 
         let closed = model.tabs[1]
         model.closeTab(closed.id)
+        try await waitForBrowserTest { !model.tabs.contains { $0.id == closed.id } }
         deck.show(model.tabs, selectedID: model.selectedTabID)
         #expect(closed.webView.superview == nil)
         #expect(deck.subviews.count == 2)

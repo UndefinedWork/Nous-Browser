@@ -1,10 +1,9 @@
 import AppKit
 import SwiftUI
-import WebKit
 
 /// Hosts every recently used web view in one AppKit container. Switching tabs
-/// only toggles `isHidden`, so WebKit never has to detach and re-attach a page
-/// to the window, which was the main cost of a tab switch.
+/// only toggles `isHidden`, so Chromium normally keeps the same native view attached
+/// to the window; inactive renderers retain their native lifecycle state.
 struct WebViewDeck: NSViewRepresentable {
     let tabs: [BrowserTab]
     let selectedID: UUID?
@@ -37,18 +36,22 @@ final class WebViewDeckView: NSView {
         // AppKit moves focus to an arbitrary key view when a focused view is
         // hidden, so note which page had focus before changing visibility.
         let focusedPage = (window?.firstResponder as? NSView).flatMap { responder in
-            subviews.first { responder.isDescendant(of: $0) } as? WKWebView
+            subviews.first { responder.isDescendant(of: $0) } as? BrowserPageView
         }
 
-        var selectedView: WKWebView?
+        var selectedView: BrowserPageView?
         for tab in tabs {
             let view = tab.webView
+            // Each window's selected page is active, including a non-key or
+            // minimized window. Chromium receives its own eligibility inputs.
+            if let owner { owner.synchronizeChromiumLifecycleState(for: tab) }
+            else { tab.synchronizeNativeLifecycle(activeInWindow: tab.id == selectedID) }
             guard attachedIDs.contains(tab.id) else {
                 if view.superview === self { view.removeFromSuperview() }
                 continue
             }
-            // A page in element fullscreen lives in WebKit's fullscreen window.
-            // WebKit returns it here when fullscreen ends; never pull it back.
+            // Preserve a native view owned by another presentation container.
+            // Only a deliberate transfer between page decks may reclaim it.
             if owner != nil, view.superview is WebViewDeckView, view.superview !== self {
                 view.removeFromSuperview()
             }
@@ -63,7 +66,7 @@ final class WebViewDeckView: NSView {
             if isSelected { selectedView = view }
         }
         // Closed tabs are no longer in `tabs`; release their views.
-        for case let view as WKWebView in subviews where !tabs.contains(where: { $0.webView === view }) {
+        for case let view as BrowserPageView in subviews where !tabs.contains(where: { $0.webView === view }) {
             view.removeFromSuperview()
         }
         // Removing a view from the window used to resign its focus implicitly.

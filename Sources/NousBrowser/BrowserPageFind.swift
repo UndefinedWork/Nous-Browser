@@ -1,13 +1,18 @@
 import AppKit
 import Observation
 import SwiftUI
-import WebKit
+
+struct BrowserFindConfiguration {
+    var backwards = false
+    var caseSensitive = false
+    var wraps = true
+}
 
 @MainActor
 @Observable
 final class BrowserPageFindController {
     typealias Completion = @MainActor @Sendable (Bool) -> Void
-    typealias FindOperation = @MainActor (WKWebView, String, WKFindConfiguration, @escaping Completion) -> Void
+    typealias FindOperation = @MainActor (BrowserPageView, String, BrowserFindConfiguration, @escaping Completion) -> Void
 
     @ObservationIgnored weak var model: BrowserModel?
     var isPresented = false
@@ -57,6 +62,7 @@ final class BrowserPageFindController {
     }
 
     func dismiss() {
+        model?.selectedTab?.webView.stopFinding()
         isPresented = false
         invalidateSearch()
         matchFound = nil
@@ -64,8 +70,6 @@ final class BrowserPageFindController {
            window.isKeyWindow, window.attachedSheet == nil {
             window.makeFirstResponder(view)
         }
-        // Public WKWebView.find("") is a no-op for document selection, so do
-        // not claim to clear it or use WebKit's private find-UI selectors.
     }
 
     func findNext(backward: Bool = false) {
@@ -126,7 +130,7 @@ final class BrowserPageFindController {
               let view = model?.selectedTab?.webView else { return }
         let request = requestID
         let query = text
-        let configuration = WKFindConfiguration()
+        var configuration = BrowserFindConfiguration()
         configuration.caseSensitive = false
         configuration.wraps = true
         configuration.backwards = backward

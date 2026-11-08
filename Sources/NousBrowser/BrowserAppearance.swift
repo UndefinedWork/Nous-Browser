@@ -14,7 +14,7 @@ nonisolated enum BrowserAppearanceMode: String, CaseIterable, Identifiable {
     }
 }
 
-/// One app-level override keeps SwiftUI, WebKit, sheets and native panels in
+/// One app-level override keeps SwiftUI, Chromium, sheets and native panels in
 /// the same appearance. Nil leaves AppKit's live system inheritance intact.
 @MainActor
 @Observable

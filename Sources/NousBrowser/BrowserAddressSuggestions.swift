@@ -1,14 +1,27 @@
 import Foundation
 
+nonisolated enum BrowserAddressPrimarySuggestion {
+    /// Keep the primary row aligned with address submission. Explicit schemes
+    /// use the navigation policy so internal diagnostics cannot acquire a
+    /// separate, broader allowlist just for their display label.
+    static func navigationURL(for input: String) -> URL? {
+        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.contains("://") { return BrowserModel.normalizeAddress(text) }
+        return BrowserAddressInput.websiteURL(for: text)
+    }
+}
+
 @MainActor
 enum BrowserAddressSuggestion {
     case openTab(BrowserTab)
     case visitedPage(BrowserHistoryEntry)
+    case bookmark(LibraryBookmark)
 
     var id: String {
         switch self {
         case .openTab(let tab): "tab-" + tab.id.uuidString
         case .visitedPage(let entry): "history-" + entry.id
+        case .bookmark(let bookmark): "bookmark-" + bookmark.id
         }
     }
 
@@ -16,6 +29,7 @@ enum BrowserAddressSuggestion {
         switch self {
         case .openTab(let tab): tab.displayTitle
         case .visitedPage(let entry): entry.title
+        case .bookmark(let bookmark): bookmark.title
         }
     }
 
@@ -24,6 +38,7 @@ enum BrowserAddressSuggestion {
         // Only tabs with a URL are included in addressSuggestions.
         case .openTab(let tab): tab.url!
         case .visitedPage(let entry): entry.url
+        case .bookmark(let bookmark): bookmark.url
         }
     }
 }
@@ -46,7 +61,14 @@ extension BrowserController {
             tab.url.flatMap(BrowserHistoryStore.canonicalURL(for:))?.absoluteString
         })
         var results = openTabs.map(BrowserAddressSuggestion.openTab)
-        for entry in history.matches(query: addressText, limit: 6) where !openURLs.contains(entry.id) {
+        var shown = openURLs
+        // Bookmarks rank above plain history.
+        for bookmark in LibraryStore.shared.bookmarks(matching: Self.matchingText(addressText), limit: 3)
+            where shown.insert(bookmark.id).inserted {
+            results.append(.bookmark(bookmark))
+            if results.count == 6 { return results }
+        }
+        for entry in history.matches(query: addressText, limit: 6) where !shown.contains(entry.id) {
             results.append(.visitedPage(entry))
             if results.count == 6 { break }
         }

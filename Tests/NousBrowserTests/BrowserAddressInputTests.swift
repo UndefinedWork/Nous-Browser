@@ -4,6 +4,23 @@ import Testing
 
 @Suite("Address host punctuation and width")
 struct BrowserAddressInputTests {
+    @Test func primarySuggestionDistinguishesNavigationFromVerbatimSearch() {
+        for address in ["x。com", "https://example.com/path?q=hello", "localhost:8080/test",
+                        "x.com/path?target=https://example.test", "ｈｔｔｐｓ://ｘ。ｃｏｍ"] {
+            #expect(BrowserAddressPrimarySuggestion.navigationURL(for: address) == BrowserModel.normalizeAddress(address))
+            #expect(BrowserAddressPrimarySuggestion.navigationURL(for: address) != nil)
+        }
+        for query in ["hello world", "你好。世界", "site:example.com"] {
+            #expect(BrowserAddressPrimarySuggestion.navigationURL(for: query) == nil)
+            for engine in BrowserSearchEngine.allCases {
+                #expect(BrowserModel.normalizeAddress(query, searchEngine: engine) == engine.searchURL(query: query))
+            }
+        }
+        for invalid in ["", "chrome://crash", "chrome://version?open=1", "javascript:alert(1)", "file:///tmp/test.html", "custom://test"] {
+            #expect(BrowserAddressPrimarySuggestion.navigationURL(for: invalid) == nil)
+        }
+    }
+
     @Test func bareDomainsAcceptTheThreeCommonNonASCIIStopsAndHostWidth() {
         for address in ["x。com", "x．com", "x｡com", "ｘ。ｃｏｍ", "ｘ．com", "x｡ｃｏｍ"] {
             #expect(BrowserAddressInput.websiteURL(for: address)?.absoluteString == "https://x.com")

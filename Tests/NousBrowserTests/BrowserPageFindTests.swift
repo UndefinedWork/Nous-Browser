@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import Testing
-import WebKit
 @testable import NousBrowser
 
 @Suite("Page find state and asynchronous isolation", .serialized)
@@ -9,7 +8,7 @@ import WebKit
 struct BrowserPageFindTests {
     @MainActor private final class FinderSpy {
         struct Request {
-            let view: WKWebView
+            let view: BrowserPageView
             let query: String
             let backwards: Bool
             let caseSensitive: Bool
@@ -18,7 +17,7 @@ struct BrowserPageFindTests {
         }
         var requests: [Request] = []
 
-        func find(_ view: WKWebView, query: String, configuration: WKFindConfiguration,
+        func find(_ view: BrowserPageView, query: String, configuration: BrowserFindConfiguration,
                   completion: @escaping BrowserPageFindController.Completion) {
             requests.append(Request(view: view, query: query, backwards: configuration.backwards,
                                     caseSensitive: configuration.caseSensitive, wraps: configuration.wraps,
@@ -172,7 +171,9 @@ struct BrowserPageFindTests {
         fixture.spy.requests[0].complete(true)
         #expect(fixture.find.matchFound == nil)
 
-        try await waitUntil { second.webView.url != nil && !second.isLoading && !second.webView.isLoading }
+        // This is a fake-finder state test, not a running CEF navigation. Supply
+        // the loading completion explicitly, as in the reload test above.
+        second.isLoading = false
         fixture.find.pageDidChange()
         try await waitUntil { fixture.spy.requests.count >= 2 }
         let latest = try #require(fixture.spy.requests.last)

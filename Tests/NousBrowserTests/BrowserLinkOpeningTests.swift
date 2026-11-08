@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import Testing
-import WebKit
 @testable import NousBrowser
 
 @Suite("Opening webpage links in tabs and windows", .serialized)
@@ -31,18 +30,18 @@ struct BrowserLinkOpeningTests {
             #expect(tab.webView.url == nil)
             #expect(opened.webView !== tab.webView)
         }
-        #expect(opened.webView.configuration.websiteDataStore === source.webView.configuration.websiteDataStore)
         let saved = try JSONDecoder().decode(BrowserSession.self, from: Data(contentsOf: fixture.sessionURL))
         #expect(saved.tabs.map(\.id) == expectedOrder)
         #expect(saved.selectedTabID == opened.id)
     }
 
-    @Test func missingClosedAndUnsupportedSourcesDoNotCreateTabsOrRouteWindows() throws {
+    @Test func missingClosedAndUnsupportedSourcesDoNotCreateTabsOrRouteWindows() async throws {
         let fixture = try modelFixture()
         defer { fixture.cleanUp() }
         let model = fixture.model
         let closedID = model.tabs[1].id
         model.closeTab(closedID)
+        try await waitForBrowserTest { !model.tabs.contains { $0.id == closedID } }
         let existingIDs = model.tabs.map(\.id)
         let selectedID = model.selectedTabID
         let existingSession = try Data(contentsOf: fixture.sessionURL)
@@ -109,7 +108,6 @@ struct BrowserLinkOpeningTests {
         #expect(target.url == fixture.targetURL)
         #expect(target.id != source.id && target.webView !== sourceView)
         #expect(!destination.controller.isAddressPresented)
-        #expect(target.webView.configuration.websiteDataStore === sourceView.configuration.websiteDataStore)
         #expect(model.tabs.map(\.id) == sourceIDs)
         #expect(model.selectedTabID == selectedID)
         #expect(source.url == fixture.pageURLs[0])
@@ -125,7 +123,7 @@ struct BrowserLinkOpeningTests {
         #expect(saved.tabs.count == 1 && saved.tabs[0].url == fixture.targetURL)
     }
 
-    @Test func lateRequestsFromAClosedTabOrWindowCannotOpenAnotherWindow() throws {
+    @Test func lateRequestsFromAClosedTabOrWindowCannotOpenAnotherWindow() async throws {
         let fixture = try windowFixture()
         defer { fixture.cleanUp() }
         let manager = fixture.manager
@@ -134,6 +132,7 @@ struct BrowserLinkOpeningTests {
         let model = source.controller.model
         let closedTabID = try #require(model.tabs.first?.id)
         model.closeTab(closedTabID)
+        try await waitForBrowserTest { !model.tabs.contains { $0.id == closedTabID } }
         let survivingTabID = try #require(model.selectedTabID)
         let peer = try #require(manager.newWindow())
         let peerIDs = peer.controller.model.tabs.map(\.id)
@@ -145,6 +144,7 @@ struct BrowserLinkOpeningTests {
         #expect(manager.activeContext === peer)
 
         manager.closeWindow(source.session.id)
+        try await waitForBrowserTest { !manager.windows.contains { $0 === source } }
         #expect(manager.windows.count == 1)
         #expect(model.onOpenLinkInNewWindow == nil)
         model.openLinkInNewWindow(fixture.targetURL, from: survivingTabID)
@@ -210,7 +210,7 @@ struct BrowserLinkOpeningTests {
         let manager = BrowserWindowManager(workspace: BrowserWorkspaceStore(sessionURL: files.sessionURL),
                                            appearance: BrowserAppearanceSettings(defaults: defaults),
                                            preferences: BrowserPreferences(defaults: defaults),
-                                           showsWindows: false, startsHibernationMonitors: false)
+                                           showsWindows: false)
         return WindowFixture(directory: files.directory, sessionURL: files.sessionURL,
                              pageURLs: files.pageURLs, targetURL: files.targetURL,
                              defaults: defaults, defaultsDomain: domain, manager: manager)

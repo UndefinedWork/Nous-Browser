@@ -1,0 +1,13 @@
+# Nous Core public Objective-C API (in addition to chrome/app/framework.exports).
+_OBJC_CLASS_$_NousBrowserApplication
+_OBJC_METACLASS_$_NousBrowserApplication
+_OBJC_CLASS_$_NousBrowserApplicationConfiguration
+_OBJC_METACLASS_$_NousBrowserApplicationConfiguration
+_OBJC_CLASS_$_NBChromiumRuntime
+_OBJC_METACLASS_$_NBChromiumRuntime
+_OBJC_CLASS_$_NBChromiumView
+_OBJC_METACLASS_$_NBChromiumView
+_OBJC_CLASS_$_NBChromiumDownloadCenter
+_OBJC_METACLASS_$_NBChromiumDownloadCenter
+_OBJC_CLASS_$_NBChromiumDownloadJob
+_OBJC_METACLASS_$_NBChromiumDownloadJob

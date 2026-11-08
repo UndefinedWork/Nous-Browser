@@ -43,10 +43,10 @@ struct AddressPalette: View {
                         ScrollViewReader { proxy in
                             ScrollView {
                                 VStack(spacing: 3) {
-                                    paletteRow(symbol: isWebAddress ? "globe" : "magnifyingglass",
+                                    paletteRow(symbol: isNavigation ? "globe" : "magnifyingglass",
                                                iconURL: websiteURL,
-                                               title: websiteURL?.absoluteString ?? controller.addressText,
-                                               subtitle: isWebAddress ? L10n.string("Open Website") : L10n.format("Search with %@", controller.preferences.searchEngine.title),
+                                               title: navigationURL?.absoluteString ?? controller.addressText,
+                                               subtitle: isNavigation ? L10n.string("Open Website") : L10n.format("Search with %@", controller.preferences.searchEngine.title),
                                                selected: highlighted == 0) { controller.submitAddress() }
                                         .id(0)
                                     ForEach(Array(suggestions.enumerated()), id: \.element.id) { index, suggestion in
@@ -75,7 +75,8 @@ struct AddressPalette: View {
     }
 
     private var websiteURL: URL? { BrowserAddressInput.websiteURL(for: controller.addressText) }
-    private var isWebAddress: Bool { websiteURL != nil }
+    private var navigationURL: URL? { BrowserAddressPrimarySuggestion.navigationURL(for: controller.addressText) }
+    private var isNavigation: Bool { navigationURL != nil }
 
     private func submitSelection() {
         if highlighted > 0, suggestions.indices.contains(highlighted - 1) {
@@ -90,6 +91,7 @@ struct AddressPalette: View {
         return paletteRow(symbol: "globe", iconURL: suggestion.url, preferredIcon: preferredIcon,
                           titleIcon: pageTitle.icon, title: pageTitle.title,
                           subtitle: isOpenTab ? L10n.string("Switch to Open Tab") : suggestion.url.absoluteString,
+                          bookmarked: LibraryStore.shared.isBookmarked(suggestion.url),
                           selected: selected) { controller.activateSuggestion(suggestion) }
     }
 
@@ -110,7 +112,7 @@ struct AddressPalette: View {
         .help(link.url.absoluteString)
     }
 
-    private func paletteRow(symbol: String, iconURL: URL? = nil, preferredIcon: NSImage? = nil, titleIcon: String? = nil, title: String, subtitle: String, selected: Bool, action: @escaping () -> Void) -> some View {
+    private func paletteRow(symbol: String, iconURL: URL? = nil, preferredIcon: NSImage? = nil, titleIcon: String? = nil, title: String, subtitle: String, bookmarked: Bool = false, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Group {
@@ -119,7 +121,10 @@ struct AddressPalette: View {
                     else { Image(systemName: symbol).font(.system(size: 15)) }
                 }.frame(width: 26, height: 24)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                    HStack(spacing: 5) {
+                        Text(title).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                        if bookmarked { BookmarkMark() }
+                    }
                     Text(subtitle).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 0)

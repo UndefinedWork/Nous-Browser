@@ -159,6 +159,9 @@ struct SidebarTabFavicon: View {
                 Text(verbatim: icon)
                     .font(.system(size: 12))
                     .fixedSize()
+            } else if let page = tab.nativePage {
+                Image(systemName: page.symbol)
+                    .font(.system(size: 11, weight: .medium))
             } else if let favicon = tab.favicon {
                 Image(nsImage: favicon)
                     .renderingMode(.original)
@@ -282,7 +285,7 @@ struct SidebarEdgeAutoScrollDriver: NSViewRepresentable {
     }
 }
 
-/// Escape must cancel even when a WKWebView still owns first responder.
+/// Escape must cancel even when a Chromium view still owns first responder.
 struct SidebarDragCancellationMonitor: NSViewRepresentable {
     let isEnabled: Bool
     let canCancel: Bool

@@ -113,6 +113,16 @@ final class BrowserHistoryStore {
         scheduleSave()
     }
 
+    func remove(_ id: String) {
+        entries.removeAll { $0.id == id }
+        scheduleSave()
+    }
+
+    func removeAll() {
+        entries.removeAll()
+        scheduleSave()
+    }
+
     func matches(query: String, limit: Int = 6) -> [BrowserHistoryEntry] {
         let folded = Self.fold(query).trimmingCharacters(in: .whitespacesAndNewlines)
         let tokens = folded.split(whereSeparator: \.isWhitespace).map(String.init)

@@ -1,0 +1,5 @@
+framework module NousCore {
+  umbrella header "NousCore.h"
+  export *
+  module * { export * }
+}

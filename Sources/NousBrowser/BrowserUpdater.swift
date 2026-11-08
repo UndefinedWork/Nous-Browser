@@ -14,6 +14,11 @@ final class BrowserUpdater: NSObject, SPUUserDriver {
     private(set) var version = ""
     private(set) var progress: Double?
     private(set) var isEnabled = false
+    /// Plain-text release notes from the appcast, shown in the Library.
+    private(set) var releaseNotes: String?
+    private(set) var lastChecked: Date?
+    /// The Library shows progress itself; no separate progress window then.
+    @ObservationIgnored private var showsProgressInline = false
     var showsButton: Bool { phase == .available || phase == .downloading || phase == .installing }
     var isBusy: Bool { phase == .checking || phase == .downloading || phase == .installing }
     @ObservationIgnored private var engine: SPUUpdater?
@@ -45,7 +50,8 @@ final class BrowserUpdater: NSObject, SPUUserDriver {
         }
     }
 
-    func checkForUpdates() {
+    func checkForUpdates(inline: Bool = false) {
+        showsProgressInline = inline
         guard isEnabled, let engine else { return }
         if phase == .available { installUpdate(); return }
         if isBusy { showProgress(); return }
@@ -53,7 +59,8 @@ final class BrowserUpdater: NSObject, SPUUserDriver {
         engine.checkForUpdates()
     }
 
-    func installUpdate() {
+    func installUpdate(inline: Bool = false) {
+        if inline { showsProgressInline = true }
         guard phase == .available, let reply = installReply else {
             if isBusy { showProgress() }
             return
@@ -99,11 +106,14 @@ final class BrowserUpdater: NSObject, SPUUserDriver {
             return
         }
         version = appcastItem.displayVersionString
+        releaseNotes = appcastItem.itemDescription.flatMap(Self.plainText)
+        lastChecked = Date()
         phase = .available
         installReply = reply
         progressWindow?.orderOut(nil)
         // A menu check reveals the update without implicitly authorizing restart.
-        if userRequestedCheck {
+        // From the Library, the Updates card is the confirmation.
+        if userRequestedCheck && !showsProgressInline {
             let alert = NSAlert()
             alert.messageText = L10n.string("Update available") + " — " + version
             alert.informativeText = L10n.string("Download the update, then restart Nous Browser. Save any work in webpages first.")
@@ -116,7 +126,9 @@ final class BrowserUpdater: NSObject, SPUUserDriver {
     func showUpdateReleaseNotesFailedToDownloadWithError(_ error: Error) {}
     func showUpdateNotFoundWithError(_ error: Error, acknowledgement: @escaping () -> Void) {
         progressWindow?.orderOut(nil)
-        if userRequestedCheck { showMessage(L10n.string("No update available"), detail: error.localizedDescription) }
+        lastChecked = Date()
+        phase = .idle
+        if userRequestedCheck && !showsProgressInline { showMessage(L10n.string("No update available"), detail: error.localizedDescription) }
         acknowledgement()
     }
     func showUpdaterError(_ error: Error, acknowledgement: @escaping () -> Void) {
@@ -159,11 +171,21 @@ final class BrowserUpdater: NSObject, SPUUserDriver {
         if phase == .available { installUpdate() } else { showProgress() }
     }
 
+    private static func plainText(_ html: String) -> String? {
+        guard let data = html.data(using: .utf8),
+              let text = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.html,
+                                                                     .characterEncoding: String.Encoding.utf8.rawValue],
+                                                 documentAttributes: nil).string else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     private func showMessage(_ title: String, detail: String) {
         let alert = NSAlert(); alert.messageText = title; alert.informativeText = detail
         alert.addButton(withTitle: L10n.string("OK")); alert.runModal()
     }
     private func showProgress() {
+        guard !showsProgressInline else { return }
         if progressWindow == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 140),
                                   styleMask: [.titled], backing: .buffered, defer: false)

@@ -2,7 +2,6 @@ import AppKit
 import LocalAuthentication
 import SwiftUI
 import UniformTypeIdentifiers
-import WebKit
 
 @MainActor
 @Observable

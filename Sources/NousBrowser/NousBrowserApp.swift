@@ -1,18 +1,117 @@
 import AppKit
 import SwiftUI
+import NousCore
+import CryptoKit
 
+/// Dia-style startup: Chromium's real //chrome browser process (inside
+/// NousCore.framework) owns NSApp and the main run loop. The Swift UI is
+/// installed from NousBrowserApplication's delegate once the default profile
+/// is ready. There is no CEF layer and no external message pump.
 @main
-struct NousBrowserApp: App {
-    @NSApplicationDelegateAdaptor(BrowserAppDelegate.self) private var delegate
-
-    var body: some Scene {
-        Settings {
-            BrowserSettingsView(preferences: delegate.windowManager.preferences,
-                                appearance: delegate.windowManager.appearance,
-                                passwordImporter: delegate.windowManager.passwordImporter,
-                                automation: delegate.automation)
+struct NousBrowserLauncher {
+    @MainActor
+    static func main() {
+        do {
+            guard try BrowserInstanceLock.start() else {
+                if let identifier = Bundle.main.bundleIdentifier {
+                    NSRunningApplication.runningApplications(withBundleIdentifier: identifier)
+                        .first(where: { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier })?
+                        .activate(options: [])
+                }
+                return
+            }
+            try BrowserPreviewCredentialPolicy.startIfNeeded()
+        } catch {
+            BrowserPreviewCredentialPolicy.finish()
+            let alert = NSAlert()
+            alert.messageText = L10n.string("Unable to Start")
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+            return
         }
-            .commands { BrowserCommands(windows: delegate.windowManager) }
+        guard let storage = ChromiumStorageIdentity.current() else {
+            BrowserPreviewCredentialPolicy.finish()
+            let alert = NSAlert()
+            alert.messageText = L10n.string("Unable to Start")
+            alert.informativeText = L10n.string("The browser build could not be identified.")
+            alert.runModal()
+            return
+        }
+        // Their Safe Storage keys were tied to one build each and are unreadable now.
+        if storage.safeStoragePassword != nil { ChromiumStorageIdentity.removeLegacyBuildProfiles() }
+        try? FileManager.default.createDirectory(at: storage.profile, withIntermediateDirectories: true,
+                                                 attributes: [.posixPermissions: 0o700])
+        let host = NousApplicationHost()
+        let configuration = NousBrowserApplicationConfiguration()
+        configuration.userDataDirectory = storage.profile.path
+        configuration.keychainServiceName = storage.keychainService
+        configuration.keychainAccountName = storage.keychainAccount
+        configuration.safeStoragePassword = storage.safeStoragePassword
+        let application = NousBrowserApplication.shared()
+        application.delegate = host
+        // Blocks inside ChromeMain until Chromium has shut down.
+        let code = withExtendedLifetime(host) { application.run(with: configuration) }
+        BrowserPreviewCredentialPolicy.finish()
+        exit(code)
+    }
+}
+
+/// One Chromium profile per distribution that every update reopens.
+/// Team-signed builds keep Chromium's Safe Storage secret in the keychain;
+/// ad-hoc builds (whose keychain access is tied to one build's code hash)
+/// derive it from `NousLocalSecret`, so no keychain item is read or created.
+struct ChromiumStorageIdentity {
+    let profile: URL
+    let keychainService: String
+    let keychainAccount: String
+    let safeStoragePassword: String?
+
+    static func current() -> ChromiumStorageIdentity? {
+        let paths = BrowserRuntimePaths.current
+        let production = paths.distribution == .production
+        let service = production ? "Nous Browser Safe Storage" : "Nous Browser Preview Safe Storage"
+        let account = production ? "Nous Browser" : "Nous Browser Preview"
+        if NousStableSigning.verifiedTeam() != nil {
+            return ChromiumStorageIdentity(
+                profile: paths.chromiumProfileDirectory
+                    .appendingPathComponent(production ? "Stable/GitHub" : "Stable/Preview", isDirectory: true),
+                keychainService: service, keychainAccount: account, safeStoragePassword: nil)
+        }
+        guard let secret = try? NousLocalSecret.load(in: paths.directory) else { return nil }
+        return ChromiumStorageIdentity(
+            profile: paths.chromiumProfileDirectory
+                .appendingPathComponent(production ? "Local/GitHub" : "Local/Preview", isDirectory: true),
+            keychainService: service, keychainAccount: account,
+            safeStoragePassword: NousLocalSecret.chromiumPassword(secret))
+    }
+
+    /// Per-build profiles from releases before the shared local key.
+    static func removeLegacyBuildProfiles() {
+        let root = BrowserRuntimePaths.current.chromiumProfileDirectory
+        for name in ["IsolatedBuilds", "PreviewBuilds"] {
+            try? FileManager.default.removeItem(at: root.appendingPathComponent(name, isDirectory: true))
+        }
+    }
+}
+
+/// NousBrowserApplicationDelegate: installs the AppKit app delegate and menu.
+@MainActor
+final class NousApplicationHost: NSObject, NousBrowserApplicationDelegate {
+    private let appDelegate = BrowserAppDelegate()
+    private var mainMenu: BrowserMainMenu?
+
+    func browserApplicationDidInitialize(_ application: NousBrowserApplication) {
+        NSApp.delegate = appDelegate
+        let menu = BrowserMainMenu(delegate: appDelegate)
+        mainMenu = menu
+        NSApp.mainMenu = menu.menu
+        NSApp.servicesMenu = menu.servicesMenu
+        NSApp.windowsMenu = menu.windowsMenu
+        NSApp.helpMenu = menu.helpMenu
+    }
+
+    func browserApplicationWillShutDown(_ application: NousBrowserApplication) {
+        appDelegate.chromiumWillShutDown()
     }
 }
 
@@ -137,10 +236,13 @@ final class BrowserController {
 
     func closeTab() {
         guard let id = model.selectedTabID else { return }
-        withAnimation(BrowserMotion.spring) { model.closeTab(id) }
-        // The address palette belongs to the tab being closed. Restore focus
-        // only after the model has selected the remaining tab.
-        if isAddressPresented { dismissAddress() }
+        // A blank new tab cannot refuse to close; its palette goes with it at once.
+        if isAddressPresented, model.selectedTab?.hasWebContent == false { dismissAddress() }
+        let focusToken = addressFocusToken
+        model.requestTabClose(id) { [weak self] accepted in
+            guard let self, accepted, self.addressFocusToken == focusToken else { return }
+            if self.isAddressPresented { self.dismissAddress() }
+        }
     }
 
     @discardableResult
@@ -150,6 +252,13 @@ final class BrowserController {
         let copied = NSPasteboard.general.setString(url.absoluteString, forType: .string)
         if copied && showsToast { showToast(L10n.string("Link Copied")) }
         return copied
+    }
+
+    /// ⌘D: bookmark the page in a tab (the current one by default), or remove it.
+    func toggleBookmark(_ tab: BrowserTab? = nil) {
+        guard let tab = tab ?? model.selectedTab, tab.hasWebContent, let url = tab.url else { return }
+        let added = LibraryStore.shared.toggleBookmark(url: url, title: tab.displayTitle)
+        showToast(L10n.string(added ? "Bookmarked" : "Bookmark Removed"))
     }
 
     func showToast(_ text: String) {
@@ -165,55 +274,131 @@ final class BrowserController {
 
 @MainActor
 final class BrowserAppDelegate: NSObject, NSApplicationDelegate {
-    lazy var automation: BrowserAutomationService = {
-        #if DEBUG
-        if let identifier = Bundle.main.bundleIdentifier, identifier.hasPrefix("com.cellier.nous-browser.") {
-            let socket = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".local/share/NousBrowser/previews/" + identifier.components(separatedBy: ".").last! + "/bridge.sock").path
-            return BrowserAutomationService(windows: windowManager, socketPath: socket)
-        }
-        #endif
-        return BrowserAutomationService(windows: windowManager)
-    }()
+    private var chromiumTerminationPending = false
+    lazy var automation = BrowserAutomationService(windows: windowManager,
+        socketPath: BrowserRuntimePaths.current.automationSocketPath)
 
     let windowManager: BrowserWindowManager = {
-        #if DEBUG
-        // UI previews use a temporary session, preserving the live browser's tabs.
-        let previewPath = ProcessInfo.processInfo.environment["NOUS_BROWSER_PREVIEW_SESSION"]
-            ?? Bundle.main.object(forInfoDictionaryKey: "NousBrowserPreviewSessionPath") as? String
-        if let path = previewPath {
-            return BrowserWindowManager(workspace: BrowserWorkspaceStore(sessionURL: URL(fileURLWithPath: path)))
-        }
-        // Reopening an isolated preview without its launch environment must
-        // never restore or overwrite the user's real tab session.
-        if let identifier = Bundle.main.bundleIdentifier, identifier.hasPrefix("com.cellier.nous-browser.") {
-            let session = FileManager.default.temporaryDirectory
-                .appendingPathComponent("Nous Browser Previews", isDirectory: true)
-                .appendingPathComponent(identifier, isDirectory: true)
-                .appendingPathComponent("session.json")
-            return BrowserWindowManager(workspace: BrowserWorkspaceStore(sessionURL: session))
-        }
-        #endif
-        return BrowserWindowManager(workspace: BrowserWorkspaceStore())
+        let paths = BrowserRuntimePaths.current
+        // Only the explicitly isolated preview may select a temporary QA session.
+        // Environment variables must not redirect an installed production session.
+        return BrowserWindowManager(workspace: BrowserWorkspaceStore(sessionURL: paths.sessionURL(
+            qaOverride: ProcessInfo.processInfo.environment["NOUS_BROWSER_PREVIEW_SESSION"])))
     }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        BrowserServiceMenuFilter.install()
+        ChromiumDownloadCoordinator.shared.start()
         windowManager.appearance.apply()
         windowManager.restoreWindows()
+        NBChromiumRuntime.setTerminationHandler { [weak self] in
+            MainActor.assumeIsolated {
+                self?.requestChromiumTermination()
+            }
+        }
+        LibraryStore.shared.start(history: windowManager.history)
+        CaptureShortcuts.shared.perform = { [weak self] action in
+            switch action {
+            case .screenshot: CaptureCoordinator.shared.takeScreenshot()
+            case .recording: CaptureCoordinator.shared.toggleRecording()
+            case .capturePage: CaptureCoordinator.shared.capturePage(self?.windowManager.activeContext?.controller.model.selectedTab)
+            }
+        }
+        CaptureShortcuts.shared.register()
+        CaptureCoordinator.shared.openPage = { [weak self] page in
+            guard let self else { return }
+            if self.windowManager.activeController == nil { self.windowManager.newWindow() }
+            guard let context = self.windowManager.activeContext else { return }
+            context.controller.dismissAddress()
+            context.controller.model.openNativePage(page)
+            self.windowManager.activate(context)
+        }
+        CaptureCoordinator.shared.report = { [weak self] message in
+            if let controller = self?.windowManager.activeController { controller.showToast(message) }
+            else { let alert = NSAlert(); alert.messageText = message; alert.runModal() }
+        }
+        ChromiumSmokeCheck.run(windowManager: windowManager)
         automation.startIfEnabled()
         BrowserUpdater.shared.start()
     }
 
+    private func requestChromiumTermination() {
+        Self.trace("termination: requested (pending=\(chromiumTerminationPending))")
+        guard !chromiumTerminationPending else { return }
+        chromiumTerminationPending = true
+        ChromiumDownloadCoordinator.shared.confirmTermination { [weak self] accepted in
+            Self.trace("termination: downloads accepted=\(accepted)")
+            guard let self else { return }
+            guard accepted else {
+                self.chromiumTerminationPending = false
+                return
+            }
+            var saveFailed = false
+            self.windowManager.requestTermination(beforeCommit: { [weak self] in
+                guard let self else { throw CocoaError(.userCancelled) }
+                do { try self.windowManager.persistForRestart() }
+                catch { saveFailed = true; throw error }
+            }) { [weak self] pagesClosed in
+                Self.trace("termination: pages closed=\(pagesClosed)")
+                guard let self else { return }
+                guard pagesClosed else {
+                    ChromiumDownloadCoordinator.shared.resumeAfterCancelledTermination()
+                    self.chromiumTerminationPending = false
+                    if saveFailed {
+                        let alert = NSAlert()
+                        alert.messageText = L10n.string("Unable to Quit")
+                        alert.informativeText = L10n.string("Nous could not save your tabs and windows. They remain open.")
+                        alert.runModal()
+                    }
+                    return
+                }
+                ChromiumDownloadCoordinator.shared.shutdown()
+                self.automation.stop()
+                NBChromiumRuntime.completeApplicationTermination()
+            }
+        }
+    }
+
+    static func trace(_ message: String) {
+        if ProcessInfo.processInfo.environment["NOUS_TRACE"] != nil { FileHandle.standardError.write(Data("Nous: \(message)\n".utf8)) }
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // NBApplication first waits for all beforeunload approvals and successful
+        // session persistence, then enters AppKit termination. Sparkle uses this
+        // same path; it never bypasses native page or download confirmation.
         automation.stop()
-        windowManager.prepareForTermination()
         return .terminateNow
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        chromiumWillShutDown()
+    }
+
+    /// Chromium's main loop ended (Chromium, not AppKit, ends the process).
+    func chromiumWillShutDown() {
         automation.stop()
-        windowManager.prepareForTermination()
+        ChromiumDownloadCoordinator.shared.shutdown()
+    }
+
+    private var settingsWindow: NSWindow?
+
+    @objc func showSettings(_ sender: Any?) {
+        if settingsWindow == nil {
+            let view = BrowserSettingsView(preferences: windowManager.preferences,
+                                           appearance: windowManager.appearance,
+                                           passwordImporter: windowManager.passwordImporter,
+                                           automation: automation)
+            let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+            window.title = L10n.string("Settings")
+            window.styleMask = [.titled, .closable, .miniaturizable]
+            window.isReleasedWhenClosed = false
+            window.center()
+            settingsWindow = window
+        }
+        settingsWindow?.makeKeyAndOrderFront(sender)
+        NSApp.activate()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -225,114 +410,5 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         windowManager.open(urls)
-    }
-}
-
-struct BrowserCommands: Commands {
-    @Bindable var windows: BrowserWindowManager
-    private var controller: BrowserController? { windows.keyController }
-    private var sidebarAnimation: Animation? {
-        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : BrowserMotion.spring
-    }
-    var body: some Commands {
-        CommandGroup(after: .appInfo) {
-            if BrowserUpdater.shared.isEnabled {
-                Button(L10n.string("Check for Updates…")) { BrowserUpdater.shared.checkForUpdates() }
-            }
-        }
-        CommandGroup(replacing: .newItem) {
-            Button(L10n.string("New Tab")) {
-                windows.newTab()
-                windows.showWindow()
-            }.keyboardShortcut("t")
-            Button(L10n.string("New Window")) { windows.newWindow() }.keyboardShortcut("n")
-            Button(L10n.string("Open Address…")) { controller?.toggleAddress() }.keyboardShortcut("l")
-                .disabled(controller == nil)
-        }
-        // Replace the native Close group so its ⌘W does not compete with
-        // Close Tab while a browser window is active.
-        CommandGroup(replacing: .saveItem) {
-            Button(L10n.string(controller == nil ? "Close Window" : "Close Tab")) {
-                if let controller { controller.closeTab() }
-                else { NSApp.keyWindow?.performClose(nil) }
-            }.keyboardShortcut("w")
-            Button(L10n.string("Close Window")) {
-                if controller != nil { windows.closeActiveWindow() }
-                else { NSApp.keyWindow?.performClose(nil) }
-            }
-                .keyboardShortcut("w", modifiers: [.command, .shift])
-            Button(L10n.string("Reopen Closed Tab")) { controller?.model.restoreClosedTab() }
-                .keyboardShortcut("t", modifiers: [.command, .shift])
-                .disabled(controller?.model.canRestoreClosedTab != true)
-        }
-        CommandMenu(L10n.string("Navigate")) {
-            Button(L10n.string("Back")) { controller?.model.goBack() }.keyboardShortcut("[", modifiers: .command)
-                .disabled(controller?.model.selectedTab?.canGoBack != true)
-            Button(L10n.string("Forward")) { controller?.model.goForward() }.keyboardShortcut("]", modifiers: .command)
-                .disabled(controller?.model.selectedTab?.canGoForward != true)
-            Button(L10n.string("Reload")) { controller?.model.reload() }.keyboardShortcut("r")
-                .disabled(controller?.model.selectedTab?.hasWebContent != true)
-            Button(L10n.string("Reload Without Cache")) { controller?.model.reload(bypassingCache: true) }
-                .keyboardShortcut("r", modifiers: [.command, .shift])
-                .disabled(controller?.model.selectedTab?.hasWebContent != true)
-            Button(L10n.string("Stop Loading")) { controller?.model.stopLoading() }
-                .disabled(controller?.model.selectedTab?.isLoading != true)
-            Divider()
-            Button(L10n.string("Copy Current Link")) { controller?.copyURL() }.keyboardShortcut("c", modifiers: [.command, .shift])
-                .disabled(controller?.model.selectedTab?.url == nil)
-        }
-        CommandMenu(L10n.string("Passwords")) {
-            Button(L10n.string("Fill Saved Password…")) { controller?.passwords.presentFill() }
-                .keyboardShortcut("p", modifiers: [.command, .shift])
-                .disabled(controller?.passwords.canFill != true)
-        }
-        CommandGroup(after: .sidebar) {
-            Button(L10n.string(controller?.model.isSidebarVisible == true && controller?.model.isSidebarCompact == false
-                               ? "Collapse Sidebar" : "Expand Sidebar")) {
-                withAnimation(sidebarAnimation) { controller?.model.toggleSidebar() }
-            }.keyboardShortcut("/", modifiers: .command)
-                .disabled(controller == nil)
-            Button(L10n.string(controller?.model.isSidebarVisible == true ? "Hide Sidebar" : "Show Sidebar")) {
-                withAnimation(sidebarAnimation) { controller?.model.toggleSidebarHidden() }
-            }.keyboardShortcut(".", modifiers: .command)
-                .disabled(controller == nil)
-            Divider()
-            Button(L10n.string("Next Tab")) { controller?.selectNextTab() }
-                .keyboardShortcut("]", modifiers: [.command, .shift])
-                .disabled(controller == nil)
-            Button(L10n.string("Previous Tab")) { controller?.selectNextTab(backward: true) }
-                .keyboardShortcut("[", modifiers: [.command, .shift])
-                .disabled(controller == nil)
-            ForEach(1..<9, id: \.self) { number in
-                Button(L10n.format("Select Tab %d", number)) { controller?.selectTab(number: number) }
-                    .keyboardShortcut(KeyEquivalent(Character(String(number))))
-                    .disabled((controller?.model.tabs.count ?? 0) < number)
-            }
-            Button(L10n.string("Select Last Tab")) { controller?.selectTab(number: 9) }
-                .keyboardShortcut("9")
-                .disabled(controller == nil)
-            Divider()
-            Button(L10n.string("Zoom In")) { controller?.model.zoomIn() }.keyboardShortcut("=")
-                .disabled(controller?.model.selectedTab?.hasWebContent != true)
-            Button(L10n.string("Zoom Out")) { controller?.model.zoomOut() }.keyboardShortcut("-")
-                .disabled(controller?.model.selectedTab?.hasWebContent != true)
-            Button(L10n.string("Actual Size")) { controller?.model.resetZoom() }.keyboardShortcut("0")
-                .disabled(controller?.model.selectedTab?.hasWebContent != true)
-        }
-        CommandGroup(after: .textEditing) {
-            Divider()
-            Button(L10n.string("Find on Page…")) { controller?.showFind() }.keyboardShortcut("f")
-                .disabled(controller?.model.selectedTab?.hasWebContent != true)
-            Button(L10n.string("Find Next")) { controller?.find.findNext() }.keyboardShortcut("g")
-                .disabled(controller?.model.selectedTab?.hasWebContent != true)
-            Button(L10n.string("Find Previous")) { controller?.find.findNext(backward: true) }
-                .keyboardShortcut("g", modifiers: [.command, .shift])
-                .disabled(controller?.model.selectedTab?.hasWebContent != true)
-        }
-        // AppKit already supplies Minimize, Zoom, tiling and their shortcuts.
-        // Let its responder chain target browser, Settings and help windows.
-        CommandGroup(replacing: .help) {
-            Button(L10n.string("Keyboard Shortcuts")) { BrowserHelpWindow.show() }
-        }
     }
 }

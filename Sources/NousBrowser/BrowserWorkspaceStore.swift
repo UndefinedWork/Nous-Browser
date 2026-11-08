@@ -1,7 +1,7 @@
 import Foundation
 
 /// Window identities select separate session files; website data remains in
-/// WebKit's shared persistent store and is never copied into this manifest.
+/// Chromium's persistent profile and is never copied into this manifest.
 struct BrowserWindowSession: Codable, Equatable, Identifiable {
     let id: UUID
     let usesLegacySession: Bool

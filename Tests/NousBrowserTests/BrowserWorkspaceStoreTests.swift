@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-import WebKit
 @testable import NousBrowser
 
 @Suite("Window session persistence")
@@ -15,7 +14,7 @@ struct BrowserWorkspaceStoreTests {
         let file = try fixture()
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
         let id = UUID()
-        let session = BrowserSession(tabs: [.init(id: id, title: "Saved page", url: nil, isPinned: true)],
+        let session = BrowserSession(tabs: [.init(id: id, title: "Saved page", url: URL(string: "https://saved.example/"), isPinned: true)],
                                      selectedTabID: id, isSidebarVisible: false, sidebarWidth: 320)
         let original = try JSONEncoder().encode(session)
         try original.write(to: file)
@@ -46,8 +45,6 @@ struct BrowserWorkspaceStoreTests {
                                        loadSelectedTab: false, startWithBlankTab: true)
         #expect(firstModel.selectedTab?.url == nil && secondModel.selectedTab?.url == nil)
         #expect(firstModel.selectedTab?.webView !== secondModel.selectedTab?.webView)
-        #expect(firstModel.selectedTab?.webView.configuration.websiteDataStore ===
-                secondModel.selectedTab?.webView.configuration.websiteDataStore)
         firstModel.newTab()
         firstModel.resizeSidebar(to: 350)
         firstModel.isSidebarVisible = false
@@ -83,7 +80,8 @@ struct BrowserWorkspaceStoreTests {
         firstModel.shutdown()
         firstModel.shutdown()
         #expect(firstModel.tabs.count == 2)
-        #expect(firstModel.tabs.allSatisfy { $0.webView.navigationDelegate == nil && $0.webView.uiDelegate == nil && $0.passwordCandidate == nil })
+        #expect(firstModel.tabs.allSatisfy { $0.passwordCandidate == nil })
+        #expect(firstModel.tabs.allSatisfy { $0.owner == nil })
         try store.save(windows: [second], activeWindowID: second.id)
         #expect(BrowserWorkspaceStore(sessionURL: file).restoredWindows == [second])
         #expect(try Data(contentsOf: store.sessionURL(for: second)) == otherSnapshot)

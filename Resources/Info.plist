@@ -62,7 +62,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.1.13</string>
+	<string>1.4.0</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -78,7 +78,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>53</string>
+	<string>56</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>LSMinimumSystemVersion</key>
@@ -88,16 +88,24 @@
 		<key>NSAllowsArbitraryLoadsInWebContent</key>
 		<true/>
 	</dict>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Allow Bluetooth access for nearby devices and security keys when you use these features on websites.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Allow camera access on websites you authorize, such as video meetings.</string>
+	<string>Allow camera access on websites you authorize, such as video meetings, and for the camera bubble in screen recordings.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Allow microphone access on websites you authorize, such as voice and video calls.</string>
+	<string>Allow microphone access on websites you authorize, such as voice and video calls, and for narration in screen recordings.</string>
 	<key>NSSupportsAutomaticTermination</key>
 	<false/>
+	<key>NousChromiumVersion</key>
+	<string>156.0.8078.80</string>
+	<key>NousCredentialStorage</key>
+	<string>local-key</string>
 	<key>NousDistributionChannel</key>
 	<string>github</string>
+	<key>NousStableStorageTeam</key>
+	<string>7CVNP3NANG</string>
 	<key>SUAutomaticallyUpdate</key>
 	<false/>
 	<key>SUEnableAutomaticChecks</key>

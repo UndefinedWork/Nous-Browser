@@ -1,6 +1,5 @@
 import AppKit
 import Testing
-import WebKit
 @testable import NousBrowser
 
 @Suite("Navigation arrows preserve text editing", .serialized)
@@ -15,15 +14,13 @@ struct BrowserNavigationShortcutTests {
                                            isARepeat: false, keyCode: keyCode))
     }
 
-    private func withWindow(_ body: (NSWindow, WKWebView, NSView) throws -> Void) rethrows {
+    private func withWindow(_ body: (NSWindow, BrowserPageView, NSView) throws -> Void) rethrows {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
                               styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         let host = NSView(frame: NSRect(x: 0, y: 0, width: 600, height: 400))
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
-        let webView = WKWebView(frame: host.bounds, configuration: configuration)
+        let webView = BrowserPageView(frame: host.bounds)
         host.addSubview(webView)
         window.contentView = host
         defer {

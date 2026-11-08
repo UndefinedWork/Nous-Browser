@@ -1,0 +1,23 @@
+# Nous Core (Dia/ADK-style) engine build. No CEF: stock //chrome framework + //nous.
+enable_cef = false
+is_debug = false
+is_component_build = false
+is_official_build = false
+dcheck_always_on = false
+symbol_level = 0
+blink_symbol_level = 0
+v8_symbol_level = 0
+target_cpu = "arm64"
+proprietary_codecs = true
+ffmpeg_branding = "Chrome"
+enable_widevine = true
+enable_precompiled_headers = false
+clang_use_chrome_plugins = false
+use_remoteexec = false
+disable_fieldtrial_testing_config = true
+treat_warnings_as_errors = false
+enable_cdm_storage_id = true
+alternate_cdm_storage_id_key = "968b476909da4373b08903c28e859454"
+enable_rlz = true
+enable_cdm_host_verification = false
+nous_core = true

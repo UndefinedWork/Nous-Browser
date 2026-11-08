@@ -152,7 +152,7 @@ struct BrowserSidebarStateTests {
         defer { defaults.removePersistentDomain(forName: defaultsDomain) }
         let manager = BrowserWindowManager(workspace: BrowserWorkspaceStore(sessionURL: fixture.sessionURL),
             appearance: BrowserAppearanceSettings(defaults: defaults), preferences: BrowserPreferences(defaults: defaults),
-            showsWindows: false, startsHibernationMonitors: false)
+            showsWindows: false)
         defer {
             manager.prepareForTermination()
             manager.windows.forEach { $0.window.close() }
