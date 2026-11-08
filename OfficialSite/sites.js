@@ -50,17 +50,11 @@
 
   const P = {};
 
-  P.newtab = () => {
-    const h = new Date().getHours();
-    const greet = h < 5 ? "Good night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
-    const links = ["gmail", "calendar", "github", "youtube", "airbnb", "wikipedia"];
-    return `<div class="s-nt">
-      <div class="nt-inner">
-        <h1>${greet}</h1>
-        <button class="nt-search" data-act="palette">${ico.search}<span>Search or enter address</span><kbd>⌘L</kbd></button>
-        <div class="nt-links">${links.map((k) => `<button data-nav="${k}"><span class="nt-ic">${NousSites.fav(k, 22)}</span><span>${esc(SITES[k].name)}</span></button>`).join("")}</div>
-      </div></div>`;
-  };
+  P.newtab = () => `<div class="s-nt"><div class="nt-inner">
+      <img class="nt-icon" src="assets/app-icon.png" alt="" width="48" height="48">
+      <h1>Nous Browser</h1>
+      <button class="nt-search" data-act="palette">${ico.search}<span>Search or enter URL</span><kbd>⌘L</kbd></button>
+    </div></div>`;
 
   const mails = [
     [1, "Maya Patel", "Offsite agenda — final version", "Hi team, attached is the final agenda for Thursday. We start at 9:30 with coffee on the roof…", "10:42 AM", "gmail-thread"],
@@ -347,7 +341,7 @@
     const key = String(entry).split(":")[0];
     const s = SITES[key] || SITES.search;
     const st = `width:${size}px;height:${size}px`;
-    if (s.fav === "nous") return `<span class="fav" style="${st}">${NOUS}</span>`;
+    if (s.fav === "nous") return `<span class="fav fav-img" style="${st}"><img src="assets/app-icon.png" alt=""></span>`;
     if (s.fav === "library") return `<span class="fav fav-sym" style="${st}"><svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="3" rx="1"/><path d="M3 6v6.5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6M6.5 8.5h3"/></svg></span>`;
     if (s.fav === "shot") return `<span class="fav fav-sym" style="${st}"><svg viewBox="0 0 16 16"><path d="M2.5 5.5v-2a1 1 0 0 1 1-1h2M10.5 2.5h2a1 1 0 0 1 1 1v2M13.5 10.5v2a1 1 0 0 1-1 1h-2M5.5 13.5h-2a1 1 0 0 1-1-1v-2"/><circle cx="8" cy="8" r="2"/></svg></span>`;
     const g = s.glyph;

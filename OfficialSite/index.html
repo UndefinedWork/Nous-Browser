@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Nous Browser — Give the web a little more room</title>
   <meta name="description" content="Nous is a lightweight, native Mac browser built with SwiftUI and Liquid Glass, powered by Chromium.">
-  <meta name="theme-color" content="#0b1d8f">
   <link rel="icon" type="image/png" href="assets/app-icon.png">
   <link rel="preload" href="assets/InstrumentSerif-Regular.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="stylesheet" href="styles.css">
@@ -16,30 +15,23 @@
 <body>
   <div class="site">
     <div class="backdrop" aria-hidden="true">
-      <div class="bg-field">
-        <span class="blob b-top"></span>
-        <span class="blob b-core"></span>
-        <span class="blob b-left"></span>
-        <span class="blob b-right"></span>
-        <span class="blob b-sheen"></span>
-        <span class="blob b-lav"></span>
-        <span class="blob b-mist"></span>
-        <span class="blob b-floor"></span>
-      </div>
+      <div class="bg-side bg-l"></div>
+      <div class="bg-side bg-r"></div>
+      <div class="bg-col"></div>
+      <div class="bg-sheen"></div>
       <div class="grain"></div>
     </div>
 
     <main class="hero">
       <img class="app-icon reveal" style="--i:0" src="assets/app-icon.png" alt="Nous Browser icon" width="96" height="96">
       <h1 class="wordmark reveal" style="--i:1">Nous Browser</h1>
-      <p class="tagline reveal" style="--i:2">Give the web a little more room.</p>
+      <p class="lede reveal" style="--i:2">Nous is a lightweight, native browser for Mac, built with SwiftUI and Liquid Glass and powered by Chromium. Its controls live in a quiet sidebar that shrinks or steps aside, so every page gets a little more room.</p>
 
       <div class="cta reveal" style="--i:3">
         <a class="btn-dark" href="https://github.com/UndefinedWork/Nous-Browser/releases/latest">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.37 1.43c0 1.14-.49 2.27-1.18 3.08-.74.9-1.99 1.57-2.99 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.57-2.27 1.21-2.98.8-.94 2.14-1.64 3.25-1.68.03.13.05.28.05.43zm4.56 15.71c-.03.07-.46 1.58-1.52 3.12-.94 1.34-1.94 2.71-3.43 2.71-1.52 0-1.9-.88-3.63-.88-1.7 0-2.3.91-3.67.91-1.38 0-2.33-1.26-3.43-2.8-1.29-1.82-2.32-4.63-2.32-7.28 0-4.28 2.8-6.55 5.55-6.55 1.45 0 2.68.95 3.6.95.87 0 2.22-1.01 3.9-1.01.61 0 2.89.06 4.37 2.19-.13.09-2.38 1.37-2.38 4.19 0 3.26 2.85 4.42 2.96 4.45z"/></svg>
           <span>Download for macOS</span>
         </a>
-        <p class="meta">Free · macOS 26 or later · Apple Silicon</p>
       </div>
 
       <section class="demo-wrap reveal-window" aria-label="Interactive preview of Nous Browser">
@@ -49,25 +41,18 @@
       </section>
 
       <div class="try reveal" style="--i:6" id="try">
-        <span class="try-label">Try it</span>
         <button data-run="compact"><kbd>⌘/</kbd>Collapse the sidebar</button>
         <button data-run="space"><kbd>⌥⌘→</kbd>Switch Space</button>
         <button data-run="library"><kbd>⇧⌘L</kbd>Open Library</button>
         <button data-run="screenshot"><kbd>⌥⇧⌘S</kbd>Take a screenshot</button>
         <button data-run="palette"><kbd>⌘L</kbd>Search</button>
-        <span class="try-tip">Drag tabs into groups or onto the pinned row. Right-click a tab for more.</span>
       </div>
     </main>
 
-    <footer class="foot reveal" style="--i:7">
-      <span>© 2026 Nous Browser</span>
-      <nav>
-        <a href="https://github.com/UndefinedWork/Nous-Browser">GitHub</a>
-        <a href="https://github.com/UndefinedWork/Nous-Browser/releases">Release notes</a>
-      </nav>
-    </footer>
+    <footer class="foot reveal" style="--i:7">© 2026 Nous Browser</footer>
   </div>
 
+  <script src="glass.js"></script>
   <script src="sites.js"></script>
   <script src="demo.js"></script>
   <script src="main.js"></script>

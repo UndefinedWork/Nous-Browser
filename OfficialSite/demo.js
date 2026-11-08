@@ -1,21 +1,21 @@
 /* Interactive Nous Browser demo. */
 (function () {
   const { pages, fav, info, esc, SITES } = window.NousSites;
-  const W = 1180, H = 740;
+  const W = 1440, H = 892, SBW = 243;
   const SPRING = "cubic-bezier(.2, .9, .25, 1)";
   const win = document.getElementById("win");
   if (!win) return;
 
   const ic = (d) => `<svg class="ic" viewBox="0 0 16 16">${d}</svg>`;
   const I = {
-    sidebar: ic('<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2.4"/><path d="M6 2.8v10.4"/>'),
+    sidebar: ic('<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2.4"/><path d="M6 2.8v10.4M3.4 5.2h1.1M3.4 7h1.1M3.4 8.8h1.1"/>'),
     plus: ic('<path d="M8 3.2v9.6M3.2 8h9.6"/>'),
     x: ic('<path d="M4 4l8 8M12 4l-8 8"/>'),
     back: ic('<path d="M10 3.5 5.5 8l4.5 4.5"/>'),
     fwd: ic('<path d="M6 3.5 10.5 8 6 12.5"/>'),
     reload: ic('<path d="M12.8 8.6A4.9 4.9 0 1 1 11.4 4.4"/><path d="M12.2 2.4v2.8H9.4"/>'),
     library: ic('<rect x="2" y="2.8" width="12" height="3.4" rx="1"/><path d="M3 6.2v6.3a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6.2M6.4 8.8h3.2"/>'),
-    chev: ic('<path d="M6 3.5 10.5 8 6 12.5"/>'),
+    chev: ic('<path d="M3.5 6 8 10.5 12.5 6"/>'),
     folder: ic('<path d="M2 4.5a1 1 0 0 1 1-1h3l1.4 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/>'),
     search: ic('<circle cx="7" cy="7" r="4.6"/><path d="M10.4 10.4 14 14"/>'),
     globe: ic('<circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"/>'),
@@ -104,24 +104,26 @@
 
   win.innerHTML = `
     <aside class="sb">
-      <div class="sb-top"><div class="lights"><i></i><i></i><i></i></div>
-        <button class="icb" data-act="toggle-sidebar" data-tip="Toggle sidebar" data-kbd="⌘/">${I.sidebar}</button>
-        <span class="sp"></span>
-        <button class="icb" data-act="new-tab" data-tip="New tab" data-kbd="⌘T">${I.plus}</button></div>
+      <div class="sb-top">
+        <button class="gbtn glass" data-act="toggle-sidebar" data-tip="Toggle Sidebar" data-kbd="⌘/">${I.sidebar}</button>
+        <button class="gbtn glass" data-act="new-tab" data-tip="New Tab" data-kbd="⌘T">${I.plus}</button></div>
       <div class="sb-body"><div class="sb-pane"></div></div>
       <div class="sb-bottom">
-        <div class="navpill"><button data-act="back" data-tip="Back" data-kbd="⌘[">${I.back}</button><button data-act="fwd" data-tip="Forward" data-kbd="⌘]">${I.fwd}</button><button data-act="reload" data-tip="Reload" data-kbd="⌘R">${I.reload}</button></div>
+        <div class="navpill glass"><button data-act="back" data-tip="Back" data-kbd="⌘[">${I.back}</button><button data-act="fwd" data-tip="Forward" data-kbd="⌘]">${I.fwd}</button><span class="sep"></span><button data-act="reload" data-tip="Reload" data-kbd="⌘R">${I.reload}</button></div>
         <div class="dots"></div>
-        <button class="icb lib" data-act="library" data-tip="Library" data-kbd="⇧⌘L">${I.library}<span class="badge"></span></button>
+        <button class="gbtn glass lib" data-act="library" data-tip="Library" data-kbd="⇧⌘L">${I.library}<span class="badge"></span></button>
       </div>
     </aside>
     <div class="page"><div class="page-stack"></div><div class="loadbar"></div><div class="space-hud"></div></div>
-    <div class="peek"><div class="lights"><i></i><i></i><i></i></div><button class="icb" data-act="toggle-hidden" data-tip="Show sidebar" data-kbd="⌘.">${I.sidebar}</button></div>
+    <div class="peek"><button class="gbtn glass" data-act="toggle-hidden" data-tip="Show Sidebar" data-kbd="⌘.">${I.sidebar}</button></div>
     <div class="ov"><div class="toast"></div><div class="tip"></div></div>`;
 
   const $ = (s, r = win) => r.querySelector(s);
   const sbBody = $(".sb-body"), pageEl = $(".page"), stack = $(".page-stack"), ov = $(".ov");
   const toastEl = $(".toast"), tipEl = $(".tip");
+  const glass = (el, o) => window.NousGlass && window.NousGlass.apply(el, o);
+  win.querySelectorAll(".glass").forEach((el) => glass(el));
+  glass(tipEl); glass(toastEl); glass($(".space-hud"));
   const pane = () => sbBody.lastElementChild;
   const scale = () => win.getBoundingClientRect().width / W || 1;
   const local = (x, y) => { const r = win.getBoundingClientRect(), s = r.width / W; return { x: (x - r.left) / s, y: (y - r.top) / s }; };
@@ -137,7 +139,7 @@
   }
   function rowHTML(sp, tid) {
     const t = S.tabs[tid], e = cur(t);
-    return `<div class="row${sp.active === tid ? " sel" : ""}" data-tab="${tid}" data-key="${tid}">${fav(e, 16)}<span class="lbl">${esc(titleOf(e))}</span><button class="x" data-act="close" data-tab="${tid}" aria-label="Close tab">${I.x}</button></div>`;
+    return `<div class="row${sp.active === tid ? " sel" : ""}" data-tab="${tid}" data-key="${tid}">${fav(e, 16)}<span class="lbl">${esc(titleOf(e))}</span><span class="ra"><button data-act="copy-link" data-tab="${tid}" data-tip="Copy Link" aria-label="Copy link">${I.link}</button><button class="x" data-act="close" data-tab="${tid}" data-tip="Close Tab" data-kbd="⌘W" aria-label="Close tab">${I.x}</button></span></div>`;
   }
   function groupHTML(sp, g) {
     const shown = g.open ? g.tabs : g.tabs.filter((id) => id === sp.active);
@@ -456,6 +458,7 @@
       case "library": return openLibrary();
       case "space": return switchSpace(+el.dataset.i - S.cur);
       case "close": e.stopPropagation(); return closeTab(el.dataset.tab);
+      case "copy-link": e.stopPropagation(); return copyLink(el.dataset.tab);
       case "group-toggle": {
         if (justDragged) return;
         const g = groupById(space(), el.dataset.gid);
@@ -488,7 +491,7 @@
   win.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
     const el = e.target.closest(".sb [data-tab]");
-    if (!el || e.target.closest(".x")) return;
+    if (!el || e.target.closest(".ra")) return;
     drag = { tid: el.dataset.tab, x0: e.clientX, y0: e.clientY, on: false, target: null };
   });
   window.addEventListener("pointermove", (e) => {
@@ -660,9 +663,9 @@
     const r = localRect(el);
     const inList = el.closest(".sb-body");
     let x, y;
-    if (inList) { x = r.x + r.w + 8; y = r.y + r.h / 2 - 13; tipEl.style.transformOrigin = "left center"; }
-    else if (el.closest(".sb-bottom")) { x = r.x; y = r.y - 34; tipEl.style.transformOrigin = "left bottom"; }
-    else { x = r.x; y = r.y + r.h + 6; tipEl.style.transformOrigin = "left top"; }
+    if (inList) { x = r.x + r.w + 8; y = r.y + r.h / 2 - 18; tipEl.style.transformOrigin = "left center"; }
+    else if (el.closest(".sb-bottom")) { x = r.x; y = r.y - 44; tipEl.style.transformOrigin = "left bottom"; }
+    else { x = r.x; y = r.y + r.h + 8; tipEl.style.transformOrigin = "left top"; }
     tipEl.style.left = Math.min(x, W - 200) + "px";
     tipEl.style.top = y + "px";
     tipEl.classList.add("show");
@@ -683,6 +686,7 @@
       : it.emojis ? `<div class="emojis">${EMOJI.map((em) => `<button data-emoji="${em}">${em}</button>`).join("")}</div>`
       : `<button class="mi" data-mi="${i}" ${it.disabled ? "disabled" : ""}>${esc(it.label)}${it.kbd ? `<kbd>${it.kbd}</kbd>` : ""}</button>`).join("");
     ov.appendChild(m);
+    glass(m, { scale: -22 });
     const w = m.offsetWidth, h = m.offsetHeight;
     m.style.left = Math.min(x, W - w - 8) + "px";
     m.style.top = Math.min(y, H - h - 8) + "px";
@@ -781,6 +785,7 @@
     const preset = curEntry === "newtab" || /^(library|shot)/.test(curEntry) ? "" : hostOf(curEntry);
     p.innerHTML = `<div class="pin-row">${I.search}<input placeholder="Search or enter address" value="${esc(preset)}" spellcheck="false"></div><div class="pl"></div><div class="pf"><span>↑↓ to move</span><span>⏎ to open</span><span>esc to close</span></div>`;
     ov.append(scrim, p);
+    glass(p, { scale: -40, band: 22 });
     const inp = p.querySelector("input"), list = p.querySelector(".pl");
     let opts = [], sel = 0;
     const update = () => {
@@ -883,7 +888,7 @@
   function makeShot(entry, html, pw, ph, rect, extra = {}) {
     return Object.assign({ id: "s" + (++shotSeq), entry, html, pw, ph, rect, bg: 0, pad: 56, radius: 12, shadow: 45, ratio: "auto", notes: [], time: new Date() }, extra);
   }
-  const PW = W - 236 - 8, PH = H - 16;
+  const PW = W - SBW, PH = H;
   let REC = [];
   function seedShots() {
     const mk = (entry, rect, extra) => makeShot(entry, pages[entry](), PW, PH, rect, extra);

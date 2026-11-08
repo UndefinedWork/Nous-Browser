@@ -20,7 +20,7 @@
 
   // Background follows the pointer very slightly.
   if (!reduce) {
-    const field = document.querySelector(".bg-field");
+    const field = document.querySelector(".bg-col");
     let tx = 0, ty = 0, x = 0, y = 0, raf = 0;
     const loop = () => {
       x += (tx - x) * 0.04; y += (ty - y) * 0.04;
