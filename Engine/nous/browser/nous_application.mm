@@ -17,6 +17,8 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/lifetime/application_lifetime_desktop.h"
 #include "chrome/browser/prefs/incognito_mode_prefs.h"
+#include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
+#include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
@@ -72,6 +74,7 @@ class NousSafeStorageKeychain : public crypto::apple::KeychainV2 {
 };
 
 std::unique_ptr<ScopedKeepAlive> g_keep_alive;
+std::unique_ptr<ScopedProfileKeepAlive> g_profile_keep_alive;
 dispatch_block_t g_legacy_termination_handler;
 bool g_quitting = false;
 
@@ -196,6 +199,11 @@ static void MainLoopEndedHook() {
   if (!profile && profiles) profile = profiles->GetProfile(profiles->GetLastUsedProfileDir());
   g_profile = profile;
   LOG_IF(ERROR, !profile) << "Nous: the default Chromium profile could not be loaded.";
+  // Nous windows are not Chrome Browsers. Without this, closing the last
+  // Chrome window (DevTools) unloaded the profile under the open tabs and
+  // crashed (BookmarkModel destroyed with live observers).
+  if (profile)
+    g_profile_keep_alive = std::make_unique<ScopedProfileKeepAlive>(profile, ProfileKeepAliveOrigin::kBrowserWindow);
   if (profile) nous::InstallDownloadDelegate(profile);
   // Nous has no private windows; hide Chromium's "Open Link in Incognito
   // Window" (it did nothing) from page context menus.
@@ -227,6 +235,7 @@ static void MainLoopEndedHook() {
   dispatch_async(dispatch_get_main_queue(), ^{
     if (getenv("NOUS_TRACE")) fprintf(stderr, "Nous: CloseAllBrowsersAndQuit\n");
     g_keep_alive.reset();
+    g_profile_keep_alive.reset();
     chrome::OnClosingAllBrowsers(true);
     chrome::CloseAllBrowsersAndQuit();
   });
@@ -234,6 +243,7 @@ static void MainLoopEndedHook() {
 
 - (void)mainLoopEnded {
   if (getenv("NOUS_TRACE")) fprintf(stderr, "Nous: main loop ended\n");
+  g_profile_keep_alive.reset();
   g_profile = nullptr;
   if ([self.delegate respondsToSelector:@selector(browserApplicationWillShutDown:)])
     [self.delegate browserApplicationWillShutDown:self];

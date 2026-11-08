@@ -314,4 +314,43 @@ edit(F14, '''  ui::ShowContextMenu(menu_controller_.menu, clickEvent, parent_vie
                       widget ? views::ElementTrackerViews::GetContextForWidget(widget)
                              : ui::ElementContext());''')
 
+# 15. Reload in the page context menu: Chrome asks its Browser, which Nous
+#     windows do not have, so the item was always disabled.
+F15 = 'chrome/browser/renderer_context_menu/render_view_context_menu.cc'
+include_after(F15, '#include "chrome/browser/renderer_context_menu/render_view_context_menu.h"\n', EMBEDDER)
+edit(F15, '''  return core_tab_helper && chrome::CanReload(GetBrowser());''', '''  if (nous::IsEmbedded() && !GetBrowser()) {
+    return core_tab_helper != nullptr;
+  }
+  return core_tab_helper && chrome::CanReload(GetBrowser());''')
+edit(F15, '''    case IDC_RELOAD:
+      chrome::Reload(GetBrowser(), WindowOpenDisposition::CURRENT_TAB);
+      break;''', '''    case IDC_RELOAD:
+      if (nous::IsEmbedded() && !GetBrowser()) {
+        embedder_web_contents_->GetController().Reload(content::ReloadType::NORMAL, true);
+        break;
+      }
+      chrome::Reload(GetBrowser(), WindowOpenDisposition::CURRENT_TAB);
+      break;''')
+
+# 16. DevTools: a page outside a Chrome tab strip is reported as an "other"
+#     target, and the DevTools window ignores those, so Inspect opened empty.
+#     Nous pages are tabs; report them as pages.
+F16 = 'chrome/browser/devtools/chrome_devtools_manager_delegate.cc'
+include_after(F16, '#include "chrome/browser/devtools/chrome_devtools_manager_delegate.h"\n', EMBEDDER)
+edit(F16, '''#endif
+
+  return DevToolsAgentHost::kTypeOther;
+}''', '''#endif
+
+  if (nous::IsEmbedded()) {
+    return DevToolsAgentHost::kTypePage;
+  }
+  return DevToolsAgentHost::kTypeOther;
+}''')
+
+# 17. Nous has no private windows: never offer "Open Link in Incognito Window".
+edit(F15, '''    if (show_open_link_off_the_record) {
+      if (features::IsMenuSimplificationEnabled()) {''', '''    if (show_open_link_off_the_record && !nous::IsEmbedded()) {
+      if (features::IsMenuSimplificationEnabled()) {''')
+
 print('Nous Core Chromium patches are applied.')

@@ -16,9 +16,16 @@
 #include "base/memory/raw_ptr.h"
 #include "base/strings/sys_string_conversions.h"
 #include "chrome/browser/download/chrome_download_manager_delegate.h"
+#include "chrome/browser/download/download_confirmation_result.h"
+#include "base/functional/callback_helpers.h"
+#include "content/public/browser/save_page_type.h"
+#include "ui/shell_dialogs/selected_file_info.h"
 #include "chrome/browser/download/download_core_service.h"
 #include "chrome/browser/download/download_core_service_factory.h"
+#include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
+#include "components/history/core/browser/history_service.h"
+#include "components/keyed_service/core/service_access_type.h"
 #include "components/download/public/common/download_item.h"
 #include "components/download/public/common/download_target_info.h"
 #include "content/public/browser/browser_context.h"
@@ -86,6 +93,7 @@ class NousDownloadManagerDelegate final : public ChromeDownloadManagerDelegate {
 
   bool DetermineDownloadTarget(download::DownloadItem *item,
                                download::DownloadTargetCallback *callback) override {
+    if (getenv("NOUS_TRACE")) fprintf(stderr, "Nous: download target requested %s\n", item->GetURL().spec().c_str());
     download::DownloadTargetCallback original = std::move(*callback);
     const std::string guid = item->GetGuid();
     content::BrowserContext *context = content::DownloadItemUtils::GetBrowserContext(item);
@@ -95,6 +103,9 @@ class NousDownloadManagerDelegate final : public ChromeDownloadManagerDelegate {
            download::DownloadTargetCallback original,
            download::DownloadTargetInfo info) {
           download::DownloadItem *found = manager ? manager->GetDownloadByGuid(guid) : nullptr;
+          if (getenv("NOUS_TRACE"))
+            fprintf(stderr, "Nous: download target found=%d path=%s reason=%d\n", found != nullptr,
+                    info.target_path.value().c_str(), static_cast<int>(info.interrupt_reason));
           if (!found || info.target_path.empty() ||
               info.interrupt_reason != download::DOWNLOAD_INTERRUPT_REASON_NONE) {
             std::move(original).Run(std::move(info));
@@ -106,6 +117,47 @@ class NousDownloadManagerDelegate final : public ChromeDownloadManagerDelegate {
         },
         guid, manager, std::move(original));
     return ChromeDownloadManagerDelegate::DetermineDownloadTarget(item, callback);
+  }
+
+  // "Save Image/Video/Link As" asked Chrome's own file picker first, which
+  // never appeared in a Nous window, so nothing happened. Nous asks where to
+  // save every download itself (NBChromiumDownloadCenter), so continue here.
+  void RequestConfirmation(download::DownloadItem *download, const base::FilePath &suggested_path,
+                           DownloadConfirmationReason reason, ConfirmationCallback callback) override {
+    if (getenv("NOUS_TRACE")) fprintf(stderr, "Nous: download confirmation reason=%d\n", static_cast<int>(reason));
+    std::move(callback).Run(DownloadConfirmationResult::CONTINUE_WITHOUT_CONFIRMATION,
+                            ui::SelectedFileInfo(suggested_path));
+  }
+
+  // "Save As…" (the whole page): a native save panel as a sheet on the tab's
+  // window. A name ending in .mhtml saves one web archive file; otherwise the
+  // complete page (HTML plus a folder of resources) when the page allows it.
+  void ChooseSavePath(content::WebContents *web_contents, const base::FilePath &suggested_path,
+                      const base::FilePath::StringType &default_extension, bool can_save_as_complete,
+                      content::SavePackagePathPickedCallback callback) override {
+    NSSavePanel *panel = [NSSavePanel savePanel];
+    panel.canCreateDirectories = YES;
+    panel.extensionHidden = NO;
+    panel.nameFieldStringValue = base::SysUTF8ToNSString(suggested_path.BaseName().value());
+    panel.directoryURL = [NSURL fileURLWithPath:base::SysUTF8ToNSString(suggested_path.DirName().value())];
+    __block content::SavePackagePathPickedCallback pending = std::move(callback);
+    void (^finish)(NSModalResponse) = ^(NSModalResponse response) {
+      if (!pending) return;
+      if (response != NSModalResponseOK || !panel.URL.isFileURL) {
+        pending.Reset();
+        return;
+      }
+      content::SavePackagePathPickedParams params;
+      params.file_path = base::FilePath(base::SysNSStringToUTF8(panel.URL.path));
+      const bool archive = [panel.URL.pathExtension.lowercaseString isEqualToString:@"mhtml"];
+      params.save_type = archive ? content::SAVE_PAGE_TYPE_AS_MHTML
+                         : can_save_as_complete ? content::SAVE_PAGE_TYPE_AS_COMPLETE_HTML
+                                                : content::SAVE_PAGE_TYPE_AS_ONLY_HTML;
+      std::move(pending).Run(std::move(params), base::DoNothing());
+    };
+    NSWindow *window = web_contents ? web_contents->GetTopLevelNativeWindow().GetNativeNSWindow() : nil;
+    if (window.visible && !window.attachedSheet) [panel beginSheetModalForWindow:window completionHandler:finish];
+    else finish([panel runModal]);
   }
 };
 
@@ -237,8 +289,16 @@ class NousDownloadManagerDelegate final : public ChromeDownloadManagerDelegate {
 namespace nous {
 void InstallDownloadDelegate(Profile *profile) {
   DownloadCoreService *service = DownloadCoreServiceFactory::GetForBrowserContext(profile);
-  if (service)
-    service->SetDownloadManagerDelegateForTesting(
-        std::make_unique<NousDownloadManagerDelegate>(profile));
+  if (!service) return;
+  auto delegate = std::make_unique<NousDownloadManagerDelegate>(profile);
+  NousDownloadManagerDelegate *installed = delegate.get();
+  service->SetDownloadManagerDelegateForTesting(std::move(delegate));
+  // The replaced delegate had already asked history for the next download
+  // id; without asking again every download waited for an id forever, so
+  // nothing (Save Image/Video/Link As, any download) ever started.
+  if (history::HistoryService *history =
+          HistoryServiceFactory::GetForProfile(profile, ServiceAccessType::EXPLICIT_ACCESS)) {
+    history->GetNextDownloadId(installed->GetDownloadIdReceiverCallback());
+  }
 }
 }  // namespace nous
