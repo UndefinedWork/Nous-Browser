@@ -1,0 +1,39 @@
+Engine/patches/apply_chromium_patches.py
+  s_a868a580eb8a06::t_ddc82785340338 317-334
+  s_a868a580eb8a06::t_c39bee911e9892 335-350
+  s_a868a580eb8a06::t_bc368484bffa28 351-355
+Engine/nous/browser/nous_downloads.mm
+  s_a868a580eb8a06::t_cfae0734b1aa42 25,27-28,161,292-302
+  s_a868a580eb8a06::t_ddc82785340338 19-22,121-126,128-160
+  s_a868a580eb8a06::t_5800c5b172283d 96,106-108,127
+Sources/NousBrowser/Capture/CaptureShortcuts.swift
+  s_a868a580eb8a06::t_d4347e95194db0 121-123,157,164-169,199-202,206-208,222-233,236-237,240-242,249
+Docs/Chromium-Build.md
+  s_a868a580eb8a06::t_932a41a6067134 3
+Docs/releases/1.4.4.md
+  s_a868a580eb8a06::t_932a41a6067134 1-21
+README.md
+  s_a868a580eb8a06::t_932a41a6067134 38
+Resources/Info.plist
+  s_a868a580eb8a06::t_932a41a6067134 65,81
+Engine/nous/browser/nous_application.mm
+  s_a868a580eb8a06::t_762631e8d7c2de 77
+  s_a868a580eb8a06::t_7c2ed0340b969b 246
+  s_a868a580eb8a06::t_cae7a27d5f14af 20-21,202-206,238
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "1e60b19d6d36fd392d62da217f26a37b9a51bf86",
+  "prompts": {},
+  "sessions": {
+    "s_a868a580eb8a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1919a1c-2b86-4a7e-9b4f-767da074be83",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
