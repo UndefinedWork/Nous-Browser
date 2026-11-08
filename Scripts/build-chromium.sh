@@ -32,6 +32,8 @@ export NOUS_CORE_SDK_DIR="$SDK_DIR"
 swift build --scratch-path "$CHROMIUM_DIR/swift" --configuration "$CONFIGURATION" --jobs "${NOUS_BUILD_JOBS:-4}"
 BIN_DIR="$(swift build --scratch-path "$CHROMIUM_DIR/swift" --configuration "$CONFIGURATION" --show-bin-path)"
 STAGING_DIR="$(mktemp -d "$CHROMIUM_DIR/package.XXXXXX")"
+# Each staged bundle is ~575 MB; never leave one behind.
+trap 'rm -rf "$STAGING_DIR"' EXIT
 STAGED_APP="$STAGING_DIR/$APP_NAME"
 CONTENTS="$STAGED_APP/Contents"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources" "$CONTENTS/Frameworks"
@@ -130,11 +132,8 @@ codesign --force --timestamp=none --sign "$SIGN_ID" "$CONTENTS/MacOS/NousBrowser
 codesign --force --timestamp=none --sign "$SIGN_ID" --entitlements Resources/Chromium/main-entitlements.plist "$STAGED_APP"
 codesign --verify --deep --strict "$STAGED_APP"
 
-# Preserve the prior preview in the ignored staging directory; never touch the
-# user's installed Nous Browser or its live WebKit profile.
-if [[ -d "$APP_DIR" ]]; then
-    mv "$APP_DIR" "$STAGING_DIR/Previous Nous Browser.app-backup"
-fi
+# Replace only the ignored build output; never the installed app or its data.
+rm -rf "$APP_DIR"
 mv "$STAGED_APP" "$APP_DIR"
 print "Built Nous Browser (NousCore $VERSIONED): $APP_DIR"
 du -sh "$APP_DIR"
