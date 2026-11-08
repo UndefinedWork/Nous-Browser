@@ -195,6 +195,7 @@ final class BrowserModel {
     @ObservationIgnored var onDownloadNotice: ((String, Bool) -> Void)?
     @ObservationIgnored var onLastChromiumTabClose: ((@escaping (Bool) -> Void) -> Void)?
     @ObservationIgnored private var pendingTabCloses: Set<UUID> = []
+    @ObservationIgnored private var unpreparedCloseTabIDs: Set<UUID> = []
     @ObservationIgnored private var windowCloseTransactionID: UUID?
     @ObservationIgnored private var windowCloseTransaction: ChromiumCloseTransaction?
     @ObservationIgnored private var closedWindowTabIDs: Set<UUID> = []
@@ -602,7 +603,7 @@ final class BrowserModel {
         // The folder takes the place of its first tab.
         let anchor = members.first.flatMap { id in layout.nodes(section).firstIndex { $0.tabIDs.contains(id) } }
         for id in members { layout.removeTab(id) }
-        let group = TabGroup(name: name ?? L10n.string("New Folder"), tabIDs: members)
+        let group = TabGroup(name: name ?? L10n.string("New Group"), tabIDs: members)
         layout.update(section) { nodes in nodes.insert(.group(group), at: min(anchor ?? nodes.count, nodes.count)) }
         applyLayout(layout, to: space, pinnedChanged: section == .pinned || layout.pinned != layouts[space]?.pinned)
         return group.id
@@ -861,23 +862,43 @@ final class BrowserModel {
     /// Acquires this model for a local or cross-window transaction. Already
     /// requested single-tab closes must finish first; they cannot be rolled back.
     func targetsForWindowClose(_ transactionID: UUID) -> [ChromiumCloseTransaction.Target]? {
-        guard !isShutDown, !windowCloseApproved, pendingTabCloses.isEmpty,
+        guard !isShutDown, !windowCloseApproved,
               windowCloseTransactionID == nil || windowCloseTransactionID == transactionID else { return nil }
-        if windowCloseTransactionID == nil { closedWindowTabIDs.removeAll() }
+        if windowCloseTransactionID == nil { closedWindowTabIDs.removeAll(); unpreparedCloseTabIDs.removeAll() }
         windowCloseTransactionID = transactionID
+        // A tab already closing joins as is. A page that refuses at once,
+        // without asking the user (still closing, or a reserved popup that
+        // never loaded), must not silently block closing the window or quitting.
         return tabs.filter { !closedWindowTabIDs.contains($0.id) }.map { tab in
             .init(id: tab.id, prepare: { [weak self, weak tab] answer in
                 guard let self, let tab, tab.isOwned(by: self) else { answer(false); return }
+                if self.pendingTabCloses.contains(tab.id) {
+                    self.unpreparedCloseTabIDs.insert(tab.id); answer(true); return
+                }
+                var synchronous = true
                 tab.webView.prepareClose { [weak self, weak tab] accepted in
+                    if !accepted, synchronous, let self, let tab {
+                        self.unpreparedCloseTabIDs.insert(tab.id); answer(true); return
+                    }
                     if !accepted, let self, let tab, tab.isOwned(by: self) { self.selectTab(tab.id) }
                     answer(accepted)
                 }
+                synchronous = false
             }, validate: { [weak self, weak tab] in
                 guard let self, let tab, tab.isOwned(by: self) else { return false }
-                return tab.webView.validatePreparedClose()
-            }, cancel: { [weak tab] in tab?.webView.cancelPreparedClose() },
+                return self.unpreparedCloseTabIDs.contains(tab.id) || tab.webView.validatePreparedClose()
+            }, cancel: { [weak self, weak tab] in
+                guard let tab else { return }
+                if self?.unpreparedCloseTabIDs.contains(tab.id) == true { return }
+                tab.webView.cancelPreparedClose()
+            },
             commit: { [weak self, weak tab] answer in
                 guard let self, let tab, tab.isOwned(by: self) else { answer(false); return }
+                if self.unpreparedCloseTabIDs.remove(tab.id) != nil {
+                    self.chromiumTabDidClose(tab.id)
+                    answer(true)
+                    return
+                }
                 tab.webView.commitPreparedClose { [weak self, weak tab] closed in
                     if closed, let self, let tab, tab.isOwned(by: self) { self.chromiumTabDidClose(tab.id) }
                     answer(closed)

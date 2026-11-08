@@ -291,14 +291,19 @@ struct BrowserWindowManagerTests {
         defer { fixture.cleanUp() }
         let manager = fixture.manager
         manager.restoreWindows()
+        let closed = try #require(manager.activeContext)
+        let closedTabs = closed.controller.model.tabs.map(\.id)
         manager.closeActiveWindow()
         try await waitForBrowserTest { manager.windows.isEmpty }
         #expect(manager.windows.isEmpty)
-        #expect(BrowserWorkspaceStore(sessionURL: fixture.sessionURL).restoredWindows.isEmpty)
+        // A closed window is kept so the next one (or the next launch) reopens its tabs.
+        #expect(BrowserWorkspaceStore(sessionURL: fixture.sessionURL).restoredWindows == [closed.session])
         manager.newTab()
         let first = try #require(manager.activeContext)
         #expect(manager.windows.count == 1)
-        #expect(first.controller.model.tabs.count == 1)
+        #expect(first.session == closed.session)
+        #expect(Array(first.controller.model.tabs.map(\.id).prefix(closedTabs.count)) == closedTabs)
+        #expect(first.controller.model.tabs.count == closedTabs.count + 1)
         #expect(first.controller.model.selectedTab?.url == nil)
         #expect(first.controller.isAddressPresented)
 

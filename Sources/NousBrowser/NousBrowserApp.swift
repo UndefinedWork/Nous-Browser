@@ -235,7 +235,8 @@ final class BrowserController {
     }
 
     func closeTab() {
-        guard let id = model.selectedTabID else { return }
+        // Nothing selected (the start page with only pins left): ⌘W closes the window.
+        guard let id = model.selectedTabID else { onCloseWindow?(); return }
         // A blank new tab cannot refuse to close; its palette goes with it at once.
         if isAddressPresented, model.selectedTab?.hasWebContent == false { dismissAddress() }
         let focusToken = addressFocusToken
@@ -308,8 +309,9 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate {
         CaptureShortcuts.shared.register()
         CaptureCoordinator.shared.openPage = { [weak self] page in
             guard let self else { return }
+            // A tab in the window in front of the user; a window only when none is open.
             if self.windowManager.activeController == nil { self.windowManager.newWindow() }
-            guard let context = self.windowManager.activeContext else { return }
+            guard let context = self.windowManager.visibleContext else { return }
             context.controller.dismissAddress()
             context.controller.model.openNativePage(page)
             self.windowManager.activate(context)

@@ -207,7 +207,7 @@ final class BrowserMainMenu: NSObject, NSMenuItemValidation, NSMenuDelegate {
             item(L10n.string("New Space"), enabled: hasController) { [weak self] in
                 withAnimation(BrowserMotion.spring) { self?.controller?.model.newSpace() }
             },
-            item(L10n.string("New Folder"), "n", [.command, .option], enabled: hasController) { [weak self] in
+            item(L10n.string("New Group"), "n", [.command, .option], enabled: hasController) { [weak self] in
                 withAnimation(BrowserMotion.spring) { _ = self?.controller?.model.newGroup() }
             },
             .separator(),

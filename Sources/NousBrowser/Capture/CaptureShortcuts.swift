@@ -113,6 +113,11 @@ final class CaptureShortcuts {
     @ObservationIgnored private var hotKeys: [Action: EventHotKeyRef] = [:]
     @ObservationIgnored private var handler: EventHandlerRef?
     @ObservationIgnored var perform: (Action) -> Void = { _ in }
+    /// While a menu is open, AppKit's menu tracking does not deliver hot key
+    /// events; key downs still reach the event dispatcher, so match them there.
+    @ObservationIgnored private var menuKeyHandler: EventHandlerRef?
+    @ObservationIgnored private weak var trackingMenu: NSMenu?
+    @ObservationIgnored private var menuObservers: [NSObjectProtocol] = []
 
     private init() {
         let saved = (UserDefaults.standard.data(forKey: Self.defaultsKey))
@@ -152,6 +157,7 @@ final class CaptureShortcuts {
     func register() {
         unregisterAll()
         installHandler()
+        observeMenus()
         var failed: Set<Action> = []
         for (index, action) in Action.allCases.enumerated() where action.isGlobal {
             guard let shortcut = shortcut(action) else { continue }
@@ -167,6 +173,54 @@ final class CaptureShortcuts {
     private func unregisterAll() {
         hotKeys.values.forEach { UnregisterEventHotKey($0) }
         hotKeys = [:]
+    }
+
+    private func observeMenus() {
+        guard menuObservers.isEmpty else { return }
+        let center = NotificationCenter.default
+        menuObservers.append(center.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { note in
+            nonisolated(unsafe) let menu = note.object as? NSMenu
+            MainActor.assumeIsolated { CaptureShortcuts.shared.menuTracking(began: true, menu: menu) }
+        })
+        menuObservers.append(center.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { CaptureShortcuts.shared.menuTracking(began: false, menu: nil) }
+        })
+    }
+
+    private func menuTracking(began: Bool, menu: NSMenu?) {
+        if began {
+            trackingMenu = menu
+            guard menuKeyHandler == nil, !hotKeys.isEmpty else { return }
+            var type = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventRawKeyDown))
+            InstallEventHandler(GetEventDispatcherTarget(), { _, event, _ in
+                var keyCode: UInt32 = 0
+                var modifiers: UInt32 = 0
+                GetEventParameter(event, EventParamName(kEventParamKeyCode), EventParamType(typeUInt32),
+                                  nil, MemoryLayout<UInt32>.size, nil, &keyCode)
+                GetEventParameter(event, EventParamName(kEventParamKeyModifiers), EventParamType(typeUInt32),
+                                  nil, MemoryLayout<UInt32>.size, nil, &modifiers)
+                let handled = MainActor.assumeIsolated {
+                    CaptureShortcuts.shared.menuKeyDown(keyCode: keyCode, modifiers: modifiers)
+                }
+                return handled ? noErr : OSStatus(eventNotHandledErr)
+            }, 1, &type, nil, &menuKeyHandler)
+        } else {
+            trackingMenu = nil
+            if let menuKeyHandler { RemoveEventHandler(menuKeyHandler) }
+            menuKeyHandler = nil
+        }
+    }
+
+    private func menuKeyDown(keyCode: UInt32, modifiers: UInt32) -> Bool {
+        let mask = UInt32(cmdKey | optionKey | controlKey | shiftKey)
+        guard let action = Action.allCases.first(where: { action in
+            guard action.isGlobal, hotKeys[action] != nil, let shortcut = shortcut(action) else { return false }
+            return UInt32(shortcut.keyCode) == keyCode && shortcut.carbonModifiers == modifiers & mask
+        }) else { return false }
+        // Close the menu first so it is not in the screenshot or recording.
+        trackingMenu?.cancelTrackingWithoutAnimation()
+        DispatchQueue.main.async { CaptureShortcuts.shared.perform(action) }
+        return true
     }
 
     private func installHandler() {

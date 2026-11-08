@@ -21,6 +21,12 @@ final class BrowserWindowManager {
     @ObservationIgnored private let workspace: BrowserWorkspaceStore
     @ObservationIgnored private let showsWindows: Bool
     @ObservationIgnored private var didRestoreWindows = false
+    /// The last window the user closed. Its session file keeps its tabs; the
+    /// next window (Dock, ⌘N, a capture, or the next launch) reopens it.
+    @ObservationIgnored private var reopenableSession: BrowserWindowSession?
+    private var manifestWindows: [BrowserWindowSession] {
+        windows.isEmpty ? reopenableSession.map { [$0] } ?? [] : windows.map(\.session)
+    }
     @ObservationIgnored private var isTerminating = false
     @ObservationIgnored private var terminationCallbacks: [(Bool) -> Void] = []
     @ObservationIgnored private var terminationTransaction: ChromiumCloseTransaction?
@@ -29,6 +35,17 @@ final class BrowserWindowManager {
         windows.first { $0.session.id == activeWindowID } ?? windows.last
     }
     var activeController: BrowserController? { activeContext?.controller }
+    /// The browser window the user is looking at: the active one when it is on
+    /// the current Space, else the frontmost one there. Capture results open
+    /// as a tab in it rather than pulling the user to another desktop.
+    var visibleContext: BrowserWindowContext? {
+        if let activeContext, activeContext.window.isOnActiveSpace, activeContext.window.isVisible,
+           !activeContext.window.isMiniaturized { return activeContext }
+        for window in NSApp.orderedWindows where window.isOnActiveSpace && window.isVisible {
+            if let context = windows.first(where: { $0.window === window }) { return context }
+        }
+        return activeContext
+    }
     var activeWindow: NSWindow? { activeContext?.window }
     var keyController: BrowserController? {
         windows.first { $0.session.id == keyWindowID }?.controller
@@ -74,6 +91,14 @@ final class BrowserWindowManager {
     @discardableResult
     func newWindow() -> BrowserWindowContext? {
         guard !isTerminating else { return nil }
+        if windows.isEmpty, let session = reopenableSession {
+            reopenableSession = nil
+            let context = makeWindow(session: session, restoring: true)
+            activate(context)
+            saveWorkspace()
+            return context
+        }
+        reopenableSession = nil
         let context = makeWindow(session: workspace.makeWindowSession(), restoring: false)
         context.controller.showAddress(animated: false)
         activate(context)
@@ -193,6 +218,7 @@ final class BrowserWindowManager {
     func newTab() {
         guard !isTerminating else { return }
         if let controller = activeController { controller.newTab() }
+        else if reopenableSession != nil { newWindow()?.controller.newTab() }
         else { newWindow() }
     }
 
@@ -268,6 +294,7 @@ final class BrowserWindowManager {
         saveWorkspace()
         isTerminating = true
         passwordImporter.dismiss()
+        BrowserPopupWindow.closeAll()
         windows.forEach { $0.shutdown() }
         history.flush()
         spaceStore.save()
@@ -279,7 +306,7 @@ final class BrowserWindowManager {
     /// normal best-effort saveWorkspace() intentionally does nothing.
     func persistForRestart() throws {
         for context in windows { try context.controller.model.persistForRestart() }
-        try workspace.save(windows: windows.map(\.session), activeWindowID: activeWindowID)
+        try workspace.save(windows: manifestWindows, activeWindowID: activeWindowID)
     }
 
     /// All windows participate in ONE approval phase. Canceling any native
@@ -314,7 +341,7 @@ final class BrowserWindowManager {
             guard let self else { throw CancellationError() }
             try beforeCommit?()
             // Includes any tabs opened while a native sheet was present.
-            restoredWindows = self.windows.map(\.session)
+            restoredWindows = self.manifestWindows
             for context in participants { context.controller.model.approveWindowClose(transactionID) }
         }, completion: { [weak self] accepted in
             guard let self else { return }
@@ -323,6 +350,7 @@ final class BrowserWindowManager {
             }
             self.terminationTransaction = nil
             if accepted {
+                BrowserPopupWindow.closeAll()
                 for context in participants { context.closeAfterPreparedPages() }
                 do { try self.workspace.save(windows: restoredWindows, activeWindowID: restoredActiveID) }
                 catch { NSLog("Nous Browser: Could not preserve window workspace on quit: %@", error.localizedDescription) }
@@ -376,11 +404,19 @@ final class BrowserWindowManager {
         }
         controller.onNewWindow = { [weak self] in _ = self?.newWindow() }
         controller.onCloseWindow = { [weak self] in self?.closeWindow(session.id) }
-        model.onLastTabClosed = { [weak self] in self?.closeWindow(session.id) }
+        // Closing the last tab is closing that tab: this window does not come back.
+        model.onLastTabClosed = { [weak self, weak context] in
+            context?.closesWithLastTab = true
+            self?.closeWindow(session.id)
+        }
         model.onOpenLinkInNewWindow = { [weak self] url in _ = self?.openLinkInNewWindow(url, from: session.id) }
         model.onLastChromiumTabClose = { [weak context] completion in
             guard let context else { completion(false); return }
-            context.requestClose(completion: completion)
+            context.closesWithLastTab = true
+            context.requestClose { [weak context] accepted in
+                if !accepted { context?.closesWithLastTab = false }
+                completion(accepted)
+            }
         }
         model.onOpenChromiumImageWindow = { [weak self] url in
             guard let self, !self.isTerminating, BrowserNativeImageURL.allows(url),
@@ -402,12 +438,9 @@ final class BrowserWindowManager {
                 } else { alert.runModal() }
             } else { controller.showToast(message) }
         }
-        model.onCreateChromiumPopupWindow = { [weak self] in
+        model.onCreateChromiumPopupWindow = { [weak self, weak context] in
             guard let self, !self.isTerminating else { return nil }
-            let tab = BrowserTab(owner: nil, isPopup: true)
-            let popup = self.makeWindow(session: self.workspace.makeWindowSession(), restoring: false, initialTab: tab)
-            self.activate(popup)
-            return tab
+            return BrowserPopupWindow.make(over: context?.window)
         }
         controller.onMoveTabToNewWindow = { [weak self] id, point in
             self?.moveTabToNewWindow(id, from: session.id, at: point) != nil
@@ -427,6 +460,10 @@ final class BrowserWindowManager {
         windows.remove(at: index)
         if keyWindowID == context.session.id { keyWindowID = nil }
         if activeWindowID == context.session.id { activeWindowID = windows.last?.session.id }
+        if !isTerminating, windows.isEmpty, !context.closesWithLastTab {
+            reopenableSession = context.session
+            activeWindowID = context.session.id
+        }
         if !isTerminating { saveWorkspace() }
     }
 
@@ -441,7 +478,7 @@ final class BrowserWindowManager {
 
     private func saveWorkspace() {
         guard !isTerminating else { return }
-        do { try workspace.save(windows: windows.map(\.session), activeWindowID: activeWindowID) }
+        do { try workspace.save(windows: manifestWindows, activeWindowID: activeWindowID) }
         catch { NSLog("Nous Browser: Could not save window workspace: %@", error.localizedDescription) }
     }
 }
@@ -514,6 +551,9 @@ final class BrowserWindowContext: NSObject, NSWindowDelegate {
         closeRequestPending = false
         window.close()
     }
+
+    /// Set when the window closes because its last tab closed.
+    var closesWithLastTab = false
 
     func requestClose(completion: @escaping (Bool) -> Void) {
         guard !isShutDown else { completion(true); return }

@@ -130,6 +130,23 @@ done
 codesign --force --timestamp=none --sign "$SIGN_ID" "$FRAMEWORK"
 codesign --force --timestamp=none --sign "$SIGN_ID" "$CONTENTS/MacOS/NousBrowserMCP"
 codesign --force --timestamp=none --sign "$SIGN_ID" --entitlements Resources/Chromium/main-entitlements.plist "$STAGED_APP"
+# Screen Recording (and other privacy) permissions follow the app's
+# designated requirement. Ad-hoc, that is the build's code hash, so every
+# update asked again. A self-signed local certificate (a key file, never a
+# keychain item) gives every build the same requirement:
+#   identifier "com.cellier.nous-browser" and certificate root = H"<cert>".
+# Only the outer app is re-signed; nested code keeps the signatures above.
+LOCAL_SIGNING="${NOUS_LOCAL_SIGNING_DIR:-$HOME/Library/Application Support/NousSigning}"
+RCODESIGN="${NOUS_RCODESIGN:-$LOCAL_SIGNING/rcodesign}"
+if [[ "$SIGN_ID" == "-" && -r "$LOCAL_SIGNING/identity.key" && -r "$LOCAL_SIGNING/identity.crt" && -x "$RCODESIGN" ]]; then
+    "$RCODESIGN" sign --exclude '**' \
+        --entitlements-xml-file Resources/Chromium/main-entitlements.plist \
+        --pem-file "$LOCAL_SIGNING/identity.key" --pem-file "$LOCAL_SIGNING/identity.crt" \
+        "$STAGED_APP" >/dev/null
+    print "Signed with the local certificate: $(codesign -d -r- "$STAGED_APP" 2>&1 | tail -1)"
+else
+    print -u2 "Local signing certificate not found; ad-hoc (privacy permissions reset on update)."
+fi
 codesign --verify --deep --strict "$STAGED_APP"
 
 # Replace only the ignored build output; never the installed app or its data.

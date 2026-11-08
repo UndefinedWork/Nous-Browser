@@ -1,6 +1,6 @@
 # Build Nous Browser with Chromium (NousCore)
 
-## Current source — 1.4.0 (56), 2026-11-08
+## Current source — 1.4.1 (57), 2026-11-08
 
 Nous Browser embeds Chromium the way Dia/Arc do (see
 [Dia-Architecture-Research.md](Dia-Architecture-Research.md)): Chromium's full
@@ -22,6 +22,17 @@ Target: Apple Silicon, macOS 26+, Chromium 156.0.8078.80.
 
 The checkout still contains `//cef` from the former engine; the patch script
 guards the few CEF patches that otherwise break `enable_cef = false` builds.
+
+## Signing
+
+Nested code is ad-hoc signed. When `~/Library/Application Support/NousSigning/`
+holds `identity.key`, `identity.crt` and `rcodesign`, the build re-signs the
+outer app with that self-signed certificate (no keychain involved), giving it
+the designated requirement `identifier "com.cellier.nous-browser" and
+certificate root = H"…"`. macOS privacy permissions (Screen Recording) follow
+that requirement, so they survive updates. Without those files the app stays
+ad-hoc and the permission is asked again after every update.
+`NOUS_SIGNING_IDENTITY` still selects a team identity instead.
 
 ## Build
 

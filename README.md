@@ -8,9 +8,9 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 
 ## 功能
 
-- **空间（Spaces）**：每个空间有独立的固定项、文件夹和标签页。在侧边栏左右双指滑动或点底部圆点切换（⌥⌘← / ⌥⌘→）；右键圆点可改名、换图标或删除。
+- **空间（Spaces）**：每个空间有独立的固定项、分组和标签页。在侧边栏左右双指滑动或点底部圆点切换（⌥⌘← / ⌥⌘→）；右键圆点可改名、换图标或删除。
 - **固定（Pin）**：固定的网页以图标方块显示，关闭所有窗口后依然保留，并在各窗口间共享。关闭固定页只会卸载它，图标仍在原处。
-- **文件夹**：右键新建，拖入／拖出标签，拖动排序；可改名、换图标（SF Symbol 或 emoji）、整体固定。收起时仍显示当前所在的标签；拖着标签停在收起的文件夹上会自动展开。
+- **分组（Groups）**：右键新建，拖入／拖出标签，拖动排序；可改名、换图标（SF Symbol 或 emoji）、整体固定。收起时仍显示当前所在的标签；拖着标签停在收起的分组上会自动展开。
 - **三合一导航**：后退、前进、刷新合并为一个玻璃控件；竖条状态下纵向排列。
 - **资料库（⇧⌘L）**：书签、截图、录屏、历史记录、下载进度与结果、应用更新集中在一处，默认通过 iCloud 云盘同步。
 - **书签（⌘D）**：书签在资料库中查看与管理；地址栏推荐和历史记录中带星标。
@@ -35,7 +35,7 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 - 当前发布包与受支持构建目标为 **Apple Silicon（arm64）**，没有 Intel 发行包。
 - 宿主需要 **Swift 6.2+** 及匹配 SDK；从头构建 NousCore 需要本机 Chromium 源码树与 depot_tools，具体要求见 [Chromium 构建说明](Docs/Chromium-Build.md)。
 
-当前源码版本：**1.4.0（Build 56）**。预编译安装包的构建号见对应 Release。
+当前源码版本：**1.4.1（Build 57）**。预编译安装包的构建号见对应 Release。
 
 ## 下载与安装
 
@@ -96,7 +96,7 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 | ⇧ ⌘ L / ⌘ Y / ⇧ ⌘ J / ⌥ ⌘ B | 资料库／历史记录／下载／书签 |
 | ⌥ ⇧ ⌘ S / ⌥ ⇧ ⌘ R / ⌥ ⇧ ⌘ P | 截图／录屏／截取当前网页（可在设置中修改） |
 | ⌥ ⌘ → / ⌥ ⌘ ← | 下一个／上一个空间 |
-| ⌥ ⌘ N | 新建文件夹 |
+| ⌥ ⌘ N | 新建分组 |
 
 ## 登录状态与密码
 
@@ -107,6 +107,10 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 当前发行包采用 ad-hoc 签名，macOS 会把钥匙串条目绑定到某一个具体构建，因此 Nous 不再把加密密钥放在钥匙串，而是保存在 `~/Library/Application Support/Nous Browser/Secrets/storage.key`（仅当前用户可读）。这与 WebKit 浏览器把网站数据保存在用户资料目录中的方式相当；请像保护整个用户目录一样保护它。
 
 **从 1.1.x（WebKit）或更早的 Chromium 构建升级到 1.4.0 时需要再登录一次**：旧构建的密钥只能由旧构建读取。之后的更新不再需要。
+
+### 截图与录屏权限
+
+1.4.1 起，本机构建用一张本地自签名证书签名（私钥文件位于 `~/Library/Application Support/NousSigning/`，不进钥匙串）。macOS 按证书识别应用，所以「屏幕与系统录音」权限授予一次后，后续更新会继续有效。从 1.4.0 及更早版本升级后需要再授权一次。
 
 ### 从 Apple「密码」或 Chrome 导入
 
@@ -129,7 +133,7 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 
 | 数据 | 位置 |
 | --- | --- |
-| 窗口、标签页、文件夹 | `~/Library/Application Support/Nous Browser/session*.json`、`session-windows/` |
+| 窗口、标签页、分组 | `~/Library/Application Support/Nous Browser/session*.json`、`session-windows/` |
 | 空间与固定项（各窗口共享） | `~/Library/Application Support/Nous Browser/session-spaces.json` |
 | 本机访问记录与网页推荐 | `~/Library/Application Support/Nous Browser/history.json` |
 | 资料库（截图、录屏、书签、历史与下载记录） | iCloud 云盘 `Nous Browser/`；未开启 iCloud 云盘时为 `~/Library/Application Support/Nous Browser/Library/` |

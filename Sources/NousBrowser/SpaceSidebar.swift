@@ -125,7 +125,7 @@ struct BrowserSidebar: View {
         }
         .contextMenu {
             Button(L10n.string("New Tab"), systemImage: "plus", action: controller.newTab)
-            Button(L10n.string("New Folder"), systemImage: "folder.badge.plus") { newFolder() }
+            Button(L10n.string("New Group"), systemImage: "folder.badge.plus") { newFolder() }
             Button(L10n.string("New Space"), systemImage: "square.stack.3d.up.badge.automatic") {
                 withAnimation(BrowserMotion.spring) { model.newSpace() }
                 editingSpace = model.activeSpaceID
@@ -814,14 +814,14 @@ private struct FolderHeader: View {
         .accessibilityValue(L10n.string(group.isExpanded ? "Expanded" : "Collapsed"))
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { toggle() }
-        .accessibilityAction(named: L10n.string("Rename Folder"), startRename)
+        .accessibilityAction(named: L10n.string("Rename Group"), startRename)
         .contextMenu {
-            Button(L10n.string("Rename Folder"), systemImage: "pencil", action: startRename)
+            Button(L10n.string("Rename Group"), systemImage: "pencil", action: startRename)
             Button(L10n.string("Change Icon…"), systemImage: "face.smiling") { choosingIcon = true }
             Button(L10n.string(section == .pinned ? "Unpin Folder" : "Pin Folder"), systemImage: section == .pinned ? "pin.slash" : "pin") {
                 withAnimation(BrowserMotion.spring) { model.toggleGroupPinned(group.id) }
             }
-            Button(L10n.string("New Tab in Folder"), systemImage: "plus") {
+            Button(L10n.string("New Tab in Group"), systemImage: "plus") {
                 model.newTab()
                 if let id = model.selectedTabID {
                     withAnimation(BrowserMotion.spring) {
@@ -835,7 +835,7 @@ private struct FolderHeader: View {
             Button(L10n.string("Ungroup"), systemImage: "folder.badge.minus") {
                 withAnimation(BrowserMotion.spring) { model.ungroup(group.id) }
             }
-            Button(L10n.string("Close Folder"), systemImage: "xmark", role: .destructive) {
+            Button(L10n.string("Close Group"), systemImage: "xmark", role: .destructive) {
                 withAnimation(BrowserMotion.spring) { model.closeGroup(group.id) }
             }
         }
@@ -911,8 +911,8 @@ struct TabOrganizeMenu: View {
 
     var body: some View {
         let layout = model.layout(for: model.tab(tabID)?.spaceID ?? model.activeSpaceID)
-        Menu(L10n.string("Add to Folder"), systemImage: "folder") {
-            Button(L10n.string("New Folder"), systemImage: "folder.badge.plus") {
+        Menu(L10n.string("Add to Group"), systemImage: "folder") {
+            Button(L10n.string("New Group"), systemImage: "folder.badge.plus") {
                 withAnimation(BrowserMotion.spring) { _ = model.newGroup(containing: [tabID]) }
             }
             let others = layout.groups.filter { $0.id != groupID }
@@ -928,7 +928,7 @@ struct TabOrganizeMenu: View {
         }
         if let groupID, let section = layout.section(ofGroup: groupID),
            let index = layout.nodes(section).firstIndex(where: { $0.id == groupID }) {
-            Button(L10n.string("Remove from Folder"), systemImage: "folder.badge.minus") {
+            Button(L10n.string("Remove from Group"), systemImage: "folder.badge.minus") {
                 withAnimation(BrowserMotion.spring) {
                     model.move(.tab(tabID), to: SidebarDropTarget(section: section, groupID: nil, index: index + 1))
                 }
@@ -1043,45 +1043,57 @@ private struct NavigationCluster: View {
     let vertical: Bool
     private var model: BrowserModel { controller.model }
 
+    // Pico 438:1239 (84×32: 12pt sides, 8pt gaps) and 427:2256 (32×88: 8pt ends, 6pt gaps).
+    private static let glyph = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor(white: 1, alpha: 0.85) : NSColor(white: 0.15, alpha: 0.8)
+    })
+
     var body: some View {
         let tab = model.selectedTab
         let loading = tab?.isLoading == true
-        let layout = vertical ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(spacing: 0))
+        let layout = vertical ? AnyLayout(VStackLayout(spacing: 6)) : AnyLayout(HStackLayout(spacing: 8))
         layout {
             if vertical {
                 reload(loading)
                 divider
             }
-            button("chevron.left", L10n.string("Back"), L10n.string("Back") + "  ⌘[", enabled: tab?.canGoBack == true) { model.goBack() }
-            button("chevron.right", L10n.string("Forward"), L10n.string("Forward") + "  ⌘]", enabled: tab?.canGoForward == true) { model.goForward() }
+            button("chevron.left", L10n.string("Back"), L10n.string("Back") + "  ⌘[", width: 10,
+                   enabled: tab?.canGoBack == true) { model.goBack() }
+            button("chevron.right", L10n.string("Forward"), L10n.string("Forward") + "  ⌘]", width: 10,
+                   enabled: tab?.canGoForward == true) { model.goForward() }
             if !vertical { divider; reload(loading) }
         }
-        .padding(vertical ? .vertical : .horizontal, 5)
+        .padding(vertical ? .vertical : .horizontal, vertical ? 8 : 12)
+        .frame(width: vertical ? 32 : nil, height: vertical ? nil : 32)
         .glassEffect(.regular, in: Capsule())
+        .shadow(color: .black.opacity(0.12), radius: 20, y: 8)
     }
 
     private var divider: some View {
-        Rectangle().fill(Color.primary.opacity(0.14))
-            .frame(width: vertical ? 14 : 1, height: vertical ? 1 : 14)
-            .padding(vertical ? .vertical : .horizontal, 2)
+        Rectangle().fill(Color.primary.opacity(0.08))
+            .frame(width: vertical ? 8 : 1, height: vertical ? 1 : 8)
     }
 
     private func reload(_ loading: Bool) -> some View {
         button(loading ? "xmark" : "arrow.clockwise", loading ? L10n.string("Stop Loading") : L10n.string("Reload"),
-               loading ? L10n.string("Stop Loading") : L10n.string("Reload") + "  ⌘R",
+               loading ? L10n.string("Stop Loading") : L10n.string("Reload") + "  ⌘R", width: 16,
                enabled: model.selectedTab?.hasWebContent == true) {
             if loading { model.stopLoading() } else { model.reload() }
         }
         .contentTransition(.symbolEffect(.replace))
     }
 
-    private func button(_ symbol: String, _ label: String, _ help: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+    /// The glyph keeps the design's footprint; the hit area grows to the
+    /// capsule's full thickness and halfway into the gaps around it.
+    private func button(_ symbol: String, _ label: String, _ help: String, width: CGFloat,
+                        enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.primary.opacity(0.8))
-                .frame(width: vertical ? 30 : 23, height: vertical ? 23 : 30)
-                .contentShape(Rectangle())
+                .font(.system(size: 15, weight: .regular))
+                .foregroundStyle(Self.glyph)
+                .frame(width: vertical ? 16 : width, height: vertical ? 18 : 32)
+                .frame(width: vertical ? 32 : nil)
+                .contentShape(Rectangle().inset(by: vertical ? -3 : -4))
         }
         .buttonStyle(PressSpringStyle())
         .disabled(!enabled)
@@ -1179,7 +1191,7 @@ private struct SpaceDots: View {
     private func confirmDelete(_ space: BrowserSpaceRecord) {
         let alert = NSAlert()
         alert.messageText = L10n.format("Delete “%@”?", space.name)
-        alert.informativeText = L10n.string("Its pinned items and folders are removed, and its tabs close.")
+        alert.informativeText = L10n.string("Its pinned items and groups are removed, and its tabs close.")
         alert.addButton(withTitle: L10n.string("Delete Space"))
         alert.addButton(withTitle: L10n.string("Cancel"))
         alert.buttons.first?.hasDestructiveAction = true
