@@ -437,3 +437,12 @@
 "Window corner radius" = "Скругление углов окна";
 "Default" = "По умолчанию";
 "How round the corners of browser windows are. Full screen always uses square corners." = "Насколько скруглены углы окон браузера. В полноэкранном режиме углы всегда прямые.";
+"%@:" = "%@:";
+"Search engine" = "Поисковая система";
+"Window buttons" = "Кнопки окна";
+"Show in the sidebar" = "Показывать в боковой панели";
+"Import" = "Импорт";
+"Always active" = "Всегда активны";
+"Access" = "Доступ";
+"Status" = "Статус";
+"Connection" = "Подключение";

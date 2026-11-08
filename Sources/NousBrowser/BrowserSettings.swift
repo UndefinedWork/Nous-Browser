@@ -1,34 +1,32 @@
 import SwiftUI
 import NousCore
 
-struct BrowserSettingsView: View {
-    let preferences: BrowserPreferences
-    let appearance: BrowserAppearanceSettings
-    let passwordImporter: BrowserPasswordController
-    let automation: BrowserAutomationService
-
-    var body: some View {
-        TabView {
-            SearchSettingsView(preferences: preferences)
-                .tabItem { Label(L10n.string("Search"), systemImage: "magnifyingglass") }
-            QuickAccessSettingsView(preferences: preferences)
-                .tabItem { Label(L10n.string("Quick Access"), systemImage: "square.grid.2x2") }
-            PasswordImportSettingsView(controller: passwordImporter)
-                .tabItem { Label(L10n.string("Passwords"), systemImage: "key") }
-            AppearanceSettingsView(appearance: appearance)
-                .tabItem { Label(L10n.string("Appearance"), systemImage: "circle.lefthalf.filled") }
-            CaptureShortcutsSettingsView()
-                .tabItem { Label(L10n.string("Capture"), systemImage: "camera.viewfinder") }
-            if NBChromiumRuntime.hasNativeTabLifecycle() {
-                ChromiumPerformanceSettingsView()
-                    .tabItem { Label(L10n.string("Performance"), systemImage: "gauge.with.dots.needle.50percent") }
-            }
-            BrowserAutomationSettingsView(service: automation)
-                .tabItem { Label(L10n.string("AI Agents (MCP)"), systemImage: "point.3.connected.trianglepath.dotted") }
+enum BrowserSettingsPanes {
+    @MainActor
+    static func make(preferences: BrowserPreferences, appearance: BrowserAppearanceSettings,
+                     passwordImporter: BrowserPasswordController,
+                     automation: BrowserAutomationService) -> [SettingsWindowController.Pane] {
+        var panes: [SettingsWindowController.Pane] = [
+            .init(id: "search", title: L10n.string("Search"), symbol: "magnifyingglass",
+                  view: AnyView(SearchSettingsView(preferences: preferences))),
+            .init(id: "quickAccess", title: L10n.string("Quick Access"), symbol: "square.grid.2x2",
+                  view: AnyView(QuickAccessSettingsView(preferences: preferences))),
+            .init(id: "passwords", title: L10n.string("Passwords"), symbol: "key",
+                  view: AnyView(PasswordImportSettingsView(controller: passwordImporter))),
+            .init(id: "appearance", title: L10n.string("Appearance"), symbol: "paintpalette",
+                  view: AnyView(AppearanceSettingsView(appearance: appearance))),
+            .init(id: "capture", title: L10n.string("Capture"), symbol: "camera.viewfinder",
+                  view: AnyView(CaptureShortcutsSettingsView())),
+        ]
+        if NBChromiumRuntime.hasNativeTabLifecycle() {
+            panes.append(.init(id: "performance", title: L10n.string("Performance"),
+                               symbol: "gauge.with.dots.needle.67percent",
+                               view: AnyView(ChromiumPerformanceSettingsView())))
         }
-        .padding(20)
-        .frame(width: 580, height: 430)
-        .onDisappear { passwordImporter.dismiss() }
+        panes.append(.init(id: "agents", title: L10n.string("AI Agents (MCP)"),
+                           symbol: "point.3.connected.trianglepath.dotted",
+                           view: AnyView(BrowserAutomationSettingsView(service: automation))))
+        return panes
     }
 }
 
@@ -36,23 +34,20 @@ private struct SearchSettingsView: View {
     @Bindable var preferences: BrowserPreferences
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(L10n.string("Default Search Engine")).font(.title2.weight(.semibold))
-            Text(L10n.string("Searches from the address bar use this engine."))
-                .foregroundStyle(.secondary)
-            Picker(L10n.string("Default Search Engine"), selection: Binding(
-                get: { preferences.searchEngine }, set: { preferences.selectSearchEngine($0) }
-            )) {
-                ForEach(BrowserSearchEngine.allCases) { engine in
-                    Text(engine.title).tag(engine)
+        SettingsForm {
+            SettingsRow("Search engine") {
+                Picker(L10n.string("Search engine"), selection: Binding(
+                    get: { preferences.searchEngine }, set: { preferences.selectSearchEngine($0) }
+                )) {
+                    ForEach(BrowserSearchEngine.allCases) { engine in
+                        Text(engine.title).tag(engine)
+                    }
                 }
+                .labelsHidden()
+                .fixedSize()
+                SettingsNote("Searches from the address bar use this engine.")
             }
-            .labelsHidden()
-            .frame(width: 220, alignment: .leading)
-            Spacer()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(24)
     }
 }
 
@@ -60,55 +55,51 @@ private struct AppearanceSettingsView: View {
     @Bindable var appearance: BrowserAppearanceSettings
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(L10n.string("Appearance")).font(.title2.weight(.semibold))
-            Text(L10n.string("Choose how Nous Browser looks."))
-                .foregroundStyle(.secondary)
-            Picker(L10n.string("Appearance"), selection: Binding(
-                get: { appearance.mode }, set: { appearance.select($0) }
-            )) {
-                ForEach(BrowserAppearanceMode.allCases) { mode in
-                    Text(mode.title).tag(mode)
+        SettingsForm {
+            SettingsRow("Appearance") {
+                Picker(L10n.string("Appearance"), selection: Binding(
+                    get: { appearance.mode }, set: { appearance.select($0) }
+                )) {
+                    ForEach(BrowserAppearanceMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
                 }
+                .labelsHidden()
+                .pickerStyle(.radioGroup)
             }
-            .labelsHidden()
-            .pickerStyle(.radioGroup)
-            Divider().padding(.vertical, 4)
-            Toggle(L10n.string("Show window buttons"), isOn: $appearance.showsWindowButtons)
-                .toggleStyle(.switch)
-            Text(L10n.string("Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden."))
-                .font(.callout).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Divider().padding(.vertical, 4)
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(L10n.string("Window corner radius"))
-                    Spacer()
+            SettingsGap()
+            SettingsRow("Window buttons") {
+                Toggle(L10n.string("Show in the sidebar"), isOn: $appearance.showsWindowButtons)
+                    .toggleStyle(.checkbox)
+                SettingsNote("Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden.")
+            }
+            SettingsGap()
+            SettingsRow("Window corner radius") {
+                HStack(spacing: 10) {
+                    Slider(value: $appearance.windowCornerRadius,
+                           in: BrowserAppearanceSettings.cornerRadiusRange, step: 1) {
+                        Text(L10n.string("Window corner radius"))
+                    } minimumValueLabel: {
+                        Image(systemName: "square").imageScale(.small).foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                    } maximumValueLabel: {
+                        Image(systemName: "app").imageScale(.small).foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                    }
+                    .labelsHidden()
+                    .frame(width: 200)
                     Text("\(Int(appearance.windowCornerRadius)) pt")
-                        .monospacedDigit().foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 42, alignment: .trailing)
                     Button(L10n.string("Default")) {
                         appearance.windowCornerRadius = BrowserAppearanceSettings.defaultCornerRadius
                     }
-                    .controlSize(.small)
                     .disabled(appearance.windowCornerRadius == BrowserAppearanceSettings.defaultCornerRadius)
                 }
-                Slider(value: $appearance.windowCornerRadius,
-                       in: BrowserAppearanceSettings.cornerRadiusRange, step: 1) {
-                    Text(L10n.string("Window corner radius"))
-                } minimumValueLabel: {
-                    Image(systemName: "square").accessibilityHidden(true)
-                } maximumValueLabel: {
-                    Image(systemName: "app").accessibilityHidden(true)
-                }
-                .labelsHidden()
-                Text(L10n.string("How round the corners of browser windows are. Full screen always uses square corners."))
-                    .font(.callout).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                SettingsNote("How round the corners of browser windows are. Full screen always uses square corners.")
             }
-            Spacer()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(24)
     }
 }
 
@@ -116,23 +107,17 @@ private struct PasswordImportSettingsView: View {
     @Bindable var controller: BrowserPasswordController
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(L10n.string("Password Import")).font(.title2.weight(.semibold))
-            Text(L10n.string("Export passwords from Apple Passwords or Chrome, then choose the CSV file here."))
-                .fixedSize(horizontal: false, vertical: true)
-            Text(L10n.string("Passwords stay in your Mac’s keychain. Your Mac verifies you before import and filling."))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Button(L10n.string("Import Passwords…"), systemImage: "square.and.arrow.down",
-                   action: controller.presentImport)
-                .buttonStyle(.borderedProminent)
-            Spacer()
+        SettingsForm {
+            SettingsRow("Import") {
+                Button(L10n.string("Import Passwords…"), action: controller.presentImport)
+                SettingsNote("Export passwords from Apple Passwords or Chrome, then choose the CSV file here.")
+                SettingsNote("Passwords stay in your Mac’s keychain. Your Mac verifies you before import and filling.")
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(24)
         .sheet(isPresented: Binding(get: { controller.isPresented }, set: { if !$0 { controller.dismiss() } })) {
             BrowserPasswordsSheet(controller: controller)
         }
+        .onDisappear { controller.dismiss() }
     }
 }
 
@@ -140,40 +125,32 @@ private struct QuickAccessSettingsView: View {
     @Bindable var preferences: BrowserPreferences
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var editor: QuickLinkEditorItem?
+    @State private var hovered: UUID?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text(L10n.string("Quick Access")).font(.title2.weight(.semibold))
-                Spacer()
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L10n.string("Choose which websites appear when you press ⌘L."))
+                .foregroundStyle(.secondary)
+            SettingsListBox(height: 300) {
+                if preferences.quickLinks.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "square.grid.2x2").font(.title).foregroundStyle(.tertiary)
+                        Text(L10n.string("No Quick Access Websites")).font(.headline)
+                        Text(L10n.string("Add your favorite websites for quick access."))
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity).padding(.vertical, 90)
+                } else {
+                    ForEach(Array(preferences.quickLinks.enumerated()), id: \.element.id) { index, link in
+                        row(link, at: index)
+                        if index < preferences.quickLinks.count - 1 { Divider().padding(.leading, 48) }
+                    }
+                }
+            }
+            HStack(spacing: 8) {
                 Button { editor = QuickLinkEditorItem(link: nil) } label: {
                     Label(L10n.string("Add Website"), systemImage: "plus")
                 }
-            }
-            Text(L10n.string("Choose which websites appear when you press ⌘L."))
-                .foregroundStyle(.secondary)
-            ScrollView {
-                if preferences.quickLinks.isEmpty {
-                    VStack(spacing: 10) {
-                        Image(systemName: "square.grid.2x2").font(.largeTitle).foregroundStyle(.tertiary)
-                        Text(L10n.string("No Quick Access Websites")).font(.headline)
-                        Text(L10n.string("Add your favorite websites for quick access."))
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity).padding(.vertical, 40)
-                } else {
-                    VStack(spacing: 1) {
-                        ForEach(Array(preferences.quickLinks.enumerated()), id: \.element.id) { index, link in
-                            row(link, at: index)
-                            if index < preferences.quickLinks.count - 1 { Divider().padding(.leading, 44) }
-                        }
-                    }
-                    .padding(8)
-                    .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
-                }
-            }
-            .scrollIndicators(.hidden)
-            HStack {
                 Spacer()
                 Button(L10n.string("Restore Defaults")) {
                     withAnimation(reduceMotion ? nil : BrowserMotion.spring) {
@@ -182,35 +159,50 @@ private struct QuickAccessSettingsView: View {
                 }
             }
         }
-        .padding(24)
+        .padding(.horizontal, 32)
+        .padding(.top, 24)
+        .padding(.bottom, 28)
+        .frame(width: SettingsMetrics.width)
+        .fixedSize(horizontal: false, vertical: true)
         .sheet(item: $editor) { item in
             QuickLinkEditor(preferences: preferences, link: item.link)
         }
     }
 
     private func row(_ link: BrowserQuickLink, at index: Int) -> some View {
-        HStack(spacing: 12) {
+        let isHovered = hovered == link.id
+        return HStack(spacing: 12) {
             QuickLinkIcon(link: link).frame(width: 24, height: 24)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(link.title).font(.body.weight(.medium)).lineLimit(1)
-                Text(link.url.absoluteString).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(link.title).lineLimit(1)
+                Text(link.url.absoluteString).font(.callout).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 8)
-            rowButton("Move Up", symbol: "chevron.up") { move(link, offset: -1) }
-                .disabled(index == 0)
-            rowButton("Move Down", symbol: "chevron.down") { move(link, offset: 1) }
-                .disabled(index == preferences.quickLinks.count - 1)
-            rowButton("Edit Website", symbol: "pencil") { editor = QuickLinkEditorItem(link: link) }
-            rowButton("Remove", symbol: "minus.circle") {
-                withAnimation(reduceMotion ? nil : BrowserMotion.spring) { preferences.removeQuickLink(id: link.id) }
+            HStack(spacing: 2) {
+                rowButton("Move Up", symbol: "chevron.up") { move(link, offset: -1) }
+                    .disabled(index == 0)
+                rowButton("Move Down", symbol: "chevron.down") { move(link, offset: 1) }
+                    .disabled(index == preferences.quickLinks.count - 1)
+                rowButton("Edit Website", symbol: "pencil") { editor = QuickLinkEditorItem(link: link) }
+                rowButton("Remove", symbol: "minus.circle") {
+                    withAnimation(reduceMotion ? nil : BrowserMotion.spring) { preferences.removeQuickLink(id: link.id) }
+                }
             }
+            .opacity(isHovered ? 1 : 0.0001)
         }
-        .padding(8)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.primary.opacity(isHovered ? 0.04 : 0))
+        .contentShape(Rectangle())
+        .onHover { inside in
+            if inside { hovered = link.id } else if hovered == link.id { hovered = nil }
+        }
+        .onTapGesture(count: 2) { editor = QuickLinkEditorItem(link: link) }
     }
 
     private func rowButton(_ key: String, symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol).frame(width: 22, height: 26).contentShape(Rectangle())
+            Image(systemName: symbol).frame(width: 24, height: 24).contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
         .help(L10n.string(key))

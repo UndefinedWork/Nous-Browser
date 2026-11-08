@@ -437,3 +437,12 @@
 "Window corner radius" = "Radio de las esquinas de la ventana";
 "Default" = "Predeterminado";
 "How round the corners of browser windows are. Full screen always uses square corners." = "Cuánto se redondean las esquinas de las ventanas del navegador. En pantalla completa, las esquinas siempre son rectas.";
+"%@:" = "%@:";
+"Search engine" = "Motor de búsqueda";
+"Window buttons" = "Botones de ventana";
+"Show in the sidebar" = "Mostrar en la barra lateral";
+"Import" = "Importar";
+"Always active" = "Siempre activos";
+"Access" = "Acceso";
+"Status" = "Estado";
+"Connection" = "Conexión";

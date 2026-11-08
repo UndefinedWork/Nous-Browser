@@ -437,3 +437,12 @@
 "Window corner radius" = "Raio dos cantos da janela";
 "Default" = "Padrão";
 "How round the corners of browser windows are. Full screen always uses square corners." = "O quanto os cantos das janelas do navegador são arredondados. Em tela cheia, os cantos são sempre retos.";
+"%@:" = "%@:";
+"Search engine" = "Buscador";
+"Window buttons" = "Botões da janela";
+"Show in the sidebar" = "Mostrar na barra lateral";
+"Import" = "Importar";
+"Always active" = "Sempre ativos";
+"Access" = "Acesso";
+"Status" = "Status";
+"Connection" = "Conexão";

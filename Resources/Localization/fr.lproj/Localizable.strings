@@ -437,3 +437,12 @@
 "Window corner radius" = "Rayon des coins de fenêtre";
 "Default" = "Par défaut";
 "How round the corners of browser windows are. Full screen always uses square corners." = "Arrondi des coins des fenêtres du navigateur. En plein écran, les coins restent toujours carrés.";
+"%@:" = "%@ :";
+"Search engine" = "Moteur de recherche";
+"Window buttons" = "Boutons de fenêtre";
+"Show in the sidebar" = "Afficher dans la barre latérale";
+"Import" = "Importer";
+"Always active" = "Toujours actifs";
+"Access" = "Accès";
+"Status" = "État";
+"Connection" = "Connexion";

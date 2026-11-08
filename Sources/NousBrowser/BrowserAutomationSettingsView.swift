@@ -9,60 +9,65 @@ struct BrowserAutomationSettingsView: View {
     @State private var copyResetTask: Task<Void, Never>?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text(L10n.string("AI Agents (MCP)")).font(.title2.weight(.semibold))
-                Text(L10n.string("Connect trusted agents on this Mac using MCP."))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
+        SettingsForm {
+            SettingsRow("Access") {
                 Toggle(L10n.string("Allow AI agents to use Nous Browser"), isOn: Binding(
                     get: { service.isEnabled }, set: { service.setEnabled($0) }
                 ))
-                .toggleStyle(.switch)
-
-                Text(L10n.string("Agents can read and interact with your open webpages, including signed-in sites. Turn this off at any time to stop access."))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
+                .toggleStyle(.checkbox)
+                SettingsNote("Connect trusted agents on this Mac using MCP.")
+                SettingsNote("Agents can read and interact with your open webpages, including signed-in sites. Turn this off at any time to stop access.")
+            }
+            SettingsRow("Status") {
                 Label(statusTitle, systemImage: statusSymbol)
-                    .font(.callout)
-                    .foregroundStyle(service.statusMessage != nil ? Color.red : Color.secondary)
+                    .foregroundStyle(service.statusMessage != nil ? Color.red : Color.primary)
+                    .symbolRenderingMode(.hierarchical)
                     .accessibilityIdentifier("automationStatus")
-
-                HStack {
-                    Button(action: copyConfiguration) {
-                        Label(L10n.string(copied ? "Configuration Copied" : "Copy Connection Configuration"),
-                              systemImage: copied ? "checkmark" : "doc.on.doc")
-                            .contentTransition(.symbolEffect(.replace))
-                    }
-                    Spacer(minLength: 0)
+            }
+            SettingsGap()
+            SettingsRow("Connection") {
+                Button(action: copyConfiguration) {
+                    Label(L10n.string(copied ? "Configuration Copied" : "Copy Connection Configuration"),
+                          systemImage: copied ? "checkmark" : "doc.on.doc")
+                        .contentTransition(.symbolEffect(.replace))
                 }
-
-                DisclosureGroup(L10n.string("Connection Configuration"), isExpanded: $showsConfiguration) {
+                Button {
+                    withAnimation(reduceMotion ? nil : BrowserMotion.spring) { showsConfiguration.toggle() }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
+                            .rotationEffect(.degrees(showsConfiguration ? 90 : 0))
+                            .frame(width: 10)
+                        Text(L10n.string("Connection Configuration"))
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .accessibilityValue(L10n.string(showsConfiguration ? "Expanded" : "Collapsed"))
+                if showsConfiguration {
                     Text(service.connectionConfig)
                         .font(.system(.caption, design: .monospaced))
                         .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
-                        .padding(.top, 6)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(L10n.string("Recent Activity")).font(.caption.weight(.medium))
-                    Text(service.lastActivity ?? L10n.string("No agent activity yet."))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .frame(width: 340, alignment: .leading)
+                        .padding(10)
+                        .background(Color(nsColor: .controlBackgroundColor),
+                                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
+                        }
+                        .transition(.opacity)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(24)
+            SettingsRow("Recent Activity") {
+                Text(service.lastActivity ?? L10n.string("No agent activity yet."))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .frame(maxWidth: 360, alignment: .leading)
+            }
         }
-        .scrollIndicators(.hidden)
-        .animation(reduceMotion ? nil : BrowserMotion.spring, value: showsConfiguration)
         .animation(reduceMotion ? nil : BrowserMotion.spring, value: copied)
         .onDisappear { copyResetTask?.cancel() }
     }

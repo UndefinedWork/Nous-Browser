@@ -438,3 +438,12 @@
 "Window corner radius" = "윈도우 모서리 둥글기";
 "Default" = "기본값";
 "How round the corners of browser windows are. Full screen always uses square corners." = "브라우저 윈도우 모서리의 둥근 정도입니다. 전체 화면에서는 항상 직각입니다.";
+"%@:" = "%@:";
+"Search engine" = "검색 엔진";
+"Window buttons" = "윈도우 버튼";
+"Show in the sidebar" = "사이드바에 보기";
+"Import" = "가져오기";
+"Always active" = "항상 활성";
+"Access" = "접근";
+"Status" = "상태";
+"Connection" = "연결";

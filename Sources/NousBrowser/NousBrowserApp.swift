@@ -388,22 +388,16 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate {
         ChromiumDownloadCoordinator.shared.shutdown()
     }
 
-    private var settingsWindow: NSWindow?
+    private var settingsWindow: SettingsWindowController?
 
     @objc func showSettings(_ sender: Any?) {
         if settingsWindow == nil {
-            let view = BrowserSettingsView(preferences: windowManager.preferences,
-                                           appearance: windowManager.appearance,
-                                           passwordImporter: windowManager.passwordImporter,
-                                           automation: automation)
-            let window = NSWindow(contentViewController: NSHostingController(rootView: view))
-            window.title = L10n.string("Settings")
-            window.styleMask = [.titled, .closable, .miniaturizable]
-            window.isReleasedWhenClosed = false
-            window.center()
-            settingsWindow = window
+            settingsWindow = SettingsWindowController(panes: BrowserSettingsPanes.make(
+                preferences: windowManager.preferences, appearance: windowManager.appearance,
+                passwordImporter: windowManager.passwordImporter, automation: automation))
         }
-        settingsWindow?.makeKeyAndOrderFront(sender)
+        settingsWindow?.showWindow(sender)
+        settingsWindow?.window?.makeKeyAndOrderFront(sender)
         NSApp.activate()
     }
 

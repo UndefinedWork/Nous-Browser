@@ -437,3 +437,12 @@
 "Window corner radius" = "Raggio degli angoli della finestra";
 "Default" = "Predefinito";
 "How round the corners of browser windows are. Full screen always uses square corners." = "Quanto sono arrotondati gli angoli delle finestre del browser. A schermo intero gli angoli sono sempre squadrati.";
+"%@:" = "%@:";
+"Search engine" = "Motore di ricerca";
+"Window buttons" = "Pulsanti finestra";
+"Show in the sidebar" = "Mostra nella barra laterale";
+"Import" = "Importa";
+"Always active" = "Sempre attivi";
+"Access" = "Accesso";
+"Status" = "Stato";
+"Connection" = "Connessione";

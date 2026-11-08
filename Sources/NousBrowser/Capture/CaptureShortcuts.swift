@@ -279,27 +279,26 @@ struct CaptureShortcutsSettingsView: View {
     @State private var shortcuts = CaptureShortcuts.shared
 
     var body: some View {
-        Form {
-            Section {
-                ForEach(CaptureShortcuts.Action.allCases) { action in
-                    LabeledContent(action.title) {
-                        HStack(spacing: 6) {
-                            ShortcutRecorder(action: action)
-                            Button {
-                                withAnimation(BrowserMotion.interaction) { shortcuts.reset(action) }
-                            } label: { Image(systemName: "arrow.counterclockwise") }
-                                .buttonStyle(.borderless)
-                                .help(L10n.string("Reset"))
-                                .disabled(shortcuts.shortcut(action) == action.defaultShortcut)
-                        }
+        SettingsForm {
+            ForEach(CaptureShortcuts.Action.allCases) { action in
+                SettingsRow(action.title) {
+                    HStack(spacing: 6) {
+                        ShortcutRecorder(action: action)
+                        Button {
+                            withAnimation(BrowserMotion.interaction) { shortcuts.reset(action) }
+                        } label: { Image(systemName: "arrow.counterclockwise") }
+                            .buttonStyle(.borderless)
+                            .help(L10n.string("Reset"))
+                            .accessibilityLabel(L10n.string("Reset"))
+                            .opacity(shortcuts.shortcut(action) == action.defaultShortcut ? 0 : 1)
+                            .disabled(shortcuts.shortcut(action) == action.defaultShortcut)
                     }
                 }
-            } footer: {
-                Text(L10n.string("Screenshot and recording shortcuts work in any app."))
-                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            SettingsRow(nil) {
+                SettingsNote("Screenshot and recording shortcuts work in any app.")
             }
         }
-        .formStyle(.grouped)
     }
 }
 

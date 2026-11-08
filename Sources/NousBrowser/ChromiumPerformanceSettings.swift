@@ -47,92 +47,87 @@ struct ChromiumPerformanceSettingsView: View {
     private let titles = ["Off", "Moderate", "Balanced", "Maximum"]
 
     var body: some View {
-        ScrollView {
-          VStack(alignment: .leading, spacing: 16) {
-            Text(L10n.string("Memory Saver")).font(.title2.weight(.semibold))
-            Text(L10n.string("Free up memory from inactive tabs. They reload when you return to them."))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            if mode >= 0 { Picker(L10n.string("Memory Saver"), selection: Binding(
-                get: { mode },
-                set: { requested in
-                    updateFailed = !NBChromiumRuntime.setMemorySaverMode(requested)
-                    mode = NBChromiumRuntime.memorySaverMode()
-                }
-            )) {
-                ForEach(titles.indices, id: \.self) { value in
-                    Text(L10n.string(titles[value])).tag(value)
-                }
-            }
-            .labelsHidden()
-            .pickerStyle(.radioGroup)
-            } else { ProgressView().controlSize(.small) }
-            if updateFailed {
-                Text(L10n.string("The setting could not be changed. Try again."))
-                    .foregroundStyle(.red)
-            }
-            Divider().padding(.vertical, 4)
-            Text(L10n.string("Always keep these sites active")).font(.headline)
-            Text(L10n.string("These sites won't be deactivated by Memory Saver."))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            if sitesAvailable {
-                if canEditSites {
-                    HStack {
-                        TextField(L10n.string("Domain name (for example, example.com)"), text: $domain)
-                            .onSubmit(addSite)
-                        Button(L10n.string("Add"), action: addSite)
-                            .disabled(domain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                    Text(L10n.string("Subdomains are included."))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                if sites.isEmpty && managedSites.isEmpty {
-                    Text(L10n.string("No sites added.")).foregroundStyle(.secondary)
-                }
-                ForEach(sites, id: \.self) { rule in
-                    HStack {
-                        Text(verbatim: rule).textSelection(.enabled)
-                        Spacer()
-                        if canEditSites {
-                            Button { removeSite(rule) } label: {
-                                Image(systemName: "minus.circle")
-                            }
-                            .buttonStyle(.borderless)
-                            .help(L10n.string("Remove"))
-                            .accessibilityLabel(L10n.string("Remove") + " " + rule)
+        SettingsForm {
+            SettingsRow("Memory Saver") {
+                if mode >= 0 {
+                    Picker(L10n.string("Memory Saver"), selection: Binding(
+                        get: { mode },
+                        set: { requested in
+                            updateFailed = !NBChromiumRuntime.setMemorySaverMode(requested)
+                            mode = NBChromiumRuntime.memorySaverMode()
+                        }
+                    )) {
+                        ForEach(titles.indices, id: \.self) { value in
+                            Text(L10n.string(titles[value])).tag(value)
                         }
                     }
+                    .labelsHidden()
+                    .pickerStyle(.radioGroup)
+                } else {
+                    ProgressView().controlSize(.small)
                 }
-                ForEach(managedSites, id: \.self) { rule in
-                    HStack {
-                        Text(verbatim: rule).textSelection(.enabled)
-                        Spacer()
-                        Image(systemName: "lock")
-                            .foregroundStyle(.secondary)
-                            .help(L10n.string("Managed by your organization."))
+                SettingsNote("Free up memory from inactive tabs. They reload when you return to them.")
+                if updateFailed {
+                    Text(L10n.string("The setting could not be changed. Try again.")).font(.callout).foregroundStyle(.red)
+                }
+            }
+            SettingsGap()
+            SettingsRow("Always active") {
+                if sitesAvailable {
+                    SettingsListBox(height: 112) {
+                        if sites.isEmpty && managedSites.isEmpty {
+                            Text(L10n.string("No sites added."))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity).padding(.vertical, 44)
+                        }
+                        ForEach(sites, id: \.self) { rule in siteRow(rule, managed: false) }
+                        ForEach(managedSites, id: \.self) { rule in siteRow(rule, managed: true) }
                     }
+                    .frame(width: 320)
+                    if canEditSites {
+                        HStack(spacing: 8) {
+                            TextField(L10n.string("Domain name (for example, example.com)"), text: $domain)
+                                .onSubmit(addSite)
+                            Button(L10n.string("Add"), action: addSite)
+                                .disabled(domain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                        .frame(width: 320)
+                    }
+                    if let siteError {
+                        Text(L10n.string(siteError)).font(.callout).foregroundStyle(.red)
+                    }
+                    SettingsNote("These sites won't be deactivated by Memory Saver.")
+                    if canEditSites { SettingsNote("Subdomains are included.") }
+                    if !canEditSites || !managedSites.isEmpty { SettingsNote("Managed by your organization.") }
+                } else {
+                    Text(L10n.string("This setting is unavailable.")).foregroundStyle(.secondary)
                 }
-                if !canEditSites || !managedSites.isEmpty {
-                    Text(L10n.string("Managed by your organization."))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            } else {
-                Text(L10n.string("This setting is unavailable."))
-                    .foregroundStyle(.secondary)
             }
-            if let siteError {
-                Text(L10n.string(siteError)).foregroundStyle(.red)
-            }
-          }
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(24)
         }
-        .scrollIndicators(.hidden)
         .onAppear {
             mode = NBChromiumRuntime.memorySaverMode()
             reloadSites()
         }
+    }
+
+    private func siteRow(_ rule: String, managed: Bool) -> some View {
+        HStack {
+            Text(verbatim: rule).textSelection(.enabled).lineLimit(1)
+            Spacer()
+            if managed {
+                Image(systemName: "lock")
+                    .foregroundStyle(.secondary)
+                    .help(L10n.string("Managed by your organization."))
+            } else if canEditSites {
+                Button { removeSite(rule) } label: { Image(systemName: "minus.circle") }
+                    .buttonStyle(.borderless)
+                    .help(L10n.string("Remove"))
+                    .accessibilityLabel(L10n.string("Remove") + " " + rule)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .overlay(alignment: .bottom) { Divider().padding(.leading, 10) }
     }
 
     private func reloadSites() {

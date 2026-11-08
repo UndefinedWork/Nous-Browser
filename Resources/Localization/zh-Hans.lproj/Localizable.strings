@@ -438,3 +438,12 @@
 "Window corner radius" = "窗口圆角";
 "Default" = "默认";
 "How round the corners of browser windows are. Full screen always uses square corners." = "浏览器窗口四角的圆润程度。全屏时始终为直角。";
+"%@:" = "%@：";
+"Search engine" = "搜索引擎";
+"Window buttons" = "窗口按钮";
+"Show in the sidebar" = "在侧边栏中显示";
+"Import" = "导入";
+"Always active" = "始终保持活跃";
+"Access" = "访问权限";
+"Status" = "状态";
+"Connection" = "连接";

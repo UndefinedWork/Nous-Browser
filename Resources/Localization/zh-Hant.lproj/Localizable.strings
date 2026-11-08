@@ -438,3 +438,12 @@
 "Window corner radius" = "視窗圓角";
 "Default" = "預設";
 "How round the corners of browser windows are. Full screen always uses square corners." = "瀏覽器視窗四角的圓潤程度。全螢幕時一律為直角。";
+"%@:" = "%@：";
+"Search engine" = "搜尋引擎";
+"Window buttons" = "視窗按鈕";
+"Show in the sidebar" = "在側邊欄中顯示";
+"Import" = "匯入";
+"Always active" = "一律保持活躍";
+"Access" = "存取權限";
+"Status" = "狀態";
+"Connection" = "連線";
