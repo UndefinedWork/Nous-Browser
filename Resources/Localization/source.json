@@ -403,7 +403,12 @@
     "Always active",
     "Access",
     "Status",
-    "Connection"
+    "Connection",
+    "Back to Page",
+    "Back 10 Seconds",
+    "Forward 10 Seconds",
+    "Play",
+    "Pause"
   ],
   "infoPlist": {
     "NSCameraUsageDescription": "Allow camera access on websites you authorize, such as video meetings.",

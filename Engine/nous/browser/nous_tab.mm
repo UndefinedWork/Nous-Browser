@@ -7,6 +7,8 @@
 
 #import "nous/public/NousChromium.h"
 
+#include <algorithm>
+#include <cmath>
 #include <map>
 #include <memory>
 #include <string>
@@ -21,6 +23,7 @@
 #include "base/no_destructor.h"
 #include "base/observer_list.h"
 #include "base/strings/sys_string_conversions.h"
+#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/printing/print_view_manager_common.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/permission_bubble/permission_prompt.h"
@@ -47,6 +50,7 @@
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/video_picture_in_picture_window_controller.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_delegate.h"
 #include "content/public/browser/web_contents_observer.h"
@@ -59,6 +63,9 @@
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/image/image.h"
+#include "ui/views/widget/widget.h"
+#include "nous/common/nous_embedder.h"
+#import "nous/public/NBPictureInPicture.h"
 #include "url/gurl.h"
 #include "url/url_constants.h"
 
@@ -168,6 +175,8 @@ void NousTabHelpersAttacher::Attach(content::WebContents* contents) {
 }
 
 // ---------------------------------------------------------------------------
+static void NousInstallPictureInPictureHooks();
+
 // NousTab: WebContentsDelegate + observers for one page.
 
 class NousTab final : public content::WebContentsDelegate,
@@ -337,6 +346,14 @@ class NousTab final : public content::WebContentsDelegate,
     [view_ pageFullscreenChanged:NO];
   }
   bool IsFullscreenForTabOrPending(const content::WebContents*) override { return fullscreen_; }
+
+  content::PictureInPictureResult EnterPictureInPicture(content::WebContents* web_contents) override {
+    NousInstallPictureInPictureHooks();
+    return PictureInPictureWindowManager::GetInstance()->EnterVideoPictureInPicture(web_contents);
+  }
+  void ExitPictureInPicture() override {
+    PictureInPictureWindowManager::GetInstance()->ExitPictureInPicture();
+  }
 
   void FindReply(content::WebContents* web_contents, int request_id, int number_of_matches,
                  const gfx::Rect& selection_rect, int active_match_ordinal, bool final_update) override {
@@ -1213,3 +1230,147 @@ void CloseAllTabs() {
   if (completion) completion(NO);
 }
 @end
+
+// MARK: - Picture-in-Picture
+
+@interface NBPictureInPictureSession ()
+- (instancetype)initWithWidget:(views::Widget*)widget
+                    controller:(content::VideoPictureInPictureWindowController*)controller;
+- (void)setPlaybackState:(int)state;
+- (void)setDuration:(double)duration position:(double)position rate:(double)rate;
+- (void)invalidate;
+@end
+
+@implementation NBPictureInPictureSession {
+  raw_ptr<views::Widget> _widget;
+  raw_ptr<content::VideoPictureInPictureWindowController> _controller;
+}
+
+- (instancetype)initWithWidget:(views::Widget*)widget
+                    controller:(content::VideoPictureInPictureWindowController*)controller {
+  if ((self = [super init])) {
+    _widget = widget;
+    _controller = controller;
+    _window = widget->GetNativeWindow().GetNativeNSWindow();
+    if (NousTab* tab = NousTab::From(controller->GetWebContents())) _sourceView = tab->view();
+    _playing = YES;
+    _playbackRate = 1;
+    _positionDate = [NSDate date];
+  }
+  return self;
+}
+
+- (void)notify {
+  if (_updateHandler) _updateHandler(self);
+}
+
+- (void)setPlaybackState:(int)state {
+  // Freeze the position where it was, then advance from there at the new rate.
+  NSDate* now = [NSDate date];
+  if (_playing && _playbackRate > 0)
+    _position += [now timeIntervalSinceDate:_positionDate] * _playbackRate;
+  _positionDate = now;
+  _playing = state == 0;
+  _ended = state == 2;
+  [self notify];
+}
+
+- (void)setDuration:(double)duration position:(double)position rate:(double)rate {
+  _duration = duration;
+  _position = position;
+  _playbackRate = rate;
+  _positionDate = [NSDate date];
+  [self notify];
+}
+
+- (void)invalidate {
+  if (_closed) return;
+  _closed = YES;
+  _widget = nullptr;
+  _controller = nullptr;
+  void (^handler)(NBPictureInPictureSession*) = _closeHandler;
+  _updateHandler = nil;
+  _closeHandler = nil;
+  if (handler) handler(self);
+}
+
+- (void)togglePlayPause {
+  if (_controller) _controller->TogglePlayPause();
+}
+
+- (void)seekTo:(NSTimeInterval)seconds {
+  if (!_controller) return;
+  double target = std::max(0.0, seconds);
+  if (_duration > 0 && std::isfinite(_duration)) target = std::min(target, _duration);
+  _controller->SeekTo(base::Seconds(target));
+  _position = target;
+  _positionDate = [NSDate date];
+  [self notify];
+}
+
+- (void)close {
+  if (_controller) _controller->Close(/*should_pause_video=*/true);
+}
+
+- (void)returnToPage {
+  if (_controller) _controller->CloseAndFocusInitiator();
+}
+@end
+
+@implementation NBPictureInPictureCenter {
+  NSMutableDictionary<NSValue*, NBPictureInPictureSession*>* _sessions;
+}
+
++ (instancetype)sharedCenter {
+  static NBPictureInPictureCenter* center = [[NBPictureInPictureCenter alloc] init];
+  return center;
+}
+
+- (instancetype)init {
+  if ((self = [super init])) {
+    _sessions = [NSMutableDictionary dictionary];
+    NousInstallPictureInPictureHooks();
+  }
+  return self;
+}
+
+- (NBPictureInPictureSession*)sessionFor:(void*)window {
+  return _sessions[[NSValue valueWithPointer:window]];
+}
+
+- (void)shown:(void*)window controller:(void*)controller {
+  if ([self sessionFor:window]) return;
+  auto* session = [[NBPictureInPictureSession alloc]
+      initWithWidget:static_cast<views::Widget*>(window)
+          controller:static_cast<content::VideoPictureInPictureWindowController*>(controller)];
+  _sessions[[NSValue valueWithPointer:window]] = session;
+  if (_sessionHandler) _sessionHandler(session);
+}
+
+- (void)destroyed:(void*)window {
+  NSValue* key = [NSValue valueWithPointer:window];
+  NBPictureInPictureSession* session = _sessions[key];
+  [_sessions removeObjectForKey:key];
+  [session invalidate];
+}
+@end
+
+static void NousInstallPictureInPictureHooks() {
+  static bool installed = false;
+  if (installed) return;
+  installed = true;
+  nous::PictureInPictureHooks hooks;
+  hooks.shown = [](void* window, void* controller) {
+    [[NBPictureInPictureCenter sharedCenter] shown:window controller:controller];
+  };
+  hooks.playback_state = [](void* window, int state) {
+    [[[NBPictureInPictureCenter sharedCenter] sessionFor:window] setPlaybackState:state];
+  };
+  hooks.media_position = [](void* window, double duration, double position, double rate) {
+    [[[NBPictureInPictureCenter sharedCenter] sessionFor:window] setDuration:duration position:position rate:rate];
+  };
+  hooks.destroyed = [](void* window) {
+    [[NBPictureInPictureCenter sharedCenter] destroyed:window];
+  };
+  nous::SetPictureInPictureHooks(hooks);
+}

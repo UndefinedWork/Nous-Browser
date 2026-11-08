@@ -295,6 +295,10 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         BrowserServiceMenuFilter.install()
         ChromiumDownloadCoordinator.shared.start()
+        PictureInPicturePlayer.shared.start()
+        PictureInPicturePlayer.shared.revealPage = { [weak self] view in
+            self?.windowManager.revealPage(view)
+        }
         windowManager.appearance.apply()
         windowManager.restoreWindows()
         NBChromiumRuntime.setTerminationHandler { [weak self] in

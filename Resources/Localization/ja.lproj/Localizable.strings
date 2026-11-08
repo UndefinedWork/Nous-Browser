@@ -447,3 +447,8 @@
 "Access" = "アクセス";
 "Status" = "状況";
 "Connection" = "接続";
+"Back to Page" = "ページに戻る";
+"Back 10 Seconds" = "10秒戻る";
+"Forward 10 Seconds" = "10秒進む";
+"Play" = "再生";
+"Pause" = "一時停止";

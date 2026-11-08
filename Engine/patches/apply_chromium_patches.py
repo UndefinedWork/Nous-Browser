@@ -354,3 +354,46 @@ edit(F15, '''    if (show_open_link_off_the_record) {
       if (features::IsMenuSimplificationEnabled()) {''')
 
 print('Nous Core Chromium patches are applied.')
+
+
+# 18. Video Picture-in-Picture: Chromium's overlay window renders the video;
+#     the host draws Liquid Glass controls over it, so Chromium's own controls
+#     and title stay hidden and the host hears about state and position.
+VOW = 'chrome/browser/ui/views/overlay/video_overlay_window_views.cc'
+include_after(VOW, '#include "chrome/browser/ui/views/overlay/video_overlay_window_views.h"', EMBEDDER.rstrip('\n'))
+edit(VOW, '''  PictureInPictureWindowManager::GetInstance()->OnPictureInPictureWindowShown(
+      this);
+}''', '''  PictureInPictureWindowManager::GetInstance()->OnPictureInPictureWindowShown(
+      this);
+  if (nous::IsEmbedded()) {
+    ForceControlsVisibleForTesting(false, false);
+    if (auto shown = nous::GetPictureInPictureHooks().shown) {
+      shown(static_cast<views::Widget*>(this), controller_);
+    }
+  }
+}''')
+edit(VOW, '''  playback_state_for_testing_ = playback_state;
+  play_pause_controls_view_->SetPlaybackState(playback_state);
+}''', '''  playback_state_for_testing_ = playback_state;
+  play_pause_controls_view_->SetPlaybackState(playback_state);
+  if (auto state = nous::GetPictureInPictureHooks().playback_state) {
+    state(static_cast<views::Widget*>(this), static_cast<int>(playback_state));
+  }
+}''')
+edit(VOW, '''  position_ = position;
+  progress_view_->UpdateProgress(position);
+  UpdateTimestampLabel(position_.GetPosition(), position_.duration());
+}''', '''  position_ = position;
+  progress_view_->UpdateProgress(position);
+  UpdateTimestampLabel(position_.GetPosition(), position_.duration());
+  if (auto update = nous::GetPictureInPictureHooks().media_position) {
+    update(static_cast<views::Widget*>(this), position_.duration().InSecondsF(),
+           position_.GetPosition().InSecondsF(), position_.playback_rate());
+  }
+}''')
+edit(VOW, '''void VideoOverlayWindowViews::OnNativeWidgetDestroying() {
+  views::Widget::OnNativeWidgetDestroying();''', '''void VideoOverlayWindowViews::OnNativeWidgetDestroying() {
+  if (auto destroyed = nous::GetPictureInPictureHooks().destroyed) {
+    destroyed(static_cast<views::Widget*>(this));
+  }
+  views::Widget::OnNativeWidgetDestroying();''')

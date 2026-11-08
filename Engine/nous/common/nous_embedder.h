@@ -49,6 +49,21 @@ using PermissionPromptFactory =
 void SetPermissionPromptFactory(PermissionPromptFactory factory);
 PermissionPromptFactory GetPermissionPromptFactory();
 
+// Video Picture-in-Picture: Chromium's overlay window draws the video, the
+// host draws the controls over it. `window` is the overlay's views::Widget*,
+// `controller` its content::VideoPictureInPictureWindowController*. Both stay
+// valid until `destroyed` runs for that window.
+struct PictureInPictureHooks {
+  void (*shown)(void* window, void* controller) = nullptr;
+  // 0 playing, 1 paused, 2 ended (content::VideoOverlayWindow::PlaybackState).
+  void (*playback_state)(void* window, int state) = nullptr;
+  // Seconds; duration is 0 when unknown and infinite for live streams.
+  void (*media_position)(void* window, double duration, double position, double rate) = nullptr;
+  void (*destroyed)(void* window) = nullptr;
+};
+void SetPictureInPictureHooks(const PictureInPictureHooks& hooks);
+const PictureInPictureHooks& GetPictureInPictureHooks();
+
 }  // namespace nous
 
 #endif  // NOUS_COMMON_NOUS_EMBEDDER_H_

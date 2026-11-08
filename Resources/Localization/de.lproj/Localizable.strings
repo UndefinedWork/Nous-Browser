@@ -446,3 +446,8 @@
 "Access" = "Zugriff";
 "Status" = "Status";
 "Connection" = "Verbindung";
+"Back to Page" = "Zurück zur Seite";
+"Back 10 Seconds" = "10 Sekunden zurück";
+"Forward 10 Seconds" = "10 Sekunden vor";
+"Play" = "Wiedergeben";
+"Pause" = "Pause";

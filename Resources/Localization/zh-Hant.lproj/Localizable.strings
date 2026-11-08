@@ -447,3 +447,8 @@
 "Access" = "存取權限";
 "Status" = "狀態";
 "Connection" = "連線";
+"Back to Page" = "返回網頁";
+"Back 10 Seconds" = "倒退 10 秒";
+"Forward 10 Seconds" = "快轉 10 秒";
+"Play" = "播放";
+"Pause" = "暫停";

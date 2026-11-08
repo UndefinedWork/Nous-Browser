@@ -447,3 +447,8 @@
 "Access" = "访问权限";
 "Status" = "状态";
 "Connection" = "连接";
+"Back to Page" = "返回网页";
+"Back 10 Seconds" = "后退 10 秒";
+"Forward 10 Seconds" = "前进 10 秒";
+"Play" = "播放";
+"Pause" = "暂停";

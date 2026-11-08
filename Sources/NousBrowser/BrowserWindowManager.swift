@@ -222,6 +222,17 @@ final class BrowserWindowManager {
         else { newWindow() }
     }
 
+    /// Picture-in-Picture's "back to page": select the video's tab and bring
+    /// its window forward.
+    func revealPage(_ view: NSView) {
+        guard let context = windows.first(where: { context in
+            context.controller.model.tabs.contains { $0.webView === view }
+        }), let tab = context.controller.model.tabs.first(where: { $0.webView === view }) else { return }
+        context.controller.model.selectTab(tab.id)
+        activate(context)
+        NSApp.activate()
+    }
+
     func showWindow() {
         guard !isTerminating else { return }
         if !didRestoreWindows { restoreWindows() }

@@ -447,3 +447,8 @@
 "Access" = "접근";
 "Status" = "상태";
 "Connection" = "연결";
+"Back to Page" = "페이지로 돌아가기";
+"Back 10 Seconds" = "10초 뒤로";
+"Forward 10 Seconds" = "10초 앞으로";
+"Play" = "재생";
+"Pause" = "일시 정지";

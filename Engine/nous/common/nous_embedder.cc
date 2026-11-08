@@ -7,6 +7,7 @@ BrowserStartedHook g_browser_started = nullptr;
 TerminateRequestHook g_terminate_request = nullptr;
 MainLoopEndedHook g_main_loop_ended = nullptr;
 PermissionPromptFactory g_permission_prompt_factory = nullptr;
+PictureInPictureHooks g_picture_in_picture_hooks;
 }  // namespace
 
 bool IsEmbedded() { return g_embedded; }
@@ -34,6 +35,13 @@ void SetPermissionPromptFactory(PermissionPromptFactory factory) {
 }
 PermissionPromptFactory GetPermissionPromptFactory() {
   return g_permission_prompt_factory;
+}
+
+void SetPictureInPictureHooks(const PictureInPictureHooks& hooks) {
+  g_picture_in_picture_hooks = hooks;
+}
+const PictureInPictureHooks& GetPictureInPictureHooks() {
+  return g_picture_in_picture_hooks;
 }
 
 }  // namespace nous

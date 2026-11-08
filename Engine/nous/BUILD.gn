@@ -24,6 +24,7 @@ source_set("browser") {
     "browser/nous_internal.h",
     "browser/nous_tab.mm",
     "public/NBChromiumDownloads.h",
+    "public/NBPictureInPicture.h",
     "public/NousBrowserApplication.h",
     "public/NousChromium.h",
     "public/NousCore.h",
@@ -34,6 +35,7 @@ source_set("browser") {
     "//base",
     "//chrome/browser",
     "//chrome/browser/download",
+    "//chrome/browser/picture_in_picture",
     "//chrome/browser/printing",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/ui",
@@ -51,7 +53,9 @@ source_set("browser") {
     "//crypto",
     "//net",
     "//third_party/blink/public/common",
+    "//services/media_session/public/cpp",
     "//ui/gfx",
+    "//ui/views",
     "//url",
   ]
   frameworks = [
