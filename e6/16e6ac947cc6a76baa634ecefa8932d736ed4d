@@ -1,0 +1,31 @@
+OfficialSite/index.html
+  s_a868a580eb8a06::t_b77187d37490e0 8
+OfficialSite/demo.css
+  s_4d4351e7c15656::t_585727e0b87792 153
+OfficialSite/sites.js
+  s_4d4351e7c15656::t_585727e0b87792 344
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e616e6ac947cc6a76baa634ecefa8932d736ed4d",
+  "prompts": {},
+  "sessions": {
+    "s_4d4351e7c15656": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "92c7b51b-a64b-431c-9c86-ea6ddc60602b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    },
+    "s_a868a580eb8a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1919a1c-2b86-4a7e-9b4f-767da074be83",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
