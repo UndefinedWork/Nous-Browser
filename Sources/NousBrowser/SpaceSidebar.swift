@@ -59,11 +59,15 @@ struct SidebarDragState: Equatable {
     /// drag gesture is running (SwiftUI would end the gesture with the view).
     var origin: SidebarDropTarget? = nil
 
-    /// The drop changes which group holds the tab: show an insertion mark
-    /// instead of moving the row.
+    /// The drop moves the item to another container (another group, in or
+    /// out of a group, between pins and the list). Its view would be rebuilt
+    /// there mid-drag, ending the gesture and leaving the drag stuck, so the
+    /// list stays put and shows an insertion mark instead.
     var changesContainer: Bool {
-        guard case .tab = item, let origin else { return false }
-        return target.groupID != origin.groupID && target.section == origin.section
+        guard let origin else { return false }
+        if target.section != origin.section { return true }
+        if case .tab = item { return target.groupID != origin.groupID }
+        return false
     }
 }
 
@@ -119,7 +123,7 @@ struct BrowserSidebar: View {
             .background {
                 SidebarDragCancellationMonitor(isEnabled: drag != nil, canCancel: drag != nil,
                                                onCancel: { cancelDrag() }, windowReference: dragWindow,
-                                               onPointerRelease: { _ in }, onPointerPress: {})
+                                               onPointerRelease: { _ in finishStrandedDrag() }, onPointerPress: {})
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .allowsHitTesting(false)
                 SidebarTooltipDismissalMonitor(isEnabled: tooltip.isTracking, dismiss: tooltip.dismiss)
@@ -320,6 +324,22 @@ struct BrowserSidebar: View {
         }
     }
 
+    /// Safety net: if SwiftUI dropped the drag gesture (its view was rebuilt),
+    /// releasing the mouse still completes the drop instead of leaving the
+    /// floating row stuck on screen.
+    private func finishStrandedDrag() {
+        DispatchQueue.main.async {
+            guard let state = drag, !state.isOutside else { return }
+            springLoad?.cancel()
+            springLoad = nil
+            NSCursor.arrow.set()
+            withAnimation(reduceMotion ? nil : BrowserMotion.spring) {
+                model.move(state.item, to: state.target, in: state.space)
+                drag = nil
+            }
+        }
+    }
+
     private func cancelDrag() {
         springLoad?.cancel()
         springLoad = nil
@@ -497,18 +517,42 @@ private struct SpaceColumn: View {
         let tiles = layout.pinned.filter { $0.group == nil }.map(\.id)
         let folders = layout.pinned.compactMap(\.group)
         VStack(spacing: 1) {
+            let pinning = if let drag, drag.space == space, drag.changesContainer, case .tab = drag.item,
+                             drag.target.section == .pinned, drag.target.groupID == nil { true } else { false }
+            let folderInsertion: Int? = if let drag, drag.space == space, drag.changesContainer, case .group = drag.item,
+                                           drag.target.section == .pinned { drag.target.index - tiles.count } else { nil }
             if !tiles.isEmpty {
                 PinnedGrid(controller: controller, space: space, ids: tiles, compact: compact,
                            draggedID: drag?.space == space ? drag?.item.id : nil, actions: actions)
+                    .background {
+                        RoundedRectangle(cornerRadius: SidebarMetrics.tileHeight / 2 + 4, style: .continuous)
+                            .fill(Color.accentColor.opacity(pinning ? 0.12 : 0))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: SidebarMetrics.tileHeight / 2 + 4, style: .continuous)
+                                    .strokeBorder(Color.accentColor.opacity(pinning ? 0.45 : 0), lineWidth: 1)
+                            }
+                            .padding(-4)
+                    }
+                    .animation(reduceMotion ? nil : BrowserMotion.interaction, value: pinning)
                     .padding(.bottom, folders.isEmpty ? 0 : 6)
             } else if isDraggingTab, !compact {
                 Label(L10n.string("Drop to Pin"), systemImage: "pin")
-                    .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                    .font(.system(size: 11, weight: .medium)).foregroundStyle(pinning ? Color.accentColor : .secondary)
                     .frame(maxWidth: .infinity).frame(height: SidebarMetrics.tileHeight)
-                    .background(Capsule().strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundStyle(.secondary.opacity(0.5)))
+                    .background(Capsule().fill(Color.accentColor.opacity(pinning ? 0.12 : 0)))
+                    .background(Capsule().strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                        .foregroundStyle(pinning ? Color.accentColor : .secondary.opacity(0.5)))
                     .transition(.scale(scale: 0.9).combined(with: .opacity))
             }
-            ForEach(folders) { group in folder(group, section: .pinned) }
+            ForEach(Array(folders.enumerated()), id: \.element.id) { index, group in
+                folder(group, section: .pinned)
+                    .overlay(alignment: .top) {
+                        if folderInsertion == index { insertionMark.offset(y: -3) }
+                    }
+                    .overlay(alignment: .bottom) {
+                        if folderInsertion == folders.count, index == folders.count - 1 { insertionMark.offset(y: 3) }
+                    }
+            }
             if !layout.pinned.isEmpty, !layout.regular.isEmpty || compact {
                 if compact {
                     Capsule().fill(Color.primary.opacity(0.12)).frame(width: 20, height: 1).padding(.vertical, 8)

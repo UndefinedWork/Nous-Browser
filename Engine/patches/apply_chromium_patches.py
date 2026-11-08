@@ -290,4 +290,28 @@ edit('chrome/browser/notifications/mac/mac_notification_provider_factory.cc', ''
 include_after('chrome/browser/notifications/mac/mac_notification_provider_factory.cc',
               '#include "chrome/browser/notifications/mac/mac_notification_provider_factory.h"\n', EMBEDDER)
 
+# 14. Page context menus: Chrome shows them only for a views::Widget window.
+#     Nous windows are plain AppKit windows, so right-click showed nothing.
+F14 = 'chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.mm'
+include_after(F14, '#include "chrome/browser/ui/cocoa/renderer_context_menu/render_view_context_menu_mac_cocoa.h"\n', EMBEDDER)
+edit(F14, '''  if (!widget || headless::IsHeadlessMode()) {
+    return;
+  }
+
+  menu_controller_delegate_ = [[MenuControllerCocoaDelegateImpl alloc]
+      initWithParams:MenuControllerParamsForWidget(widget)];''', '''  if ((!widget && !nous::IsEmbedded()) || headless::IsHeadlessMode()) {
+    return;
+  }
+
+  if (widget) {
+    menu_controller_delegate_ = [[MenuControllerCocoaDelegateImpl alloc]
+        initWithParams:MenuControllerParamsForWidget(widget)];
+  }''')
+edit(F14, '''  ui::ShowContextMenu(menu_controller_.menu, clickEvent, parent_view_,
+                      /*allow_nested_tasks=*/true,
+                      views::ElementTrackerViews::GetContextForWidget(widget));''', '''  ui::ShowContextMenu(menu_controller_.menu, clickEvent, parent_view_,
+                      /*allow_nested_tasks=*/true,
+                      widget ? views::ElementTrackerViews::GetContextForWidget(widget)
+                             : ui::ElementContext());''')
+
 print('Nous Core Chromium patches are applied.')

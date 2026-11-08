@@ -16,6 +16,8 @@
 #include "base/values.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/lifetime/application_lifetime_desktop.h"
+#include "chrome/browser/prefs/incognito_mode_prefs.h"
+#include "components/policy/core/common/policy_pref_names.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "components/keep_alive_registry/keep_alive_types.h"
@@ -195,6 +197,10 @@ static void MainLoopEndedHook() {
   g_profile = profile;
   LOG_IF(ERROR, !profile) << "Nous: the default Chromium profile could not be loaded.";
   if (profile) nous::InstallDownloadDelegate(profile);
+  // Nous has no private windows; hide Chromium's "Open Link in Incognito
+  // Window" (it did nothing) from page context menus.
+  if (profile)
+    IncognitoModePrefs::SetAvailability(profile->GetPrefs(), policy::IncognitoModeAvailability::kDisabled);
   nous::InstallTabServices();
   [self.delegate browserApplicationDidInitialize:self];
 }

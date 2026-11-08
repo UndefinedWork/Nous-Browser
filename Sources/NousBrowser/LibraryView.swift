@@ -12,14 +12,26 @@ struct LibraryView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var library: LibraryStore { .shared }
 
+    @State private var contentWidth: CGFloat = 900
+
+    /// Header and content share one centred column, so the title, the tabs,
+    /// the search field and every "Show All" line up on the same edges.
+    private static let columnWidth: CGFloat = 1100
+    private static let columnPadding: CGFloat = 32
+
     var body: some View {
         VStack(spacing: 0) {
             header
+                .padding(.horizontal, Self.columnPadding)
+                .frame(maxWidth: Self.columnWidth)
+                .frame(maxWidth: .infinity)
             ScrollView {
                 content
-                    .padding(.horizontal, 32)
+                    .padding(.horizontal, Self.columnPadding)
+                    .padding(.top, 10)
                     .padding(.bottom, 40)
-                    .frame(maxWidth: 1100)
+                    .frame(maxWidth: Self.columnWidth)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width - Self.columnPadding * 2 } action: { contentWidth = $0 }
                     .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.hidden)
@@ -35,62 +47,88 @@ struct LibraryView: View {
 
     // MARK: Header
 
+    /// One row when everything fits; otherwise the tabs move to a second row
+    /// (scrolling sideways if they still do not fit) and the search field narrows.
     private var header: some View {
-        HStack(spacing: 14) {
-            Text(L10n.string("Library"))
-                .font(.custom("InstrumentSerif-Regular", size: 28))
-                .fixedSize()
-                .layoutPriority(2)
-            GlassEffectContainer(spacing: 4) {
-                HStack(spacing: 2) {
-                    ForEach(LibrarySection.allCases) { item in
-                        Button { withAnimation(reduceMotion ? nil : BrowserMotion.interaction) { open(item) } } label: {
-                            HStack(spacing: 5) {
-                                Text(item.title).font(.system(size: 12, weight: .medium)).fixedSize()
-                                if item == .updates, BrowserUpdater.shared.showsButton {
-                                    Circle().fill(Color.accentColor).frame(width: 6, height: 6)
-                                }
-                                if item == .downloads, ChromiumDownloadCoordinator.shared.hasActiveDownloads {
-                                    ProgressView().controlSize(.mini)
-                                }
-                            }
-                            .padding(.horizontal, 11).frame(height: 28)
-                            .foregroundStyle(section == item ? Color.primary : Color.secondary)
-                            .background {
-                                if section == item {
-                                    Capsule().fill(Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.09))
-                                        .matchedGeometryEffect(id: "pill", in: pills)
-                                }
-                            }
-                            .contentShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(3)
-                .glassEffect(.regular, in: Capsule())
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) {
+                title
+                tabs
+                Spacer(minLength: 16)
+                actions(searchWidth: 200)
             }
-            .layoutPriority(1)
-            Spacer(minLength: 8)
-            if section == .history || section == .all {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    title
+                    Spacer(minLength: 12)
+                    actions(searchWidth: 150)
+                }
+                ScrollView(.horizontal) { tabs.padding(.vertical, 2) }
+                    .scrollIndicators(.hidden)
+                    .scrollClipDisabled()
+            }
+        }
+        .padding(.top, 22)
+        .padding(.bottom, 16)
+    }
+
+    private var title: some View {
+        Text(L10n.string("Library"))
+            .font(.custom("InstrumentSerif-Regular", size: 28))
+            .lineLimit(1)
+            .fixedSize()
+    }
+
+    private var tabs: some View {
+        GlassEffectContainer(spacing: 4) {
+            HStack(spacing: 2) {
+                ForEach(LibrarySection.allCases) { item in
+                    Button { withAnimation(reduceMotion ? nil : BrowserMotion.interaction) { open(item) } } label: {
+                        HStack(spacing: 5) {
+                            Text(item.title).font(.system(size: 12, weight: .medium)).fixedSize()
+                            if item == .updates, BrowserUpdater.shared.showsButton {
+                                Circle().fill(Color.accentColor).frame(width: 6, height: 6)
+                            }
+                            if item == .downloads, ChromiumDownloadCoordinator.shared.hasActiveDownloads {
+                                ProgressView().controlSize(.mini)
+                            }
+                        }
+                        .padding(.horizontal, 11).frame(height: 28)
+                        .foregroundStyle(section == item ? Color.primary : Color.secondary)
+                        .background {
+                            if section == item {
+                                Capsule().fill(Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.09))
+                                    .matchedGeometryEffect(id: "pill", in: pills)
+                            }
+                        }
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(3)
+            .glassEffect(.regular, in: Capsule())
+        }
+        .fixedSize()
+    }
+
+    private func actions(searchWidth: CGFloat) -> some View {
+        HStack(spacing: 8) {
+            if section == .history || section == .all || section == .bookmarks {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(.secondary)
                     TextField(L10n.string("Search"), text: $query).textFieldStyle(.plain).font(.system(size: 12))
                 }
-                .padding(.horizontal, 12).frame(minWidth: 110, maxWidth: 180).frame(height: 30)
+                .padding(.horizontal, 12).frame(width: searchWidth).frame(height: 32)
                 .glassEffect(.regular, in: Capsule())
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
-            HStack(spacing: 6) {
-                captureButton("camera.viewfinder", L10n.string("Take Screenshot")) { CaptureCoordinator.shared.takeScreenshot() }
-                captureButton(CaptureCoordinator.shared.isRecording ? "stop.circle.fill" : "record.circle",
-                              L10n.string("Record Screen")) { CaptureCoordinator.shared.toggleRecording() }
-                syncBadge
-            }
+            captureButton("camera.viewfinder", L10n.string("Take Screenshot")) { CaptureCoordinator.shared.takeScreenshot() }
+            captureButton(CaptureCoordinator.shared.isRecording ? "stop.circle.fill" : "record.circle",
+                          L10n.string("Record Screen")) { CaptureCoordinator.shared.toggleRecording() }
+            syncBadge
         }
-        .padding(.horizontal, 28)
-        .padding(.top, 22)
-        .padding(.bottom, 18)
+        .fixedSize()
     }
 
     private func captureButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
@@ -138,7 +176,8 @@ struct LibraryView: View {
             }
             if !library.captures.isEmpty {
                 sectionHeader(L10n.string("Captures"), destination: .screenshots)
-                captureGrid(Array(library.captures.prefix(8)))
+                // Two full rows at the current width, never a ragged last row.
+                captureGrid(Array(library.captures.prefix(captureColumns * 2)))
             }
             if !library.downloads.isEmpty || !ChromiumDownloadCoordinator.shared.records.isEmpty {
                 sectionHeader(L10n.string("Downloads"), destination: .downloads)
@@ -176,8 +215,15 @@ struct LibraryView: View {
         }
     }
 
+    /// Cards stay between 200 and 280 points wide; the column count follows
+    /// the available width (1 on a narrow window, up to 5 on a wide one).
+    private var captureColumns: Int {
+        max(1, min(5, Int((contentWidth + 18) / (200 + 18))))
+    }
+
     private func captureGrid(_ items: [LibraryCapture]) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 200, maximum: 280), spacing: 18)], spacing: 22) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 160), spacing: 18, alignment: .top), count: captureColumns),
+                  alignment: .leading, spacing: 22) {
             ForEach(items) { capture in
                 LibraryCaptureCard(capture: capture) { controller.model.openNativePage(capture.page) }
                     .transition(.scale(scale: 0.9).combined(with: .opacity))
