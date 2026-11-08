@@ -451,3 +451,10 @@
 "Forward 10 Seconds" = "Avançar 10 segundos";
 "Play" = "Reproduzir";
 "Pause" = "Pausar";
+"Connect" = "Conectar";
+"Added" = "Adicionado";
+"Copy Command" = "Copiar comando";
+"Other Apps" = "Outros apps";
+"Not installed on this Mac." = "Não instalado neste Mac.";
+"%@ settings could not be updated: %@" = "Não foi possível atualizar os ajustes de %@: %@";
+"Add Nous Browser to an app once. When an agent needs the browser, Nous opens by itself. Restart the agent app after adding." = "Adicione o Nous Browser a um app uma vez. Quando um agente precisar do navegador, o Nous abre sozinho. Reinicie o app depois de adicionar.";

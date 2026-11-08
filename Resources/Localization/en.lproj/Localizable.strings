@@ -452,3 +452,10 @@
 "Forward 10 Seconds" = "Forward 10 Seconds";
 "Play" = "Play";
 "Pause" = "Pause";
+"Connect" = "Connect";
+"Added" = "Added";
+"Copy Command" = "Copy Command";
+"Other Apps" = "Other Apps";
+"Not installed on this Mac." = "Not installed on this Mac.";
+"%@ settings could not be updated: %@" = "%@ settings could not be updated: %@";
+"Add Nous Browser to an app once. When an agent needs the browser, Nous opens by itself. Restart the agent app after adding." = "Add Nous Browser to an app once. When an agent needs the browser, Nous opens by itself. Restart the agent app after adding.";

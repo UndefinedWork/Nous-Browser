@@ -103,8 +103,21 @@ public struct AutomationSocketClient: Sendable {
         }
     }
 
-    private static var unavailable: AutomationError {
+    /// No browser is listening: it is not running, still starting, or access is off.
+    public static let unavailable =
         AutomationError("Nous Browser is not connected. Open Nous Browser, then enable Settings > AI Agents (MCP).")
+
+    /// True once the browser's private endpoint exists and accepts connections.
+    public static func isListening(_ path: String) -> Bool {
+        guard (try? validateEndpoint(path)) != nil, var address = try? makeAddress(path) else { return false }
+        let fd = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { Darwin.close(fd) }
+        return withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) == 0
+            }
+        }
     }
 
     public static func validateEndpoint(_ path: String) throws {

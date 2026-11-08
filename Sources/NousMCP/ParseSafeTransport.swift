@@ -33,15 +33,29 @@ actor ParseSafeTransport: Transport {
     func send(_ data: Data) async throws { try await base.send(data) }
     func receive() -> AsyncThrowingStream<Data, Error> { stream }
 
+    /// SDK 0.12.1 decodes `capabilities.experimental` as string values, but
+    /// clients such as Codex send objects there, which failed the whole
+    /// handshake. This server uses no experimental client capability, so drop it.
+    static func compatible(_ data: Data, object: Any) -> Data {
+        guard var message = object as? [String: Any], message["method"] as? String == "initialize",
+              var params = message["params"] as? [String: Any],
+              var capabilities = params["capabilities"] as? [String: Any],
+              capabilities["experimental"] != nil else { return data }
+        capabilities.removeValue(forKey: "experimental")
+        params["capabilities"] = capabilities
+        message["params"] = params
+        return (try? JSONSerialization.data(withJSONObject: message)) ?? data
+    }
+
     private func readLoop() async {
         do {
             for try await data in await base.receive() {
                 try Task.checkCancellation()
-                if (try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)) == nil {
+                guard let object = try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed) else {
                     try await base.send(Data(#"{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error: invalid JSON"}}"#.utf8))
                     continue
                 }
-                continuation.yield(data)
+                continuation.yield(Self.compatible(data, object: object))
             }
             continuation.finish()
         } catch is CancellationError {

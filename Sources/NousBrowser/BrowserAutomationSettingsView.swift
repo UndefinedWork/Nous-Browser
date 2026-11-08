@@ -7,6 +7,9 @@ struct BrowserAutomationSettingsView: View {
     @State private var copied = false
     @State private var showsConfiguration = false
     @State private var copyResetTask: Task<Void, Never>?
+    @State private var copiedCommand = false
+    @State private var setupError: String?
+    @State private var refresh = 0
 
     var body: some View {
         SettingsForm {
@@ -25,12 +28,34 @@ struct BrowserAutomationSettingsView: View {
                     .accessibilityIdentifier("automationStatus")
             }
             SettingsGap()
-            SettingsRow("Connection") {
-                Button(action: copyConfiguration) {
-                    Label(L10n.string(copied ? "Configuration Copied" : "Copy Connection Configuration"),
-                          systemImage: copied ? "checkmark" : "doc.on.doc")
-                        .contentTransition(.symbolEffect(.replace))
+            SettingsRow("Connect") {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(MCPClientSetup.allCases) { client in
+                        clientRow(client)
+                        Divider()
+                    }
+                    HStack(spacing: 10) {
+                        clientIcon("terminal")
+                        Text(verbatim: "Claude Code")
+                        Spacer(minLength: 12)
+                        Button(L10n.string(copiedCommand ? "Copied" : "Copy Command")) { copy(service.claudeCodeCommand, command: true) }
+                            .help(service.claudeCodeCommand)
+                    }
+                    .padding(.vertical, 7)
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 3)
+                .frame(width: 360)
+                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
+                }
+                if let setupError {
+                    Text(setupError).font(.callout).foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true).frame(width: 360, alignment: .leading)
+                }
+                SettingsNote("Add Nous Browser to an app once. When an agent needs the browser, Nous opens by itself. Restart the agent app after adding.")
                 Button {
                     withAnimation(reduceMotion ? nil : BrowserMotion.spring) { showsConfiguration.toggle() }
                 } label: {
@@ -39,7 +64,7 @@ struct BrowserAutomationSettingsView: View {
                             .font(.system(size: 9, weight: .bold))
                             .rotationEffect(.degrees(showsConfiguration ? 90 : 0))
                             .frame(width: 10)
-                        Text(L10n.string("Connection Configuration"))
+                        Text(L10n.string("Other Apps"))
                     }
                     .contentShape(Rectangle())
                 }
@@ -58,7 +83,11 @@ struct BrowserAutomationSettingsView: View {
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
                         }
-                        .transition(.opacity)
+                    Button(action: copyConfiguration) {
+                        Label(L10n.string(copied ? "Configuration Copied" : "Copy Connection Configuration"),
+                              systemImage: copied ? "checkmark" : "doc.on.doc")
+                            .contentTransition(.symbolEffect(.replace))
+                    }
                 }
             }
             SettingsRow("Recent Activity") {
@@ -70,6 +99,50 @@ struct BrowserAutomationSettingsView: View {
         }
         .animation(reduceMotion ? nil : BrowserMotion.spring, value: copied)
         .onDisappear { copyResetTask?.cancel() }
+    }
+
+    private func clientRow(_ client: MCPClientSetup) -> some View {
+        let added = refresh >= 0 && client.isConfigured(helper: service.helperPath)
+        return HStack(spacing: 10) {
+            clientIcon(client == .codex ? "chevron.left.forwardslash.chevron.right" : "sparkle")
+            Text(verbatim: client.title)
+            Spacer(minLength: 12)
+            if added {
+                Label(L10n.string("Added"), systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .symbolRenderingMode(.hierarchical)
+            } else {
+                Button(L10n.string("Add")) {
+                    do {
+                        try client.install(helper: service.helperPath)
+                        setupError = nil
+                    } catch {
+                        setupError = L10n.format("%@ settings could not be updated: %@", client.title, error.localizedDescription)
+                    }
+                    refresh += 1
+                }
+                .disabled(!client.isAvailable)
+                .help(client.isAvailable ? client.configURL.path : L10n.string("Not installed on this Mac."))
+            }
+        }
+        .padding(.vertical, 7)
+    }
+
+    private func clientIcon(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(.secondary)
+            .frame(width: 18)
+    }
+
+    private func copy(_ text: String, command: Bool) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        copiedCommand = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            copiedCommand = false
+        }
     }
 
     private var statusTitle: String {

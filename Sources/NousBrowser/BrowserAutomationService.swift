@@ -30,8 +30,14 @@ final class BrowserAutomationService {
         isEnabled = defaults.bool(forKey: Self.enabledKey)
     }
 
+    /// The stdio MCP server agent apps launch.
+    var helperPath: String { Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/NousBrowserMCP").path }
+
+    /// For Claude Code's command line.
+    var claudeCodeCommand: String { "claude mcp add --scope user nous-browser -- \"\(helperPath)\"" }
+
     var connectionConfig: String {
-        let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/NousBrowserMCP").path
+        let helper = helperPath
         var entry: [String: Any] = ["command": helper]
         if socketPath != AutomationEndpoint.defaultSocketPath { entry["args"] = ["--socket", socketPath] }
         let value = ["mcpServers": ["nous-browser": entry]]
