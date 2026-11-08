@@ -435,3 +435,6 @@
 "Zoom to Fit" = "화면에 맞게 확대/축소";
 "Show window buttons" = "윈도우 버튼 보기";
 "Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden." = "사이드바 상단에 닫기, 최소화, 전체 화면 버튼을 표시합니다. 사이드바를 숨기면 함께 숨겨집니다.";
+"Window corner radius" = "윈도우 모서리 둥글기";
+"Default" = "기본값";
+"How round the corners of browser windows are. Full screen always uses square corners." = "브라우저 윈도우 모서리의 둥근 정도입니다. 전체 화면에서는 항상 직각입니다.";

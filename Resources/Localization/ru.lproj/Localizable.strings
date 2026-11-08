@@ -434,3 +434,6 @@
 "Zoom to Fit" = "Подогнать по размеру";
 "Show window buttons" = "Показывать кнопки окна";
 "Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden." = "Кнопки закрытия, свёртывания и полноэкранного режима вверху боковой панели. Скрыты, когда боковая панель скрыта.";
+"Window corner radius" = "Скругление углов окна";
+"Default" = "По умолчанию";
+"How round the corners of browser windows are. Full screen always uses square corners." = "Насколько скруглены углы окон браузера. В полноэкранном режиме углы всегда прямые.";

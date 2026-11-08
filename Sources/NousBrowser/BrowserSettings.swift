@@ -79,6 +79,32 @@ private struct AppearanceSettingsView: View {
             Text(L10n.string("Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden."))
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            Divider().padding(.vertical, 4)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(L10n.string("Window corner radius"))
+                    Spacer()
+                    Text("\(Int(appearance.windowCornerRadius)) pt")
+                        .monospacedDigit().foregroundStyle(.secondary)
+                    Button(L10n.string("Default")) {
+                        appearance.windowCornerRadius = BrowserAppearanceSettings.defaultCornerRadius
+                    }
+                    .controlSize(.small)
+                    .disabled(appearance.windowCornerRadius == BrowserAppearanceSettings.defaultCornerRadius)
+                }
+                Slider(value: $appearance.windowCornerRadius,
+                       in: BrowserAppearanceSettings.cornerRadiusRange, step: 1) {
+                    Text(L10n.string("Window corner radius"))
+                } minimumValueLabel: {
+                    Image(systemName: "square").accessibilityHidden(true)
+                } maximumValueLabel: {
+                    Image(systemName: "app").accessibilityHidden(true)
+                }
+                .labelsHidden()
+                Text(L10n.string("How round the corners of browser windows are. Full screen always uses square corners."))
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Spacer()
         }
         .frame(maxWidth: .infinity, alignment: .leading)

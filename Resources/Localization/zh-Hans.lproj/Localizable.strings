@@ -435,3 +435,6 @@
 "Zoom to Fit" = "缩放至适合大小";
 "Show window buttons" = "显示窗口按钮";
 "Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden." = "在侧边栏顶部显示关闭、最小化和全屏按钮。隐藏侧边栏时它们也会隐藏。";
+"Window corner radius" = "窗口圆角";
+"Default" = "默认";
+"How round the corners of browser windows are. Full screen always uses square corners." = "浏览器窗口四角的圆润程度。全屏时始终为直角。";

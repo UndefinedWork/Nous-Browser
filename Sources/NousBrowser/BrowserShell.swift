@@ -15,7 +15,6 @@ enum BrowserDesign {
     static let darkWindowBacking = Color(white: 0.12)
     static let windowBackingOpacity = 0.90
     static let rowHeight: CGFloat = 36
-    static let windowRadius: CGFloat = 28
     static let pageRadius: CGFloat = 18
 }
 
@@ -141,7 +140,7 @@ struct BrowserShell: View {
                         .zIndex(3)
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: model.isPageFullscreen ? 0 : BrowserDesign.windowRadius, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: model.isPageFullscreen ? 0 : CGFloat(controller.appearance.windowCornerRadius), style: .continuous))
             .animation(reduceMotion || isResizingSidebar ? nil : BrowserMotion.spring, value: sidebarWidth)
             .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.isSidebarVisible)
             .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.isSidebarCompact)

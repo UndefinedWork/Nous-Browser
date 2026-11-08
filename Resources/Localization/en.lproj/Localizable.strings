@@ -435,3 +435,6 @@
 "Zoom to Fit" = "Zoom to Fit";
 "Show window buttons" = "Show window buttons";
 "Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden." = "Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden.";
+"Window corner radius" = "Window corner radius";
+"Default" = "Default";
+"How round the corners of browser windows are. Full screen always uses square corners." = "How round the corners of browser windows are. Full screen always uses square corners.";

@@ -434,3 +434,6 @@
 "Zoom to Fit" = "Adatta alla finestra";
 "Show window buttons" = "Mostra pulsanti finestra";
 "Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden." = "Pulsanti Chiudi, Riduci e Schermo intero in cima alla barra laterale. Restano nascosti quando la barra laterale è nascosta.";
+"Window corner radius" = "Raggio degli angoli della finestra";
+"Default" = "Predefinito";
+"How round the corners of browser windows are. Full screen always uses square corners." = "Quanto sono arrotondati gli angoli delle finestre del browser. A schermo intero gli angoli sono sempre squadrati.";

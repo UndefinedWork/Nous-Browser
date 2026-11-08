@@ -434,3 +434,6 @@
 "Zoom to Fit" = "Ajustar al tamaño";
 "Show window buttons" = "Mostrar botones de ventana";
 "Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden." = "Botones de cerrar, minimizar y pantalla completa en la parte superior de la barra lateral. Se ocultan cuando la barra lateral está oculta.";
+"Window corner radius" = "Radio de las esquinas de la ventana";
+"Default" = "Predeterminado";
+"How round the corners of browser windows are. Full screen always uses square corners." = "Cuánto se redondean las esquinas de las ventanas del navegador. En pantalla completa, las esquinas siempre son rectas.";

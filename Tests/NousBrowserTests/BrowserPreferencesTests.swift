@@ -24,6 +24,22 @@ struct BrowserPreferencesTests {
         }
     }
 
+    @Test func windowCornerRadiusDefaultsClampsAndPersists() {
+        withDefaults { defaults in
+            let appearance = BrowserAppearanceSettings(defaults: defaults)
+            #expect(appearance.windowCornerRadius == BrowserAppearanceSettings.defaultCornerRadius)
+            appearance.windowCornerRadius = 12.4
+            #expect(appearance.windowCornerRadius == 12)
+            #expect(BrowserAppearanceSettings(defaults: defaults).windowCornerRadius == 12)
+            appearance.windowCornerRadius = 500
+            #expect(appearance.windowCornerRadius == BrowserAppearanceSettings.cornerRadiusRange.upperBound)
+            appearance.windowCornerRadius = -3
+            #expect(BrowserAppearanceSettings(defaults: defaults).windowCornerRadius == 0)
+            appearance.windowCornerRadius = BrowserAppearanceSettings.defaultCornerRadius
+            #expect(defaults.object(forKey: "browser.windowCornerRadius") == nil)
+        }
+    }
+
     @Test func selectingAnEnginePersistsImmediately() {
         withDefaults { defaults in
             let preferences = BrowserPreferences(defaults: defaults)

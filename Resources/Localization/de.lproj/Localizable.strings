@@ -434,3 +434,6 @@
 "Zoom to Fit" = "Auf Fenstergröße zoomen";
 "Show window buttons" = "Fenstertasten anzeigen";
 "Close, minimize and full-screen buttons at the top of the sidebar. They stay hidden while the sidebar is hidden." = "Schließen, Minimieren und Vollbild oben in der Seitenleiste. Bei ausgeblendeter Seitenleiste bleiben sie verborgen.";
+"Window corner radius" = "Fenster-Eckenradius";
+"Default" = "Standard";
+"How round the corners of browser windows are. Full screen always uses square corners." = "Wie stark die Ecken von Browserfenstern abgerundet sind. Im Vollbildmodus sind die Ecken immer eckig.";
