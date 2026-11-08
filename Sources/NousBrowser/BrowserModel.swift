@@ -58,6 +58,17 @@ struct BrowserSession: Codable, Equatable {
         var id: UUID
         var regular: [SidebarNodeRecord]
         var selectedTabID: UUID?
+        /// Pinned groups are shared by every window, but each window opens and
+        /// closes them on its own. nil in sessions written before 1.4.6: those
+        /// windows take the shared state.
+        var collapsedPinnedGroups: [UUID]?
+
+        init(id: UUID, regular: [SidebarNodeRecord], selectedTabID: UUID?, collapsedPinnedGroups: [UUID]? = nil) {
+            self.id = id
+            self.regular = regular
+            self.selectedTabID = selectedTabID
+            self.collapsedPinnedGroups = collapsedPinnedGroups
+        }
     }
 
     /// Every ordinary tab, flattened. Earlier versions read only this list.
@@ -276,6 +287,13 @@ final class BrowserModel {
                             let ids = record.tabs.compactMap { makeRestoredTab($0, space: space)?.id }
                             layout.regular.append(.group(TabGroup(id: record.id, name: record.name, icon: record.icon,
                                                                   isExpanded: record.isExpanded, tabIDs: ids)))
+                        }
+                    }
+                    if let collapsed = saved.collapsedPinnedGroups.map(Set.init) {
+                        layout.pinned = layout.pinned.map { node in
+                            guard case .group(var group) = node else { return node }
+                            group.isExpanded = !collapsed.contains(group.id)
+                            return .group(group)
                         }
                     }
                     layouts[space] = layout
@@ -619,7 +637,9 @@ final class BrowserModel {
             if let icon { group.icon = icon }
             if let isExpanded { group.isExpanded = isExpanded }
         }
-        applyLayout(layout, to: space, pinnedChanged: layout.section(ofGroup: id) == .pinned)
+        // Expanding or collapsing stays in this window.
+        let shared = name != nil || icon != nil
+        applyLayout(layout, to: space, pinnedChanged: shared && layout.section(ofGroup: id) == .pinned)
     }
 
     func toggleGroupPinned(_ id: UUID) {
@@ -704,13 +724,18 @@ final class BrowserModel {
         }
         for record in records {
             var layout = layouts[record.id] ?? SpaceLayout()
+            // Opening or closing a group is this window's own view; only groups
+            // new to this window take the shared state.
+            var expansion: [UUID: Bool] = [:]
+            for node in layout.pinned { if let group = node.group { expansion[group.id] = group.isExpanded } }
             var desired: [SidebarNode] = []
             for node in record.pinned {
                 switch node {
                 case .tab(let pin):
                     desired.append(.tab(pinnedTab(pin, space: record.id).id))
                 case .group(let group):
-                    desired.append(.group(TabGroup(id: group.id, name: group.name, icon: group.icon, isExpanded: group.isExpanded,
+                    desired.append(.group(TabGroup(id: group.id, name: group.name, icon: group.icon,
+                                                   isExpanded: expansion[group.id] ?? group.isExpanded,
                                                    tabIDs: group.tabs.map { pinnedTab($0, space: record.id).id })))
                 }
             }
@@ -1149,7 +1174,9 @@ final class BrowserModel {
                                               isExpanded: group.isExpanded, tabs: group.tabIDs.compactMap(sessionRecord)))
                 }
             }
-            return .init(id: space.id, regular: regular, selectedTabID: selectionBySpace[space.id])
+            let collapsed = layout.pinned.compactMap { node in node.group.flatMap { $0.isExpanded ? nil : $0.id } }
+            return .init(id: space.id, regular: regular, selectedTabID: selectionBySpace[space.id],
+                         collapsedPinnedGroups: collapsed)
         }
         let session = BrowserSession(
             tabs: spaces.flatMap { $0.regular.flatMap(\.tabs) }.map { .init(id: $0.id, title: $0.title, url: $0.url) },
