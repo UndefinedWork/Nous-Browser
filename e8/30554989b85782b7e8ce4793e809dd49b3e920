@@ -1,0 +1,52 @@
+Sources/NousBrowser/BrowserSettings.swift
+  s_a868a580eb8a06::t_34053c8f2a3e17 76-81
+Sources/NousBrowser/SpaceSidebar.swift
+  s_a868a580eb8a06::t_c65027f26c7a6e 9-11,101,103-105
+  s_a868a580eb8a06::t_34053c8f2a3e17 508-509,1074-1078,1081,1083-1092,1095,1097
+Sources/NousBrowser/WindowTrafficLights.swift
+  s_a868a580eb8a06::t_75a5e163a7b8fa 1-105
+Resources/Localization/pt-BR.lproj/Localizable.strings
+  s_a868a580eb8a06::t_c65027f26c7a6e 435-436
+Resources/Localization/en.lproj/Localizable.strings
+  s_a868a580eb8a06::t_c65027f26c7a6e 436-437
+Resources/Localization/es.lproj/Localizable.strings
+  s_a868a580eb8a06::t_c65027f26c7a6e 435-436
+Resources/Localization/de.lproj/Localizable.strings
+  s_a868a580eb8a06::t_c65027f26c7a6e 435-436
+Resources/Localization/fr.lproj/Localizable.strings
+  s_a868a580eb8a06::t_c65027f26c7a6e 435-436
+Resources/Localization/zh-Hans.lproj/Localizable.strings
+  s_a868a580eb8a06::t_c65027f26c7a6e 436-437
+Resources/Localization/zh-Hant.lproj/Localizable.strings
+  s_a868a580eb8a06::t_c65027f26c7a6e 436-437
+Docs/releases/1.4.3.md
+  s_a868a580eb8a06::t_dcf6856cd571f9 9,17
+Resources/Localization/ja.lproj/Localizable.strings
+  s_a868a580eb8a06::t_c65027f26c7a6e 436-437
+Resources/Localization/ko.lproj/Localizable.strings
+  s_a868a580eb8a06::t_c65027f26c7a6e 436-437
+Resources/Localization/source.json
+  s_a868a580eb8a06::t_c65027f26c7a6e 392-394
+Resources/Localization/it.lproj/Localizable.strings
+  s_a868a580eb8a06::t_c65027f26c7a6e 435-436
+Resources/Localization/ru.lproj/Localizable.strings
+  s_a868a580eb8a06::t_c65027f26c7a6e 435-436
+Sources/NousBrowser/BrowserAppearance.swift
+  s_a868a580eb8a06::t_34053c8f2a3e17 25-31,36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e830554989b85782b7e8ce4793e809dd49b3e920",
+  "prompts": {},
+  "sessions": {
+    "s_a868a580eb8a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1919a1c-2b86-4a7e-9b4f-767da074be83",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
