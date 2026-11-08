@@ -1,0 +1,90 @@
+Resources/Localization/pt-BR.lproj/Localizable.strings
+  s_a868a580eb8a06::t_7608d622102813 264,288,331,338,340,356,368,372,416
+Sources/NousBrowser/Capture/CaptureShortcuts.swift
+  s_a868a580eb8a06::t_de792e165f62dc 182
+  s_a868a580eb8a06::t_f50fd336cf1500 116-120,160,178-181,184-224
+  s_a868a580eb8a06::t_5dafecc6854a21 183
+  s_a868a580eb8a06::t_ead7c71a51cacb 225
+Resources/Localization/de.lproj/Localizable.strings
+  s_a868a580eb8a06::t_7608d622102813 264,288,331,338,340,356,368,372,416
+Docs/releases/1.4.0.md
+  s_a868a580eb8a06::t_50aab838632d9e 5,7-8,23,25-26
+Resources/Localization/ko.lproj/Localizable.strings
+  s_a868a580eb8a06::t_7608d622102813 265,289,332,339,341,357,369,373,417
+Resources/Localization/source.json
+  s_a868a580eb8a06::t_7608d622102813 222,246,289,296,298,314,326,330,374
+Resources/Localization/es.lproj/Localizable.strings
+  s_a868a580eb8a06::t_7608d622102813 264,288,331,338,340,356,368,372,416
+Docs/releases/1.4.1.md
+  s_a868a580eb8a06::t_fd1ace59758f2a 1-25
+Sources/NousBrowser/BrowserPopupWindow.swift
+  s_a868a580eb8a06::t_7f8b253ff867e6 35
+  s_a868a580eb8a06::t_c9df03381cefa9 1-21,25-34,36-93
+  s_a868a580eb8a06::t_0c31e66cd7ee4f 22-24
+Resources/Localization/en.lproj/Localizable.strings
+  s_a868a580eb8a06::t_7608d622102813 265,289,332,339,341,357,369,373,417
+Resources/Localization/zh-Hant.lproj/Localizable.strings
+  s_a868a580eb8a06::t_7608d622102813 265,289,332,339,341,357,369,373,417
+Sources/NousBrowser/BrowserMainMenu.swift
+  s_a868a580eb8a06::t_7608d622102813 210
+Resources/Info.plist
+  s_a868a580eb8a06::t_c1e1bb8ce4c89f 65,81
+Tests/NousBrowserTests/BrowserWindowManagerTests.swift
+  s_a868a580eb8a06::t_2b28681e3a4231 294-295,299-300,304-306
+Sources/NousBrowser/BrowserWindowManager.swift
+  s_a868a580eb8a06::t_aaa8091c8392ea 38-48
+  s_a868a580eb8a06::t_0c31e66cd7ee4f 297,353
+  s_a868a580eb8a06::t_a64ecbca6237ec 407-411,415-419,463-466,555-556
+  s_a868a580eb8a06::t_7f8b253ff867e6 441
+  s_a868a580eb8a06::t_dc595f15de4013 443
+  s_a868a580eb8a06::t_9124d619ef2daa 24-29,94-101,309,344,481
+  s_a868a580eb8a06::t_2b28681e3a4231 221
+  s_a868a580eb8a06::t_a6c0455d711762 557
+README.md
+  s_a868a580eb8a06::t_a560aaccf51062 38
+  s_a868a580eb8a06::t_3affdd3f2dc9e8 136
+  s_a868a580eb8a06::t_50aab838632d9e 11,13,99
+  s_a868a580eb8a06::t_fd1ace59758f2a 111-114
+Resources/Localization/zh-Hans.lproj/Localizable.strings
+  s_a868a580eb8a06::t_7608d622102813 265,289,332,339,341,357,369,373,417
+Sources/NousBrowser/SpaceSidebar.swift
+  s_a868a580eb8a06::t_82932b98f73602 1047-1049
+  s_a868a580eb8a06::t_d85d60f5372449 1046,1050,1054,1060-1063,1066-1067,1069,1073-1074,1079,1086-1089,1092-1096
+  s_a868a580eb8a06::t_7608d622102813 128,817,819,824,838,914-915,931,1194
+Resources/Localization/fr.lproj/Localizable.strings
+  s_a868a580eb8a06::t_7608d622102813 264,288,331,338,340,356,368,372,416
+Resources/Localization/it.lproj/Localizable.strings
+  s_a868a580eb8a06::t_7608d622102813 264,288,331,338,340,356,368,372,416
+Resources/Localization/ru.lproj/Localizable.strings
+  s_a868a580eb8a06::t_7608d622102813 264,288,331,338,340,356,368,372,416
+Sources/NousBrowser/BrowserModel.swift
+  s_a868a580eb8a06::t_7608d622102813 606
+  s_a868a580eb8a06::t_7bd13ac875a352 198,865,867,869-871,875-878,880-882,886,889-894,897-901
+Docs/Chromium-Build.md
+  s_a868a580eb8a06::t_a560aaccf51062 3
+  s_a868a580eb8a06::t_fd1ace59758f2a 26-36
+Sources/NousBrowser/NousBrowserApp.swift
+  s_a868a580eb8a06::t_ad5f14b98fbe42 238-239
+  s_a868a580eb8a06::t_aaa8091c8392ea 312,314
+Scripts/build-chromium.sh
+  s_a868a580eb8a06::t_25ba8fe4d68597 133-139,141-149
+  s_a868a580eb8a06::t_8c89505efc0867 140
+Resources/Localization/ja.lproj/Localizable.strings
+  s_a868a580eb8a06::t_7608d622102813 265,289,332,339,341,357,369,373,417
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "55cd9c37c25c4ca8305b92cd73450841cd7a5fb0",
+  "prompts": {},
+  "sessions": {
+    "s_a868a580eb8a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1919a1c-2b86-4a7e-9b4f-767da074be83",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
