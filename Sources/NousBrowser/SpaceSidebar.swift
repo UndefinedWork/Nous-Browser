@@ -179,27 +179,48 @@ struct BrowserSidebar: View {
 
     // MARK: Paging
 
+    /// One page per space. A plain HStack, not a lazy one: a lazy stack
+    /// re-estimates its off-screen pages when a group opens or closes, and the
+    /// scroll offset then landed between two spaces.
     private func spacePager(size: CGSize) -> some View {
-        ScrollView(.horizontal) {
-            LazyHStack(spacing: 0) {
-                ForEach(model.spaces) { space in
-                    SpaceColumn(controller: controller, space: space.id, layout: displayedLayout(for: space.id),
-                                drag: drag, renamingGroup: $renamingGroup, tooltip: tooltip, frames: frames,
-                                actions: dragActions(size: size))
-                        .frame(width: size.width, height: size.height)
-                        .id(space.id)
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    ForEach(model.spaces) { space in
+                        SpaceColumn(controller: controller, space: space.id, layout: displayedLayout(for: space.id),
+                                    drag: drag, renamingGroup: $renamingGroup, tooltip: tooltip, frames: frames,
+                                    actions: dragActions(size: size))
+                            .frame(width: size.width, height: size.height)
+                            .id(space.id)
+                    }
                 }
+                .scrollTargetLayout()
             }
-            .scrollTargetLayout()
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: $visibleSpace)
+            .scrollIndicators(.hidden)
+            .scrollDisabled(drag != nil || model.spaces.count < 2)
+            .onChange(of: visibleSpace) { _, id in
+                guard let id, id != model.activeSpaceID else { return }
+                tooltip.dismiss()
+                model.switchSpace(to: id)
+            }
+            // Whatever changes inside a space (a group opening, a tab moving),
+            // the pager stays on that space's page.
+            .onChange(of: model.layout(for: model.activeSpaceID)) { _, _ in snap(proxy) }
+            .onChange(of: size.width) { _, _ in snap(proxy) }
         }
-        .scrollTargetBehavior(.paging)
-        .scrollPosition(id: $visibleSpace)
-        .scrollIndicators(.hidden)
-        .scrollDisabled(drag != nil || model.spaces.count < 2)
-        .onChange(of: visibleSpace) { _, id in
-            guard let id, id != model.activeSpaceID else { return }
-            tooltip.dismiss()
-            model.switchSpace(to: id)
+    }
+
+    private func snap(_ proxy: ScrollViewProxy) {
+        let id = model.activeSpaceID
+        Task { @MainActor in
+            // After the change has laid out, without animating the page itself.
+            try? await Task.sleep(for: .milliseconds(30))
+            guard drag == nil, model.activeSpaceID == id else { return }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { proxy.scrollTo(id, anchor: .leading) }
         }
     }
 
