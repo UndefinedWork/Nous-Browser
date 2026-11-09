@@ -459,3 +459,5 @@
 "Not installed on this Mac." = "这台 Mac 上未安装。";
 "%@ settings could not be updated: %@" = "无法更新 %@ 的设置：%@";
 "Add Nous Browser to an app once. When an agent needs the browser, Nous opens by itself. Restart the agent app after adding." = "只需在应用中添加一次。智能体需要浏览器时，Nous 会自动打开。添加后请重新启动该应用。";
+"Add New" = "新建";
+"Spaces" = "空间";

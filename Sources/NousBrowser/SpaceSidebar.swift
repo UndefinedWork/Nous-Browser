@@ -48,6 +48,16 @@ extension View {
     }
 }
 
+/// The latest measured frames. Deliberately not observable: rows move on
+/// every frame of a scroll, a group opening, a space switch or a sidebar
+/// resize, and re-rendering the whole sidebar for each of those changes is
+/// what made them stutter. Only drag and drop and tooltips read the frames,
+/// and only at the moment they need them.
+@MainActor
+final class SidebarFrameStore {
+    var values: [SidebarFrameID: CGRect] = [:]
+}
+
 /// A drag in progress inside one space's list.
 struct SidebarDragState: Equatable {
     var item: SidebarItemRef
@@ -81,7 +91,10 @@ struct BrowserSidebar: View {
     let tooltip: SidebarTabTooltipState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
-    @State private var frames: [SidebarFrameID: CGRect] = [:]
+    @State private var frameStore = SidebarFrameStore()
+    private var frames: [SidebarFrameID: CGRect] { frameStore.values }
+    /// The space just left stays built while its page slides away.
+    @State private var departingSpace: UUID?
     @State private var drag: SidebarDragState?
     /// Horizontal travel of a two-finger swipe in progress, in points.
     @State private var swipe = SpaceSwipeState()
@@ -101,9 +114,9 @@ struct BrowserSidebar: View {
                 VStack(spacing: 0) {
                     let lights = controller.appearance.showsWindowButtons
                     SidebarEdgeGlass(edge: .top,
-                                     buttonCenters: compact ? [30] : [lights ? 104 : 30, geometry.size.width - 30],
-                                     height: compact ? 132 + (lights ? SidebarMetrics.compactWindowButtonsShift : 0) : 88,
-                                     controlCenterFromEdge: compact ? 52 + (lights ? SidebarMetrics.compactWindowButtonsShift : 0) : 30)
+                                     buttonCenters: compact ? [30] : [lights ? 102 : 28, geometry.size.width - 28],
+                                     height: compact ? 124 + (lights ? SidebarMetrics.compactWindowButtonsShift : 0) : 84,
+                                     controlCenterFromEdge: compact ? 48 + (lights ? SidebarMetrics.compactWindowButtonsShift : 0) : 28)
                     Spacer(minLength: 0)
                     SidebarEdgeGlass(edge: .bottom,
                                      buttonCenters: compact ? [30] : [52, geometry.size.width / 2, geometry.size.width - 28],
@@ -117,14 +130,14 @@ struct BrowserSidebar: View {
                 if let drag, !drag.isOutside { floatingItem(drag, width: geometry.size.width) }
 
                 SidebarControls(controller: controller, size: geometry.size,
-                                editingSpace: $editingSpace, spaceBanner: spaceBanner)
+                                editingSpace: $editingSpace, spaceBanner: spaceBanner, newGroup: newFolder)
 
                 WindowDragArea()
                     .frame(height: BrowserDesign.inset)
                     .frame(maxHeight: .infinity, alignment: .top)
             }
             .coordinateSpace(name: SidebarMetrics.coordinateSpace)
-            .onPreferenceChange(SidebarFramePreference.self) { frames = $0 }
+            .onPreferenceChange(SidebarFramePreference.self) { [frameStore] in frameStore.values = $0 }
             .background {
                 SidebarDragCancellationMonitor(isEnabled: drag != nil, canCancel: drag != nil,
                                                onCancel: { cancelDrag() }, windowReference: dragWindow,
@@ -135,9 +148,14 @@ struct BrowserSidebar: View {
                     .frame(width: 0, height: 0)
             }
             .onChange(of: model.isSidebarCompact) { _, _ in cancelDrag(); tooltip.dismiss() }
-            .onChange(of: model.activeSpaceID) { _, id in
+            .onChange(of: model.activeSpaceID) { old, id in
                 tooltip.dismiss()
                 showBanner(id)
+                departingSpace = old
+                Task {
+                    try? await Task.sleep(for: .seconds(0.8))
+                    if departingSpace == old { departingSpace = nil }
+                }
             }
         }
         .contextMenu {
@@ -186,15 +204,21 @@ struct BrowserSidebar: View {
         let spaces = model.spaces
         let index = CGFloat(spaces.firstIndex { $0.id == model.activeSpaceID } ?? 0)
         return HStack(spacing: 0) {
-            ForEach(spaces) { space in
+            ForEach(Array(spaces.enumerated()), id: \.element.id) { position, space in
                 let current = space.id == model.activeSpaceID
+                // Only the pages a swipe or a switch can show are built; the
+                // rest are empty frames, so far-away spaces cost nothing.
+                if abs(CGFloat(position) - index) <= 1 || space.id == departingSpace {
                 SpaceColumn(controller: controller, space: space.id, layout: displayedLayout(for: space.id),
-                            drag: drag, renamingGroup: $renamingGroup, tooltip: tooltip, frames: frames,
+                            drag: drag, renamingGroup: $renamingGroup, tooltip: tooltip, frames: frameStore,
                             actions: dragActions(size: size))
                     .frame(width: size.width, height: size.height)
                     .allowsHitTesting(current)
                     .accessibilityHidden(!current)
                     .id(space.id)
+                } else {
+                    Color.clear.frame(width: size.width, height: size.height)
+                }
             }
         }
         .fixedSize()
@@ -520,7 +544,7 @@ private struct SpaceColumn: View {
     let drag: SidebarDragState?
     @Binding var renamingGroup: UUID?
     let tooltip: SidebarTabTooltipState
-    let frames: [SidebarFrameID: CGRect]
+    let frames: SidebarFrameStore
     let actions: SidebarDragActions
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -622,6 +646,9 @@ private struct SpaceColumn: View {
                     }
                 }
             }
+            // Pico 448:1297: a quiet “New Tab” row ends the list.
+            SidebarNewTabRow(compact: compact, action: controller.newTab)
+                .opacity(isDraggingTab ? 0 : 1)
             // Room to drop below the last row.
             Color.clear.frame(height: 40).contentShape(Rectangle()).windowDragBackground()
         }
@@ -712,7 +739,7 @@ private struct SpaceColumn: View {
                           canMoveUp: model.canMoveTab(id, by: -1),
                           canMoveDown: model.canMoveTab(id, by: 1),
                           hoverChanged: { hovering in
-                              if hovering, compact, drag == nil, let frame = frames[.tab(id)] {
+                              if hovering, compact, drag == nil, let frame = frames.values[.tab(id)] {
                                   tooltip.hover(tabID: id, title: tab.displayTitle, centerY: frame.midY)
                               } else { tooltip.leave(tabID: id) }
                           })
@@ -1098,13 +1125,56 @@ struct TabOrganizeMenu: View {
 
 // MARK: - Controls
 
+/// The last row of the tab list: a plus and “New Tab” in secondary grey,
+/// lifting to a soft capsule on hover like a tab row.
+private struct SidebarNewTabRow: View {
+    let compact: Bool
+    let action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var hovered = false
+
+    var body: some View {
+        let label = L10n.string("New Tab")
+        Button(action: action) {
+            HStack(spacing: 7) {
+                Image(systemName: "plus")
+                    .font(.system(size: 12, weight: .regular))
+                    .frame(width: 16, height: 16)
+                if !compact {
+                    Text(label)
+                        .font(.system(size: 12, weight: .regular))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .foregroundStyle(Color.primary.opacity(hovered ? 0.8 : 0.55))
+            .padding(.horizontal, compact ? 0 : 12)
+            .frame(maxWidth: .infinity, alignment: compact ? .center : .leading)
+            .frame(height: BrowserDesign.rowHeight)
+            .background(Color.white.opacity(colorScheme == .dark ? (hovered ? 0.08 : 0) : (hovered ? 0.5 : 0)), in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(PressSpringStyle())
+        .onHover { value in withAnimation(reduceMotion ? nil : BrowserMotion.interaction) { hovered = value } }
+        .help(label + "  ⌘T")
+        .accessibilityLabel(label)
+    }
+}
+
 private struct SidebarControls: View {
     let controller: BrowserController
     let size: CGSize
     @Binding var editingSpace: UUID?
     let spaceBanner: UUID?
+    let newGroup: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var model: BrowserModel { controller.model }
+
+    private func newSpace() {
+        withAnimation(reduceMotion ? nil : BrowserMotion.spring) { model.newSpace() }
+        editingSpace = model.activeSpaceID
+    }
 
     var body: some View {
         let compact = model.isSidebarCompact
@@ -1112,14 +1182,14 @@ private struct SidebarControls: View {
         let lights = controller.appearance.showsWindowButtons
         // With window buttons: they lead the top row (wide sidebar) or get a
         // row of their own above the controls (icon rail).
-        let toggleX: CGFloat = lights && !compact ? 104 : 30
+        let toggleX: CGFloat = lights && !compact ? 102 : compact ? 30 : 28
         let shift: CGFloat = lights && compact ? SidebarMetrics.compactWindowButtonsShift : 0
         ZStack(alignment: .topLeading) {
             if !compact {
-                let dragStart = toggleX + 22
+                let dragStart = toggleX + 20
                 WindowDragArea()
-                    .frame(width: max(0, size.width - 60 - dragStart), height: BrowserDesign.buttonSize)
-                    .position(x: (dragStart + size.width - 60) / 2, y: 30)
+                    .frame(width: max(0, size.width - 56 - dragStart), height: BrowserDesign.buttonSize)
+                    .position(x: (dragStart + size.width - 56) / 2, y: 28)
             }
             if lights {
                 Group {
@@ -1129,10 +1199,11 @@ private struct SidebarControls: View {
                 .position(x: compact ? 30 : 47, y: compact ? 24 : 30)
                 .transition(.opacity)
             }
-            GlassSymbolButton("sidebar.left", label: topLabel, help: topLabel + "  ⌘/") { model.toggleSidebar() }
-                .position(x: toggleX, y: 30 + shift)
-            GlassSymbolButton("plus", label: L10n.string("New Tab"), help: L10n.string("New Tab") + "  ⌘T", action: controller.newTab)
-                .position(x: compact ? 30 : size.width - 30, y: compact ? 74 + shift : 30)
+            GlassSymbolButton("sidebar.left", label: topLabel, help: topLabel + "  ⌘/",
+                              symbolSize: BrowserDesign.topSymbolSize, symbolWeight: .medium) { model.toggleSidebar() }
+                .position(x: toggleX, y: 28 + shift)
+            SidebarNewMenuButton(controller: controller, newGroup: newGroup, newSpace: newSpace)
+                .position(x: compact ? 30 : size.width - 28, y: compact ? 68 + shift : 28)
 
             NavigationCluster(controller: controller, vertical: compact)
                 .position(x: compact ? 30 : BrowserDesign.inset + 42, y: compact ? size.height - 60 : size.height - 28)
@@ -1307,47 +1378,77 @@ private struct DownloadRing: View {
 }
 
 /// One dot per space (Pico 438:1225); the active one is a capsule.
-private struct SpaceDots: View {
+struct SpaceDots: View {
     let controller: BrowserController
     @Binding var editingSpace: UUID?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hovered: UUID?
     private var model: BrowserModel { controller.model }
 
+    /// Like the iOS page control: never more than this many dots, so a
+    /// narrow sidebar never overflows. Swiping still reaches every space.
+    static let maximumVisible = 4
+
+    /// The run of spaces shown, kept around the active one.
+    static func visibleRange(count: Int, active: Int, limit: Int = maximumVisible) -> Range<Int> {
+        guard count > limit else { return 0..<count }
+        let start = min(max(0, active - (limit - 2)), count - limit)
+        return start..<(start + limit)
+    }
+
     var body: some View {
+        let spaces = model.spaces
+        let active = spaces.firstIndex { $0.id == model.activeSpaceID } ?? 0
+        let range = Self.visibleRange(count: spaces.count, active: active)
         HStack(spacing: 5) {
-            ForEach(model.spaces) { space in
-                let active = space.id == model.activeSpaceID
-                Capsule()
-                    .fill(Color.primary.opacity(active ? 0.55 : 0.2))
-                    .frame(width: active ? 14 : 5, height: 5)
-                    .frame(height: 20)
-                    .contentShape(Rectangle().inset(by: -3))
-                    .onTapGesture { withAnimation(reduceMotion ? nil : BrowserMotion.spring) { model.switchSpace(to: space.id) } }
-                    .help(space.name)
-                    .popover(isPresented: Binding(get: { editingSpace == space.id }, set: { if !$0 { editingSpace = nil } }),
-                             arrowEdge: .top) {
-                        SpaceEditor(controller: controller, space: space) { editingSpace = nil }
-                    }
-                    .contextMenu {
-                        Group {
-                        Button(L10n.string("Edit Space…"), systemImage: "pencil") { editingSpace = space.id }
-                        Button(L10n.string("New Space"), systemImage: "plus") {
-                            withAnimation(BrowserMotion.spring) { model.newSpace() }
-                            editingSpace = model.activeSpaceID
-                        }
-                        Divider()
-                        Button(L10n.string("Delete Space"), systemImage: "trash", role: .destructive) { confirmDelete(space) }
-                            .disabled(model.spaces.count < 2)
-                        }
-                        // macOS 27 hides menu icons unless asked for.
-                        .labelStyle(.titleAndIcon)
-                    }
-                    .accessibilityElement()
-                    .accessibilityLabel(space.name)
-                    .accessibilityAddTraits(active ? [.isSelected, .isButton] : .isButton)
+            ForEach(range, id: \.self) { position in
+                let space = spaces[position]
+                // Dots at an edge with more spaces beyond it shrink.
+                let truncated = (position == range.lowerBound && position > 0)
+                    || (position == range.upperBound - 1 && position < spaces.count - 1)
+                dot(space, active: position == active, truncated: truncated)
+                    .id(space.id)
             }
         }
         .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.activeSpaceID)
+        .animation(reduceMotion ? nil : BrowserMotion.interaction, value: hovered)
+    }
+
+    private func dot(_ space: BrowserSpaceRecord, active: Bool, truncated: Bool) -> some View {
+        let isHovered = hovered == space.id
+        let side: CGFloat = truncated && !active ? 3.5 : 5
+        return Capsule()
+            .fill(Color.primary.opacity(active ? (isHovered ? 0.7 : 0.55) : (isHovered ? 0.45 : 0.2)))
+            .frame(width: active ? 14 : side, height: side)
+            .scaleEffect(isHovered && !active ? 1.3 : 1)
+            .frame(width: active ? 14 : 5, height: 20)
+            .contentShape(Rectangle().inset(by: -3))
+            .onHover { inside in
+                if inside { hovered = space.id } else if hovered == space.id { hovered = nil }
+            }
+            .onTapGesture { withAnimation(reduceMotion ? nil : BrowserMotion.spring) { model.switchSpace(to: space.id) } }
+            .help(space.name)
+            .popover(isPresented: Binding(get: { editingSpace == space.id }, set: { if !$0 { editingSpace = nil } }),
+                     arrowEdge: .top) {
+                SpaceEditor(controller: controller, space: space) { editingSpace = nil }
+            }
+            .contextMenu {
+                Group {
+                Button(L10n.string("Edit Space…"), systemImage: "pencil") { editingSpace = space.id }
+                Button(L10n.string("New Space"), systemImage: "plus") {
+                    withAnimation(BrowserMotion.spring) { model.newSpace() }
+                    editingSpace = model.activeSpaceID
+                }
+                Divider()
+                Button(L10n.string("Delete Space"), systemImage: "trash", role: .destructive) { confirmDelete(space) }
+                    .disabled(model.spaces.count < 2)
+                }
+                // macOS 27 hides menu icons unless asked for.
+                .labelStyle(.titleAndIcon)
+            }
+            .accessibilityElement()
+            .accessibilityLabel(space.name)
+            .accessibilityAddTraits(active ? [.isSelected, .isButton] : .isButton)
     }
 
     private func confirmDelete(_ space: BrowserSpaceRecord) {

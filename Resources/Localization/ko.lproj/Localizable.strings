@@ -459,3 +459,5 @@
 "Not installed on this Mac." = "이 Mac에 설치되어 있지 않습니다.";
 "%@ settings could not be updated: %@" = "%@ 설정을 업데이트할 수 없습니다: %@";
 "Add Nous Browser to an app once. When an agent needs the browser, Nous opens by itself. Restart the agent app after adding." = "앱에 한 번만 추가하면 됩니다. 에이전트가 브라우저를 필요로 하면 Nous가 자동으로 열립니다. 추가한 후 해당 앱을 다시 시작하십시오.";
+"Add New" = "새로 만들기";
+"Spaces" = "공간";

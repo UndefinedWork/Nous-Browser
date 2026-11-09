@@ -6,7 +6,9 @@ enum BrowserDesign {
     // Pico 391:485 — the icon rail keeps the same 36 pt rows and 12 pt insets.
     static let compactSidebarWidth: CGFloat = 60
     static let inset: CGFloat = 12
-    static let buttonSize: CGFloat = 36
+    // Pico 448:1297: 32pt top controls with a 12pt medium glyph.
+    static let buttonSize: CGFloat = 32
+    static let topSymbolSize: CGFloat = 12
     static let bottomButtonSize: CGFloat = 32
     static let bottomButtonSpacing: CGFloat = 8
     static let topContentInset: CGFloat = inset * 2 + buttonSize

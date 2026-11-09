@@ -23,7 +23,7 @@ enum SidebarTabDragGeometry {
     static let contentInset: CGFloat = BrowserDesign.topContentInset
     static let bottomContentInset: CGFloat = BrowserDesign.bottomContentInset
     // Pico 391:485 stacks the two top controls and three bottom controls.
-    static let compactContentInset: CGFloat = 104
+    static let compactContentInset: CGFloat = 96
     static let compactBottomContentInset: CGFloat = 136
     static let rowSpacing: CGFloat = 1
     static var stride: CGFloat { BrowserDesign.rowHeight + rowSpacing }

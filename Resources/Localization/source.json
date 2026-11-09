@@ -415,7 +415,9 @@
     "Other Apps",
     "Not installed on this Mac.",
     "%@ settings could not be updated: %@",
-    "Add Nous Browser to an app once. When an agent needs the browser, Nous opens by itself. Restart the agent app after adding."
+    "Add Nous Browser to an app once. When an agent needs the browser, Nous opens by itself. Restart the agent app after adding.",
+    "Add New",
+    "Spaces"
   ],
   "infoPlist": {
     "NSCameraUsageDescription": "Allow camera access on websites you authorize, such as video meetings.",
