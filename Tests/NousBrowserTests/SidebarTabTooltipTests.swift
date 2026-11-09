@@ -7,11 +7,8 @@ import Testing
 struct SidebarTabTooltipTests {
     /// Poll only for eventual delivery. Timing assertions use a monotonic clock,
     /// so an overloaded runner cannot fail merely by waking later than expected.
-    /// Other suites share the main actor and can hold it for seconds while the
-    /// whole test run is busy, so the deadline only guards against a tooltip
-    /// that never appears.
     private func waitForPresentation(_ state: SidebarTabTooltipState) async throws -> SidebarTabTooltipState.Presentation {
-        let deadline = ContinuousClock.now + .seconds(15)
+        let deadline = ContinuousClock.now + .seconds(2)
         while state.presented == nil && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(5))
         }
