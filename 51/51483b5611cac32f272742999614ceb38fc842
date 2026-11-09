@@ -1,0 +1,27 @@
+Sources/NousBrowser/SpaceSidebar.swift
+  s_a868a580eb8a06::t_a78c25ba24f16a 87,195,201-202,208-209,226-228,230,1401-1422,1428,1436,1445,1498-1501
+Docs/Chromium-Build.md
+  s_a868a580eb8a06::t_3a08b0864c6c12 3
+Docs/releases/1.4.12.md
+  s_a868a580eb8a06::t_2cc2738f96a97f 1-13
+README.md
+  s_a868a580eb8a06::t_b4e030858d3674 38
+Resources/Info.plist
+  s_a868a580eb8a06::t_55628c0d31d818 65,81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "5151483b5611cac32f272742999614ceb38fc842",
+  "prompts": {},
+  "sessions": {
+    "s_a868a580eb8a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1919a1c-2b86-4a7e-9b4f-767da074be83",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
