@@ -1204,10 +1204,7 @@ private struct SidebarControls: View {
                     .position(x: (BrowserDesign.inset + 84 + size.width - 46) / 2, y: size.height - 28)
                     .transition(.opacity)
             }
-            // The wide sidebar's dots already follow a swipe; a banner arriving
-            // after the pages settle read as an afterimage. The icon rail has
-            // no dots, so it keeps its small indicator.
-            if compact, let id = spaceBanner, let space = model.spaces.first(where: { $0.id == id }), model.spaces.count > 1 {
+            if let id = spaceBanner, let space = model.spaces.first(where: { $0.id == id }), model.spaces.count > 1 {
                 SpaceBanner(space: space, index: model.spaces.firstIndex(where: { $0.id == id }) ?? 0,
                             count: model.spaces.count, compact: compact, maxWidth: size.width - 24)
                     .position(x: size.width / 2, y: size.height - (compact ? 182 : 66))
