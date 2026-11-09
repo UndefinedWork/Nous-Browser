@@ -1,0 +1,25 @@
+Sources/NousBrowser/WindowTrafficLights.swift
+  s_a868a580eb8a06::t_8aee7e94408911 71-72,75-76,95,99
+  s_a868a580eb8a06::t_5bcd2d541f5516 57
+  s_a868a580eb8a06::t_c4091afe8f7094 100-101
+  s_a868a580eb8a06::t_371601eac9d0ff 4-14,20-21,25-34,37,39-50,52-56,59-61,68-70,73-74,78-81,86-94,96-97,102-117,121-125
+  s_a868a580eb8a06::t_96160c8a9cf12e 58
+Sources/NousBrowser/BrowserWindowManager.swift
+  s_a868a580eb8a06::t_9ee85041c87b98 661-662,664-667
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c1341a7c9abddeb6753611c8f74c71353952731c",
+  "prompts": {},
+  "sessions": {
+    "s_a868a580eb8a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1919a1c-2b86-4a7e-9b4f-767da074be83",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
