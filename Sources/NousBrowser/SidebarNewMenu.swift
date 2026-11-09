@@ -87,7 +87,7 @@ final class SidebarNewMenu: NSObject {
         for space in model.spaces {
             let entry = Item(title: space.name, action: #selector(run(_:)), keyEquivalent: "")
             entry.target = self
-            entry.image = Self.icon(space.icon)
+            Self.setIcon(entry, Self.icon(space.icon))
             entry.state = space.id == model.activeSpaceID ? .on : .off
             entry.run = { [animation] in withAnimation(animation) { model.switchSpace(to: space.id) } }
             submenu.addItem(entry)
@@ -96,7 +96,7 @@ final class SidebarNewMenu: NSObject {
         submenu.addItem(item("New Space", "plus.square.on.square") { [newSpace] in newSpace() })
 
         let parent = NSMenuItem(title: L10n.string("Spaces"), action: nil, keyEquivalent: "")
-        parent.image = Self.icon("square.stack.3d.up")
+        Self.setIcon(parent, Self.icon("square.stack.3d.up"))
         parent.submenu = submenu
         return parent
     }
@@ -106,7 +106,7 @@ final class SidebarNewMenu: NSObject {
         let item = Item(title: L10n.string(key), action: #selector(run(_:)), keyEquivalent: equivalent)
         item.keyEquivalentModifierMask = equivalent.isEmpty ? [] : .command
         item.target = self
-        item.image = Self.icon(symbol)
+        Self.setIcon(item, Self.icon(symbol))
         item.run = run
         return item
     }
@@ -128,10 +128,18 @@ final class SidebarNewMenu: NSObject {
         DispatchQueue.main.async { action?() }
     }
 
+    /// macOS 27 hides menu item images unless an item asks to keep them.
+    private static func setIcon(_ item: NSMenuItem, _ image: NSImage?) {
+        item.image = image
+        if #available(macOS 27.0, *) { item.preferredImageVisibility = .visible }
+    }
+
     /// Opens under the button, its leading edge lined up with the button's.
+    /// The menu draws its top edge a few points above the requested origin,
+    /// so asking for 10 leaves a visible 6pt gap.
     func popUp(below view: NSView) {
         let menu = makeMenu()
-        let gap: CGFloat = 6
+        let gap: CGFloat = 10
         let point = NSPoint(x: view.bounds.minX, y: view.isFlipped ? view.bounds.maxY + gap : view.bounds.minY - gap)
         // The menu keeps no reference to its targets; hold on while it is open.
         withExtendedLifetime(self) { _ = menu.popUp(positioning: nil, at: point, in: view) }

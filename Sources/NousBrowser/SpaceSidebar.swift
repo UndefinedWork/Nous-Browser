@@ -1228,9 +1228,16 @@ private struct SidebarControls: View {
             LibraryButton(controller: controller)
                 .position(x: compact ? 28 : size.width - 28, y: compact ? size.height - 124 : size.height - 28)
 
-            if !compact, model.spaces.count > 1 || editingSpace != nil {
-                SpaceDots(controller: controller, swipe: swipe, pageWidth: size.width, editingSpace: $editingSpace)
-                    .position(x: (BrowserDesign.inset + 84 + size.width - 46) / 2, y: size.height - 28)
+            // The dots live in the free space between the navigation capsule
+            // and the Library button, keeping 8pt clear of each; a narrow
+            // sidebar shows fewer dots, or none when two would not fit.
+            let dotsStart = BrowserDesign.inset + 84 + 8
+            let dotsEnd = size.width - BrowserDesign.inset - BrowserDesign.bottomButtonSize - 8
+            let dotsLimit = SpaceDots.fittingLimit(for: dotsEnd - dotsStart)
+            if !compact, dotsLimit >= 2, model.spaces.count > 1 || editingSpace != nil {
+                SpaceDots(controller: controller, swipe: swipe, pageWidth: size.width, limit: dotsLimit,
+                          editingSpace: $editingSpace)
+                    .position(x: (dotsStart + dotsEnd) / 2, y: size.height - 28)
                     .transition(.opacity)
             }
             if let id = spaceBanner, let space = model.spaces.first(where: { $0.id == id }), model.spaces.count > 1 {
@@ -1399,6 +1406,8 @@ struct SpaceDots: View {
     let controller: BrowserController
     let swipe: SpaceSwipeState
     let pageWidth: CGFloat
+    /// How many dots fit where they are placed; never more than `maximumVisible`.
+    var limit: Int = maximumVisible
     @Binding var editingSpace: UUID?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovered: UUID?
@@ -1409,8 +1418,14 @@ struct SpaceDots: View {
     static let maximumVisible = 4
     static let dot: CGFloat = 5
     static let spacing: CGFloat = 5
-    /// How much wider the current space's capsule is than a dot.
-    static let stretch: CGFloat = 9
+    /// How much wider the current space's capsule is than a dot (Pico 448:1297: 10×5).
+    static let stretch: CGFloat = 5
+
+    /// The most dots (with the stretched current capsule) that fit in `width`.
+    static func fittingLimit(for width: CGFloat) -> Int {
+        let fitting = Int(((width + spacing - stretch) / (dot + spacing)).rounded(.down))
+        return max(0, min(maximumVisible, fitting))
+    }
 
     /// The run of spaces shown when the pages are at rest.
     static func visibleRange(count: Int, active: Int, limit: Int = maximumVisible) -> Range<Int> {
@@ -1452,8 +1467,8 @@ struct SpaceDots: View {
         // Follows the fingers: the swipe offset is how far the pages have moved.
         let raw = CGFloat(active) - swipe.offset / max(1, pageWidth)
         let progress = min(max(0, raw), CGFloat(max(0, count - 1)))
-        let start = Self.windowStart(count: count, progress: progress)
-        let visible = min(count, Self.maximumVisible)
+        let start = Self.windowStart(count: count, progress: progress, limit: limit)
+        let visible = min(count, limit)
         let width = CGFloat(visible) * (Self.dot + Self.spacing) - Self.spacing + Self.stretch
         let origin = Self.leading(slot: start, progress: progress)
         let moreBefore = min(1, start)

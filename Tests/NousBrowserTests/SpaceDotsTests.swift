@@ -23,3 +23,27 @@ struct SpaceDotsTests {
         #expect(SpaceDots.visibleRange(count: 10, active: 9) == 6..<10)
     }
 }
+
+@Suite("Space dots fitting")
+@MainActor
+struct SpaceDotsFittingTests {
+    @Test func narrowSpaceShowsFewerDots() {
+        // Four dots with the 10pt current capsule need 40pt.
+        #expect(SpaceDots.fittingLimit(for: 200) == 4)
+        #expect(SpaceDots.fittingLimit(for: 40) == 4)
+        #expect(SpaceDots.fittingLimit(for: 39) == 3)
+        #expect(SpaceDots.fittingLimit(for: 20) == 2)
+        #expect(SpaceDots.fittingLimit(for: 19) == 1)
+        #expect(SpaceDots.fittingLimit(for: -10) == 0)
+    }
+
+    @Test func aSmallerLimitStillKeepsTheActiveSpaceVisible() {
+        for count in 3...9 {
+            for active in 0..<count {
+                let range = SpaceDots.visibleRange(count: count, active: active, limit: 2)
+                #expect(range.count == 2)
+                #expect(range.contains(active))
+            }
+        }
+    }
+}
