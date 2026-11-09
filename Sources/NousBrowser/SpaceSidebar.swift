@@ -129,7 +129,7 @@ struct BrowserSidebar: View {
 
                 if let drag, !drag.isOutside { floatingItem(drag, width: geometry.size.width) }
 
-                SidebarControls(controller: controller, size: geometry.size,
+                SidebarControls(controller: controller, size: geometry.size, swipe: swipe,
                                 editingSpace: $editingSpace, spaceBanner: spaceBanner, newGroup: newFolder)
 
                 WindowDragArea()
@@ -216,8 +216,11 @@ struct BrowserSidebar: View {
                     .allowsHitTesting(current)
                     .accessibilityHidden(!current)
                     .id(space.id)
+                    // Building or dropping a page never fades: it is off screen.
+                    .transition(.identity)
                 } else {
                     Color.clear.frame(width: size.width, height: size.height)
+                        .transition(.identity)
                 }
             }
         }
@@ -1165,6 +1168,7 @@ private struct SidebarNewTabRow: View {
 private struct SidebarControls: View {
     let controller: BrowserController
     let size: CGSize
+    let swipe: SpaceSwipeState
     @Binding var editingSpace: UUID?
     let spaceBanner: UUID?
     let newGroup: () -> Void
@@ -1212,11 +1216,14 @@ private struct SidebarControls: View {
                 .position(x: compact ? 30 : size.width - 28, y: compact ? size.height - 134 : size.height - 28)
 
             if !compact, model.spaces.count > 1 || editingSpace != nil {
-                SpaceDots(controller: controller, editingSpace: $editingSpace)
+                SpaceDots(controller: controller, swipe: swipe, pageWidth: size.width, editingSpace: $editingSpace)
                     .position(x: (BrowserDesign.inset + 84 + size.width - 46) / 2, y: size.height - 28)
                     .transition(.opacity)
             }
-            if let id = spaceBanner, let space = model.spaces.first(where: { $0.id == id }), model.spaces.count > 1 {
+            // The wide sidebar's dots already follow a swipe; a banner arriving
+            // after the pages settle read as an afterimage. The icon rail has
+            // no dots, so it keeps its small indicator.
+            if compact, let id = spaceBanner, let space = model.spaces.first(where: { $0.id == id }), model.spaces.count > 1 {
                 SpaceBanner(space: space, index: model.spaces.firstIndex(where: { $0.id == id }) ?? 0,
                             count: model.spaces.count, compact: compact, maxWidth: size.width - 24)
                     .position(x: size.width / 2, y: size.height - (compact ? 182 : 66))
@@ -1380,6 +1387,8 @@ private struct DownloadRing: View {
 /// One dot per space (Pico 438:1225); the active one is a capsule.
 struct SpaceDots: View {
     let controller: BrowserController
+    let swipe: SpaceSwipeState
+    let pageWidth: CGFloat
     @Binding var editingSpace: UUID?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovered: UUID?
@@ -1388,41 +1397,89 @@ struct SpaceDots: View {
     /// Like the iOS page control: never more than this many dots, so a
     /// narrow sidebar never overflows. Swiping still reaches every space.
     static let maximumVisible = 4
+    static let dot: CGFloat = 5
+    static let spacing: CGFloat = 5
+    /// How much wider the current space's capsule is than a dot.
+    static let stretch: CGFloat = 9
 
-    /// The run of spaces shown, kept around the active one.
+    /// The run of spaces shown when the pages are at rest.
     static func visibleRange(count: Int, active: Int, limit: Int = maximumVisible) -> Range<Int> {
-        guard count > limit else { return 0..<count }
-        let start = min(max(0, active - (limit - 2)), count - limit)
-        return start..<(start + limit)
+        let start = Int(windowStart(count: count, progress: CGFloat(active), limit: limit))
+        return start..<(start + min(count, limit))
+    }
+
+    /// The first visible slot, continuous so the window glides with a swipe.
+    static func windowStart(count: Int, progress: CGFloat, limit: Int = maximumVisible) -> CGFloat {
+        guard count > limit else { return 0 }
+        return min(max(0, progress - CGFloat(limit - 2)), CGFloat(count - limit))
+    }
+
+    /// How much of the “current” capsule dot `index` holds at a fractional
+    /// position between spaces: 1 at rest on it, shared with a neighbour mid-swipe.
+    static func weight(_ index: Int, progress: CGFloat) -> CGFloat {
+        max(0, 1 - abs(CGFloat(index) - progress))
+    }
+
+    /// Leading edge of dot `index`.
+    static func leading(_ index: Int, progress: CGFloat) -> CGFloat {
+        var x = CGFloat(index) * (dot + spacing)
+        for earlier in 0..<index { x += stretch * weight(earlier, progress: progress) }
+        return x
+    }
+
+    /// Leading edge at a fractional slot, for the sliding window.
+    static func leading(slot: CGFloat, progress: CGFloat) -> CGFloat {
+        let low = Int(slot.rounded(.down))
+        let fraction = slot - CGFloat(low)
+        let a = leading(low, progress: progress)
+        return fraction == 0 ? a : a + (leading(low + 1, progress: progress) - a) * fraction
     }
 
     var body: some View {
         let spaces = model.spaces
+        let count = spaces.count
         let active = spaces.firstIndex { $0.id == model.activeSpaceID } ?? 0
-        let range = Self.visibleRange(count: spaces.count, active: active)
-        HStack(spacing: 5) {
-            ForEach(range, id: \.self) { position in
-                let space = spaces[position]
-                // Dots at an edge with more spaces beyond it shrink.
-                let truncated = (position == range.lowerBound && position > 0)
-                    || (position == range.upperBound - 1 && position < spaces.count - 1)
-                dot(space, active: position == active, truncated: truncated)
-                    .id(space.id)
+        // Follows the fingers: the swipe offset is how far the pages have moved.
+        let raw = CGFloat(active) - swipe.offset / max(1, pageWidth)
+        let progress = min(max(0, raw), CGFloat(max(0, count - 1)))
+        let start = Self.windowStart(count: count, progress: progress)
+        let visible = min(count, Self.maximumVisible)
+        let width = CGFloat(visible) * (Self.dot + Self.spacing) - Self.spacing + Self.stretch
+        let origin = Self.leading(slot: start, progress: progress)
+        let moreBefore = min(1, start)
+        let moreAfter = min(1, CGFloat(count - visible) - start)
+        ZStack(alignment: .leading) {
+            ForEach(Array(spaces.enumerated()), id: \.element.id) { index, space in
+                let weight = Self.weight(index, progress: progress)
+                let dotWidth = Self.dot + Self.stretch * weight
+                let x = Self.leading(index, progress: progress) - origin
+                let center = x + dotWidth / 2
+                // Fade out beyond the window; shrink at an edge with more spaces past it.
+                let inside = min(1, max(0, min(center + 2, width + 2 - center) / 4))
+                let nearLeft = max(0, 1 - center / 10) * moreBefore
+                let nearRight = max(0, 1 - (width - center) / 10) * moreAfter
+                let scale = 1 - 0.32 * max(nearLeft, nearRight) * (1 - weight)
+                dot(space, weight: weight, width: dotWidth, scale: scale)
+                    .opacity(inside)
+                    .allowsHitTesting(inside > 0.5)
+                    .accessibilityHidden(inside < 0.5)
+                    .offset(x: x)
             }
         }
-        .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.activeSpaceID)
+        .frame(width: width, height: 20, alignment: .leading)
         .animation(reduceMotion ? nil : BrowserMotion.interaction, value: hovered)
     }
 
-    private func dot(_ space: BrowserSpaceRecord, active: Bool, truncated: Bool) -> some View {
+    private func dot(_ space: BrowserSpaceRecord, weight: CGFloat, width: CGFloat, scale: CGFloat) -> some View {
         let isHovered = hovered == space.id
-        let side: CGFloat = truncated && !active ? 3.5 : 5
+        let active = space.id == model.activeSpaceID
+        let base = 0.2 + 0.35 * weight
         return Capsule()
-            .fill(Color.primary.opacity(active ? (isHovered ? 0.7 : 0.55) : (isHovered ? 0.45 : 0.2)))
-            .frame(width: active ? 14 : side, height: side)
-            .scaleEffect(isHovered && !active ? 1.3 : 1)
-            .frame(width: active ? 14 : 5, height: 20)
-            .contentShape(Rectangle().inset(by: -3))
+            .fill(Color.primary.opacity(isHovered ? base + 0.2 : base))
+            .frame(width: width, height: Self.dot)
+            .scaleEffect(isHovered && weight < 0.5 ? 1.3 : scale)
+            .frame(width: width, height: 20)
+            .contentShape(Rectangle().inset(by: -2.5))
             .onHover { inside in
                 if inside { hovered = space.id } else if hovered == space.id { hovered = nil }
             }

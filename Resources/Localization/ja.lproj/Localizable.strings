@@ -461,3 +461,5 @@
 "Add Nous Browser to an app once. When an agent needs the browser, Nous opens by itself. Restart the agent app after adding." = "アプリに一度追加するだけです。エージェントがブラウザを必要とすると、Nous が自動的に開きます。追加後はそのアプリを再起動してください。";
 "Add New" = "新規作成";
 "Spaces" = "スペース";
+"Press %@ to take a screenshot." = "%@ でスクリーンショットを撮れます。";
+"Press %@ to record your screen." = "%@ で画面を収録できます。";

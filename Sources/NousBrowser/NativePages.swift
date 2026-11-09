@@ -1,7 +1,9 @@
 import Foundation
 
 nonisolated enum LibrarySection: String, CaseIterable, Identifiable, Sendable {
-    case all, bookmarks, screenshots, recordings, history, downloads, updates
+    // Ordered by how often people reach for them: finding a page again
+    // first, maintenance last.
+    case all, history, bookmarks, downloads, screenshots, recordings, updates
 
     var id: String { rawValue }
 

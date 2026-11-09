@@ -460,3 +460,5 @@
 "Add Nous Browser to an app once. When an agent needs the browser, Nous opens by itself. Restart the agent app after adding." = "Ajoutez Nous Browser une seule fois à une app. Quand un agent a besoin du navigateur, Nous s’ouvre tout seul. Relancez l’app après l’ajout.";
 "Add New" = "Nouveau";
 "Spaces" = "Espaces";
+"Press %@ to take a screenshot." = "Appuyez sur %@ pour faire une capture d’écran.";
+"Press %@ to record your screen." = "Appuyez sur %@ pour enregistrer l’écran.";

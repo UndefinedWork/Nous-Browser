@@ -47,31 +47,23 @@ struct LibraryView: View {
 
     // MARK: Header
 
-    /// The title has a row of its own; below it the sections sit on the left
-    /// and search and capture on the right. When that row does not fit, the
-    /// sections get their own (sideways-scrolling) row above the actions.
+    /// Two stable rows: the title with search and sync status, then the
+    /// sections (scrolling sideways when the window is narrow). Nothing
+    /// reflows or jumps as the window resizes or the section changes.
     private var header: some View {
         VStack(alignment: .leading, spacing: 14) {
-            title
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 16) {
-                    tabs
-                    Spacer(minLength: 16)
-                    actions(searchWidth: 200)
-                }
-                VStack(alignment: .leading, spacing: 10) {
-                    ScrollView(.horizontal) { tabs.padding(.vertical, 2) }
-                        .scrollIndicators(.hidden)
-                        .scrollClipDisabled()
-                    HStack {
-                        Spacer(minLength: 0)
-                        actions(searchWidth: 160)
-                    }
-                }
+            HStack(spacing: 10) {
+                title
+                Spacer(minLength: 16)
+                searchField
+                syncBadge
             }
+            ScrollView(.horizontal) { tabs.padding(.vertical, 2) }
+                .scrollIndicators(.hidden)
+                .scrollClipDisabled()
         }
         .padding(.top, 22)
-        .padding(.bottom, 16)
+        .padding(.bottom, 14)
     }
 
     private var title: some View {
@@ -114,32 +106,22 @@ struct LibraryView: View {
         .fixedSize()
     }
 
-    private func actions(searchWidth: CGFloat) -> some View {
-        HStack(spacing: 8) {
-            if section == .history || section == .all || section == .bookmarks {
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(.secondary)
-                    TextField(L10n.string("Search"), text: $query).textFieldStyle(.plain).font(.system(size: 12))
-                }
-                .padding(.horizontal, 12).frame(width: searchWidth).frame(height: 32)
-                .glassEffect(.regular, in: Capsule())
-                .transition(.opacity.combined(with: .scale(scale: 0.95)))
-            }
-            captureButton("camera.viewfinder", L10n.string("Take Screenshot")) { CaptureCoordinator.shared.takeScreenshot() }
-            captureButton(CaptureCoordinator.shared.isRecording ? "stop.circle.fill" : "record.circle",
-                          L10n.string("Record Screen")) { CaptureCoordinator.shared.toggleRecording() }
-            syncBadge
-        }
-        .fixedSize()
-    }
+    private var searchable: Bool { section == .history || section == .all || section == .bookmarks }
 
-    private func captureButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 14)).frame(width: 32, height: 32).contentShape(Circle())
+    /// Keeps its place in every section (dimmed where it does not apply),
+    /// and gives up width before the title does.
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(.secondary)
+            TextField(L10n.string("Search"), text: $query).textFieldStyle(.plain).font(.system(size: 12))
         }
-        .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: Circle())
-        .help(label)
+        .padding(.horizontal, 12)
+        .frame(minWidth: 120, idealWidth: 240, maxWidth: 240)
+        .frame(height: 32)
+        .glassEffect(.regular, in: Capsule())
+        .opacity(searchable ? 1 : 0.45)
+        .disabled(!searchable)
+        .animation(reduceMotion ? nil : BrowserMotion.interaction, value: searchable)
     }
 
     @State private var showsSync = false
@@ -169,24 +151,64 @@ struct LibraryView: View {
         }
     }
 
+    /// What people come to the Library for, most often first: finding a page
+    /// again (History), then saved pages, then files. A wide window puts the
+    /// shorter lists beside History instead of below it.
     private var overview: some View {
-        VStack(alignment: .leading, spacing: 30) {
+        let wide = contentWidth >= 760
+        return VStack(alignment: .leading, spacing: 30) {
             if BrowserUpdater.shared.showsButton { LibraryUpdatesView(compact: true) }
-            if !library.bookmarks.isEmpty {
+            if wide {
+                HStack(alignment: .top, spacing: 36) {
+                    VStack(alignment: .leading, spacing: 14) { historyBlock(limit: 14) }
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    VStack(alignment: .leading, spacing: 30) {
+                        bookmarksBlock
+                        downloadsBlock
+                    }
+                    .frame(width: min(400, (contentWidth - 36) * 0.42), alignment: .topLeading)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 14) { historyBlock(limit: 8) }
+                bookmarksBlock
+                downloadsBlock
+            }
+            capturesBlock
+        }
+    }
+
+    @ViewBuilder private func historyBlock(limit: Int) -> some View {
+        sectionHeader(L10n.string("History"), destination: .history)
+        LibraryHistoryList(controller: controller, query: query, limit: limit)
+    }
+
+    @ViewBuilder private var bookmarksBlock: some View {
+        if !library.bookmarks.isEmpty {
+            VStack(alignment: .leading, spacing: 14) {
                 sectionHeader(L10n.string("Bookmarks"), destination: .bookmarks)
                 LibraryBookmarksList(controller: controller, query: query, limit: 6)
             }
-            if !library.captures.isEmpty {
-                sectionHeader(L10n.string("Captures"), destination: .screenshots)
-                // Two full rows at the current width, never a ragged last row.
-                captureGrid(Array(library.captures.prefix(captureColumns * 2)))
-            }
-            if !library.downloads.isEmpty || !ChromiumDownloadCoordinator.shared.records.isEmpty {
+        }
+    }
+
+    /// Only while something is downloading or finished in the last day.
+    @ViewBuilder private var downloadsBlock: some View {
+        let recent = library.downloads.contains { $0.date > Date().addingTimeInterval(-86_400) }
+        if recent || ChromiumDownloadCoordinator.shared.hasActiveDownloads {
+            VStack(alignment: .leading, spacing: 14) {
                 sectionHeader(L10n.string("Downloads"), destination: .downloads)
                 LibraryDownloadsList(limit: 4)
             }
-            sectionHeader(L10n.string("History"), destination: .history)
-            LibraryHistoryList(controller: controller, query: query, limit: 12)
+        }
+    }
+
+    /// One full row of the newest captures.
+    @ViewBuilder private var capturesBlock: some View {
+        if !library.captures.isEmpty {
+            VStack(alignment: .leading, spacing: 14) {
+                sectionHeader(L10n.string("Captures"), destination: .screenshots)
+                captureGrid(Array(library.captures.prefix(captureColumns)))
+            }
         }
     }
 
@@ -203,13 +225,14 @@ struct LibraryView: View {
     private func capturesGrid(_ kind: LibraryCapture.Kind, empty: String, symbol: String) -> some View {
         let items = library.captures.filter { $0.kind == kind }
         if items.isEmpty {
+            let shortcut = CaptureShortcuts.shared.shortcut(kind == .screenshot ? .screenshot : .recording)
             ContentUnavailableView {
                 Label(empty, systemImage: symbol)
-            } actions: {
-                Button(kind == .screenshot ? L10n.string("Take Screenshot") : L10n.string("Record Screen")) {
-                    if kind == .screenshot { CaptureCoordinator.shared.takeScreenshot() } else { CaptureCoordinator.shared.toggleRecording() }
+            } description: {
+                if let shortcut {
+                    Text(L10n.format(kind == .screenshot ? "Press %@ to take a screenshot." : "Press %@ to record your screen.",
+                                     shortcut.display))
                 }
-                .buttonStyle(.glass)
             }
             .padding(.top, 80)
         } else {
