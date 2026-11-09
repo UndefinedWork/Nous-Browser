@@ -16,25 +16,37 @@ struct LibraryView: View {
 
     /// Header and content share one centred column, so the title, the tabs,
     /// the search field and every "Show All" line up on the same edges.
-    private static let columnWidth: CGFloat = 1040
-    private static let columnPadding: CGFloat = 32
+    private static let columnWidth: CGFloat = 1000
+
+    /// Side margins tighten as the window narrows.
+    private static func padding(for width: CGFloat) -> CGFloat {
+        width < 640 ? 20 : width < 900 ? 28 : 40
+    }
+
+    /// The column's inner width comes from the window, never from what is
+    /// inside it, so a wide row can never hold the page wider than the window.
+    static func innerWidth(for available: CGFloat) -> CGFloat {
+        max(0, min(columnWidth, available) - padding(for: available) * 2)
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-                .padding(.horizontal, Self.columnPadding)
-                .frame(maxWidth: Self.columnWidth)
-                .frame(maxWidth: .infinity)
-            ScrollView {
-                content
-                    .padding(.horizontal, Self.columnPadding)
-                    .padding(.top, 10)
-                    .padding(.bottom, 40)
-                    .frame(maxWidth: Self.columnWidth)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.width - Self.columnPadding * 2 } action: { contentWidth = $0 }
+        GeometryReader { geometry in
+            let available = geometry.size.width
+            let inner = Self.innerWidth(for: available)
+            VStack(spacing: 0) {
+                header
+                    .frame(width: inner)
                     .frame(maxWidth: .infinity)
+                ScrollView {
+                    content
+                        .frame(width: inner, alignment: .topLeading)
+                        .padding(.top, 10)
+                        .padding(.bottom, 40)
+                        .frame(maxWidth: .infinity)
+                }
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
+            .onChange(of: inner, initial: true) { _, value in contentWidth = value }
         }
         .background(LibraryStyle.page)
         .animation(reduceMotion ? nil : BrowserMotion.spring, value: section)
@@ -47,23 +59,32 @@ struct LibraryView: View {
 
     // MARK: Header
 
-    /// Two stable rows: the title with search and sync status, then the
-    /// sections (scrolling sideways when the window is narrow). Nothing
-    /// reflows or jumps as the window resizes or the section changes.
+    /// The title on its own, then one row: sections on the left, search and
+    /// sync status on the right. In a narrow window the sections scroll
+    /// sideways and search gives up width, so the row never wraps or overlaps.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 18) {
+            title
             HStack(spacing: 10) {
-                title
-                Spacer(minLength: 16)
+                // Clipped to its own space with a soft fade, so tabs that do
+                // not fit scroll under the edge instead of under the search field.
+                ScrollView(.horizontal) { tabs.padding(.vertical, 8).padding(.horizontal, 4) }
+                    .scrollIndicators(.hidden)
+                    .mask {
+                        HStack(spacing: 0) {
+                            Rectangle()
+                            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 18)
+                        }
+                    }
+                    .padding(.horizontal, -4)
+                    .padding(.vertical, -8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 searchField
                 syncBadge
             }
-            ScrollView(.horizontal) { tabs.padding(.vertical, 2) }
-                .scrollIndicators(.hidden)
-                .scrollClipDisabled()
         }
-        .padding(.top, 22)
-        .padding(.bottom, 14)
+        .padding(.top, 44)
+        .padding(.bottom, 18)
     }
 
     private var title: some View {
@@ -155,7 +176,7 @@ struct LibraryView: View {
     /// newest captures, then recent history and downloads in cards — side by
     /// side when the window is wide, stacked when it is not.
     private var overview: some View {
-        let wide = contentWidth >= 760
+        let wide = contentWidth >= 820
         let showsDownloads = hasRecentDownloads
         return VStack(alignment: .leading, spacing: 36) {
             if BrowserUpdater.shared.showsButton { LibraryUpdatesView(compact: true) }
@@ -172,7 +193,7 @@ struct LibraryView: View {
             if wide && showsDownloads {
                 HStack(alignment: .top, spacing: 24) {
                     historyCard(limit: 8).frame(maxWidth: .infinity)
-                    downloadsCard.frame(width: min(380, contentWidth * 0.38))
+                    downloadsCard.frame(width: min(360, (contentWidth - 24) * 0.4))
                 }
             } else {
                 historyCard(limit: 8)

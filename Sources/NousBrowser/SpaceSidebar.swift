@@ -195,6 +195,12 @@ struct BrowserSidebar: View {
         }
     }
 
+    private func hideBanner() {
+        bannerGeneration += 1
+        guard spaceBanner != nil else { return }
+        withAnimation(reduceMotion ? nil : BrowserMotion.interaction) { spaceBanner = nil }
+    }
+
     /// The space a swipe in progress would land on if released now.
     private func swipeTarget(index: Int, spaces: [BrowserSpaceRecord], width: CGFloat) -> UUID? {
         guard !spaces.isEmpty, width > 0 else { return nil }
@@ -231,15 +237,14 @@ struct BrowserSidebar: View {
         .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.activeSpaceID)
         .background {
             SpaceSwipeMonitor(isEnabled: drag == nil && spaces.count > 1, width: size.width,
-                              onBegin: {
-                                  swipe.isTracking = true
-                                  if spaces.count > 1 { showBanner(spaces[Int(index)].id, lingers: false) }
-                              },
+                              onBegin: { swipe.isTracking = true },
+                              // Only the space the swipe is heading to is named;
+                              // back over the current space, the banner goes.
                               onChange: { delta in
                                   swipe.offset = resisted(swipe.offset + delta, index: Int(index), count: spaces.count, width: size.width)
-                                  if let target = swipeTarget(index: Int(index), spaces: spaces, width: size.width), target != spaceBanner {
-                                      showBanner(target, lingers: false)
-                                  }
+                                  guard let target = swipeTarget(index: Int(index), spaces: spaces, width: size.width) else { return }
+                                  if target == model.activeSpaceID { hideBanner() }
+                                  else if target != spaceBanner { showBanner(target, lingers: false) }
                               },
                               onEnd: { velocity in finishSwipe(index: Int(index), spaces: spaces, width: size.width, velocity: velocity) })
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -260,7 +265,7 @@ struct BrowserSidebar: View {
         if swipe.offset < -width * 0.25 || velocity < -600 { target = min(spaces.count - 1, index + 1) }
         else if swipe.offset > width * 0.25 || velocity > 600 { target = max(0, index - 1) }
         swipe.isTracking = false
-        if spaces.count > 1 { showBanner(spaces[target].id) }
+        if target != index { showBanner(spaces[target].id) } else { hideBanner() }
         withAnimation(reduceMotion ? nil : BrowserMotion.spring) {
             swipe.offset = 0
             if target != index {
