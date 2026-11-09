@@ -93,8 +93,6 @@ struct BrowserSidebar: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var frameStore = SidebarFrameStore()
     private var frames: [SidebarFrameID: CGRect] { frameStore.values }
-    /// The space just left stays built while its page slides away.
-    @State private var departingSpace: UUID?
     @State private var drag: SidebarDragState?
     /// Horizontal travel of a two-finger swipe in progress, in points.
     @State private var swipe = SpaceSwipeState()
@@ -148,14 +146,9 @@ struct BrowserSidebar: View {
                     .frame(width: 0, height: 0)
             }
             .onChange(of: model.isSidebarCompact) { _, _ in cancelDrag(); tooltip.dismiss() }
-            .onChange(of: model.activeSpaceID) { old, id in
+            .onChange(of: model.activeSpaceID) { _, id in
                 tooltip.dismiss()
                 showBanner(id)
-                departingSpace = old
-                Task {
-                    try? await Task.sleep(for: .seconds(0.8))
-                    if departingSpace == old { departingSpace = nil }
-                }
             }
         }
         .contextMenu {
@@ -204,11 +197,8 @@ struct BrowserSidebar: View {
         let spaces = model.spaces
         let index = CGFloat(spaces.firstIndex { $0.id == model.activeSpaceID } ?? 0)
         return HStack(spacing: 0) {
-            ForEach(Array(spaces.enumerated()), id: \.element.id) { position, space in
+            ForEach(spaces) { space in
                 let current = space.id == model.activeSpaceID
-                // Only the pages a swipe or a switch can show are built; the
-                // rest are empty frames, so far-away spaces cost nothing.
-                if abs(CGFloat(position) - index) <= 1 || space.id == departingSpace {
                 SpaceColumn(controller: controller, space: space.id, layout: displayedLayout(for: space.id),
                             drag: drag, renamingGroup: $renamingGroup, tooltip: tooltip, frames: frameStore,
                             actions: dragActions(size: size))
@@ -216,12 +206,6 @@ struct BrowserSidebar: View {
                     .allowsHitTesting(current)
                     .accessibilityHidden(!current)
                     .id(space.id)
-                    // Building or dropping a page never fades: it is off screen.
-                    .transition(.identity)
-                } else {
-                    Color.clear.frame(width: size.width, height: size.height)
-                        .transition(.identity)
-                }
             }
         }
         .fixedSize()
