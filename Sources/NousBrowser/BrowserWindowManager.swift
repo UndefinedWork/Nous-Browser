@@ -658,9 +658,13 @@ final class BrowserWindowContext: NSObject, NSWindowDelegate {
         }
     }
 
+    /// The title bar's own buttons stay hidden; the sidebar shows its own
+    /// set of system buttons when its window-buttons setting is on.
     private func hideWindowButtons() {
-        [.closeButton, .miniaturizeButton, .zoomButton].forEach {
-            window.standardWindowButton($0)?.isHidden = true
+        for kind: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
+            guard let button = window.standardWindowButton(kind),
+                  button.superview?.identifier != NativeWindowButtons.HostView.identifier else { continue }
+            button.isHidden = true
         }
     }
 }
