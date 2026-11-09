@@ -1,0 +1,49 @@
+Resources/Localization/source.json
+  s_a868a580eb8a06::t_12c871216e699d 422-425
+Resources/Localization/en.lproj/Localizable.strings
+  s_a868a580eb8a06::t_12c871216e699d 466-468
+Resources/Localization/es.lproj/Localizable.strings
+  s_a868a580eb8a06::t_12c871216e699d 465-467
+Resources/Localization/pt-BR.lproj/Localizable.strings
+  s_a868a580eb8a06::t_12c871216e699d 465-467
+Resources/Localization/ko.lproj/Localizable.strings
+  s_a868a580eb8a06::t_12c871216e699d 466-468
+Resources/Localization/ru.lproj/Localizable.strings
+  s_a868a580eb8a06::t_12c871216e699d 465-467
+Resources/Localization/it.lproj/Localizable.strings
+  s_a868a580eb8a06::t_12c871216e699d 465-467
+Sources/NousBrowser/SpaceSidebar.swift
+  s_a868a580eb8a06::t_ea3605c6cc3faa 101,183-191,194,198-204,234-243,263,1235
+Resources/Localization/fr.lproj/Localizable.strings
+  s_a868a580eb8a06::t_12c871216e699d 465-467
+Sources/NousBrowser/LibraryView.swift
+  s_a868a580eb8a06::t_b502005c63482d 19,39,71,154-156,159-160,162-164,167-179,184-186,189-191,195-197,390
+  s_a868a580eb8a06::t_a7daf424979dce 269,292-293
+  s_a868a580eb8a06::t_12c871216e699d 756-903
+Resources/Localization/ja.lproj/Localizable.strings
+  s_a868a580eb8a06::t_12c871216e699d 466-468
+Resources/Localization/de.lproj/Localizable.strings
+  s_a868a580eb8a06::t_12c871216e699d 465-467
+Resources/Localization/zh-Hant.lproj/Localizable.strings
+  s_a868a580eb8a06::t_12c871216e699d 466-468
+Resources/Localization/zh-Hans.lproj/Localizable.strings
+  s_a868a580eb8a06::t_12c871216e699d 466-468
+Docs/releases/1.4.13.md
+  s_a868a580eb8a06::t_0d40437811c141 9,12,21,24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "55a728eec5c4c9a93290e60d30227e1c23671acf",
+  "prompts": {},
+  "sessions": {
+    "s_a868a580eb8a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1919a1c-2b86-4a7e-9b4f-767da074be83",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
