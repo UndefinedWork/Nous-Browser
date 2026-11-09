@@ -38,10 +38,12 @@ enum SidebarTabDragGeometry {
 
     static func rowFrame(at index: Int, sidebarWidth: CGFloat, scrollOffset: CGFloat,
                          isCompact: Bool = false) -> CGRect {
-        CGRect(x: BrowserDesign.inset,
-               y: topInset(isCompact: isCompact) + CGFloat(index) * stride - scrollOffset,
-               width: max(0, sidebarWidth - BrowserDesign.inset * 2),
-               height: BrowserDesign.rowHeight)
+        // The rail centres its 36pt icons; the wide list keeps a 12pt inset.
+        let inset = isCompact ? max(0, (sidebarWidth - BrowserDesign.rowHeight) / 2) : BrowserDesign.inset
+        return CGRect(x: inset,
+                      y: topInset(isCompact: isCompact) + CGFloat(index) * stride - scrollOffset,
+                      width: max(0, sidebarWidth - inset * 2),
+                      height: BrowserDesign.rowHeight)
     }
 
     static func proposedIndex(forRowTop rowTop: CGFloat, scrollOffset: CGFloat,

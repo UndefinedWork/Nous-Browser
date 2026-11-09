@@ -113,12 +113,12 @@ struct BrowserSidebar: View {
                 VStack(spacing: 0) {
                     let lights = controller.appearance.showsWindowButtons
                     SidebarEdgeGlass(edge: .top,
-                                     buttonCenters: compact ? [30] : [lights ? 102 : 28, geometry.size.width - 28],
+                                     buttonCenters: compact ? [28] : [lights ? 102 : 28, geometry.size.width - 28],
                                      height: compact ? 124 + (lights ? SidebarMetrics.compactWindowButtonsShift : 0) : 84,
                                      controlCenterFromEdge: compact ? 48 + (lights ? SidebarMetrics.compactWindowButtonsShift : 0) : 28)
                     Spacer(minLength: 0)
                     SidebarEdgeGlass(edge: .bottom,
-                                     buttonCenters: compact ? [30] : [52, geometry.size.width / 2, geometry.size.width - 28],
+                                     buttonCenters: compact ? [28] : [52, geometry.size.width / 2, geometry.size.width - 28],
                                      height: compact ? 196 : 88,
                                      controlCenterFromEdge: compact ? 80 : 28)
                 }
@@ -576,7 +576,7 @@ private struct SpaceColumn: View {
                 regularArea
                     .sidebarFrame(.regularZone(space))
             }
-            .padding(.horizontal, compact ? 12 : BrowserDesign.inset)
+            .padding(.horizontal, compact ? 10 : BrowserDesign.inset)
             .padding(.top, SidebarTabDragGeometry.topInset(isCompact: compact)
                      + (compact && controller.appearance.showsWindowButtons ? SidebarMetrics.compactWindowButtonsShift : 0))
             .padding(.bottom, compact ? 196 : SidebarTabDragGeometry.bottomInset(isCompact: false) + 12)
@@ -1199,7 +1199,7 @@ private struct SidebarControls: View {
         let lights = controller.appearance.showsWindowButtons
         // With window buttons: they lead the top row (wide sidebar) or get a
         // row of their own above the controls (icon rail).
-        let toggleX: CGFloat = lights && !compact ? 102 : compact ? 30 : 28
+        let toggleX: CGFloat = lights && !compact ? 102 : 28
         let shift: CGFloat = lights && compact ? SidebarMetrics.compactWindowButtonsShift : 0
         ZStack(alignment: .topLeading) {
             if !compact {
@@ -1210,23 +1210,23 @@ private struct SidebarControls: View {
             }
             if lights {
                 Group {
-                    if compact { WindowTrafficLights(diameter: 12, spacing: 6) }
+                    if compact { WindowTrafficLights(diameter: 10, spacing: 5) }
                     else { WindowTrafficLights() }
                 }
-                .position(x: compact ? 30 : 47, y: compact ? 24 : 28)
+                .position(x: compact ? 28 : 47, y: compact ? 24 : 28)
                 .transition(.opacity)
             }
             GlassSymbolButton("sidebar.left", label: topLabel, help: topLabel + "  ⌘/",
                               symbolSize: BrowserDesign.topSymbolSize, symbolWeight: .medium) { model.toggleSidebar() }
                 .position(x: toggleX, y: 28 + shift)
             SidebarNewMenuButton(controller: controller, newGroup: newGroup, newSpace: newSpace)
-                .position(x: compact ? 30 : size.width - 28, y: compact ? 68 + shift : 28)
+                .position(x: compact ? 28 : size.width - 28, y: compact ? 68 + shift : 28)
 
             NavigationCluster(controller: controller, vertical: compact)
-                .position(x: compact ? 30 : BrowserDesign.inset + 42, y: compact ? size.height - 60 : size.height - 28)
+                .position(x: compact ? 28 : BrowserDesign.inset + 42, y: compact ? size.height - 56 : size.height - 28)
 
             LibraryButton(controller: controller)
-                .position(x: compact ? 30 : size.width - 28, y: compact ? size.height - 134 : size.height - 28)
+                .position(x: compact ? 28 : size.width - 28, y: compact ? size.height - 124 : size.height - 28)
 
             if !compact, model.spaces.count > 1 || editingSpace != nil {
                 SpaceDots(controller: controller, swipe: swipe, pageWidth: size.width, editingSpace: $editingSpace)

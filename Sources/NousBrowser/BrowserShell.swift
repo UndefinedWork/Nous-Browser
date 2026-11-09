@@ -4,7 +4,9 @@ import SwiftUI
 // Measurements come from Pico / Nous Browser, 373:417.
 enum BrowserDesign {
     // Pico 391:485 — the icon rail keeps the same 36 pt rows and 12 pt insets.
-    static let compactSidebarWidth: CGFloat = 60
+    // Pico 448:1364: a 56pt rail keeps the controls on the same 28pt centre
+    // line as the wide sidebar, so collapsing never moves the toggle.
+    static let compactSidebarWidth: CGFloat = 56
     static let inset: CGFloat = 12
     // Pico 448:1297: 32pt top controls with a 12pt medium glyph.
     static let buttonSize: CGFloat = 32

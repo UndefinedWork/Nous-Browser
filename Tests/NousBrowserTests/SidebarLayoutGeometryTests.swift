@@ -73,14 +73,14 @@ struct SidebarLayoutGeometryTests {
     }
 
     @Test func compactRailRowsUseTheStackedControlsInsetsWithoutChangingTheirDragStride() {
-        let first = SidebarTabDragGeometry.rowFrame(at: 0, sidebarWidth: 60, scrollOffset: 0, isCompact: true)
-        #expect(first == CGRect(x: 12, y: 96, width: 36, height: 36))
+        let first = SidebarTabDragGeometry.rowFrame(at: 0, sidebarWidth: 56, scrollOffset: 0, isCompact: true)
+        #expect(first == CGRect(x: 10, y: 96, width: 36, height: 36))
         for offset: CGFloat in [0, 18.5, 37, 81.5, 600] {
             for index in [0, 1, 2, 11, 42] {
-                let compact = SidebarTabDragGeometry.rowFrame(at: index, sidebarWidth: 60,
+                let compact = SidebarTabDragGeometry.rowFrame(at: index, sidebarWidth: 56,
                                                               scrollOffset: offset, isCompact: true)
                 let expanded = SidebarTabDragGeometry.rowFrame(at: index, sidebarWidth: 243, scrollOffset: offset)
-                #expect(compact.midX == 30)
+                #expect(compact.midX == 28)
                 #expect(compact.height == expanded.height)
                 #expect(compact.minY - expanded.minY == 40)
                 #expect(SidebarTabDragGeometry.proposedIndex(forRowTop: compact.minY,
