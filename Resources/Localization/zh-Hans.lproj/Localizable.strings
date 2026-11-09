@@ -463,3 +463,6 @@
 "Spaces" = "空间";
 "Press %@ to take a screenshot." = "按 %@ 截图。";
 "Press %@ to record your screen." = "按 %@ 录制屏幕。";
+"Favorites" = "个人收藏";
+"Recent Captures" = "最近截取";
+"Recently Visited" = "最近访问";

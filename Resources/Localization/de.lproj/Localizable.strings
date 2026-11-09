@@ -462,3 +462,6 @@
 "Spaces" = "Spaces";
 "Press %@ to take a screenshot." = "Drücke %@, um ein Bildschirmfoto aufzunehmen.";
 "Press %@ to record your screen." = "Drücke %@, um den Bildschirm aufzunehmen.";
+"Favorites" = "Favoriten";
+"Recent Captures" = "Letzte Aufnahmen";
+"Recently Visited" = "Zuletzt besucht";

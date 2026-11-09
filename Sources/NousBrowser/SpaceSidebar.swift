@@ -98,6 +98,7 @@ struct BrowserSidebar: View {
     @State private var swipe = SpaceSwipeState()
     @State private var renamingGroup: UUID?
     @State private var spaceBanner: UUID?
+    @State private var bannerGeneration = 0
     @State private var editingSpace: UUID?
     @State private var dragWindow = SidebarDragWindowReference()
     @State private var springLoad: Task<Void, Never>?
@@ -179,12 +180,26 @@ struct BrowserSidebar: View {
         }
     }
 
-    private func showBanner(_ id: UUID) {
-        withAnimation(BrowserMotion.spring) { spaceBanner = id }
+    /// Names the space right away — during a swipe it names the space the
+    /// pages are heading to — and lingers briefly once the pages settle.
+    private func showBanner(_ id: UUID, lingers: Bool = true) {
+        if spaceBanner != id {
+            withAnimation(reduceMotion ? nil : BrowserMotion.interaction) { spaceBanner = id }
+        }
+        bannerGeneration += 1
+        guard lingers else { return }
+        let generation = bannerGeneration
         Task {
             try? await Task.sleep(for: .seconds(1.3))
-            if spaceBanner == id { withAnimation(BrowserMotion.spring) { spaceBanner = nil } }
+            if bannerGeneration == generation { withAnimation(BrowserMotion.spring) { spaceBanner = nil } }
         }
+    }
+
+    /// The space a swipe in progress would land on if released now.
+    private func swipeTarget(index: Int, spaces: [BrowserSpaceRecord], width: CGFloat) -> UUID? {
+        guard !spaces.isEmpty, width > 0 else { return nil }
+        let position = (CGFloat(index) - swipe.offset / width).rounded()
+        return spaces[min(max(0, Int(position)), spaces.count - 1)].id
     }
 
     // MARK: Paging
@@ -216,8 +231,16 @@ struct BrowserSidebar: View {
         .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.activeSpaceID)
         .background {
             SpaceSwipeMonitor(isEnabled: drag == nil && spaces.count > 1, width: size.width,
-                              onBegin: { swipe.isTracking = true },
-                              onChange: { delta in swipe.offset = resisted(swipe.offset + delta, index: Int(index), count: spaces.count, width: size.width) },
+                              onBegin: {
+                                  swipe.isTracking = true
+                                  if spaces.count > 1 { showBanner(spaces[Int(index)].id, lingers: false) }
+                              },
+                              onChange: { delta in
+                                  swipe.offset = resisted(swipe.offset + delta, index: Int(index), count: spaces.count, width: size.width)
+                                  if let target = swipeTarget(index: Int(index), spaces: spaces, width: size.width), target != spaceBanner {
+                                      showBanner(target, lingers: false)
+                                  }
+                              },
                               onEnd: { velocity in finishSwipe(index: Int(index), spaces: spaces, width: size.width, velocity: velocity) })
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -237,6 +260,7 @@ struct BrowserSidebar: View {
         if swipe.offset < -width * 0.25 || velocity < -600 { target = min(spaces.count - 1, index + 1) }
         else if swipe.offset > width * 0.25 || velocity > 600 { target = max(0, index - 1) }
         swipe.isTracking = false
+        if spaces.count > 1 { showBanner(spaces[target].id) }
         withAnimation(reduceMotion ? nil : BrowserMotion.spring) {
             swipe.offset = 0
             if target != index {
@@ -1208,7 +1232,7 @@ private struct SidebarControls: View {
                 SpaceBanner(space: space, index: model.spaces.firstIndex(where: { $0.id == id }) ?? 0,
                             count: model.spaces.count, compact: compact, maxWidth: size.width - 24)
                     .position(x: size.width / 2, y: size.height - (compact ? 182 : 66))
-                    .transition(.scale(scale: 0.8, anchor: .bottom).combined(with: .opacity))
+                    .transition(.scale(scale: 0.92, anchor: .bottom).combined(with: .opacity))
                     .allowsHitTesting(false)
                     .id(id)
             }

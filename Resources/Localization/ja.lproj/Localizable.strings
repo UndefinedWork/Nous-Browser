@@ -463,3 +463,6 @@
 "Spaces" = "スペース";
 "Press %@ to take a screenshot." = "%@ でスクリーンショットを撮れます。";
 "Press %@ to record your screen." = "%@ で画面を収録できます。";
+"Favorites" = "お気に入り";
+"Recent Captures" = "最近のキャプチャ";
+"Recently Visited" = "最近訪問したサイト";

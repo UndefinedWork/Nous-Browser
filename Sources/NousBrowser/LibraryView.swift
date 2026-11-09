@@ -16,7 +16,7 @@ struct LibraryView: View {
 
     /// Header and content share one centred column, so the title, the tabs,
     /// the search field and every "Show All" line up on the same edges.
-    private static let columnWidth: CGFloat = 1100
+    private static let columnWidth: CGFloat = 1040
     private static let columnPadding: CGFloat = 32
 
     var body: some View {
@@ -36,7 +36,7 @@ struct LibraryView: View {
             }
             .scrollIndicators(.hidden)
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(LibraryStyle.page)
         .animation(reduceMotion ? nil : BrowserMotion.spring, value: section)
         .onAppear { library.refresh() }
     }
@@ -68,7 +68,7 @@ struct LibraryView: View {
 
     private var title: some View {
         Text(L10n.string("Library"))
-            .font(.custom("InstrumentSerif-Regular", size: 28))
+            .font(.custom("InstrumentSerif-Regular", size: 40))
             .lineLimit(1)
             .fixedSize()
     }
@@ -151,73 +151,50 @@ struct LibraryView: View {
         }
     }
 
-    /// What people come to the Library for, most often first: finding a page
-    /// again (History), then saved pages, then files. A wide window puts the
-    /// shorter lists beside History instead of below it.
+    /// Like the Safari start page: favourites as large icon tiles, then the
+    /// newest captures, then recent history and downloads in cards — side by
+    /// side when the window is wide, stacked when it is not.
     private var overview: some View {
         let wide = contentWidth >= 760
-        return VStack(alignment: .leading, spacing: 30) {
+        let showsDownloads = hasRecentDownloads
+        return VStack(alignment: .leading, spacing: 36) {
             if BrowserUpdater.shared.showsButton { LibraryUpdatesView(compact: true) }
-            if wide {
-                HStack(alignment: .top, spacing: 36) {
-                    VStack(alignment: .leading, spacing: 14) { historyBlock(limit: 14) }
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                    VStack(alignment: .leading, spacing: 30) {
-                        bookmarksBlock
-                        downloadsBlock
-                    }
-                    .frame(width: min(400, (contentWidth - 36) * 0.42), alignment: .topLeading)
+            if !library.bookmarks.isEmpty {
+                LibrarySectionView(title: L10n.string("Favorites"), action: { open(.bookmarks) }) {
+                    LibraryFavoritesGrid(controller: controller, query: query, rows: 2, width: contentWidth)
+                }
+            }
+            if !library.captures.isEmpty {
+                LibrarySectionView(title: L10n.string("Recent Captures"), action: { open(.screenshots) }) {
+                    captureGrid(Array(library.captures.prefix(captureColumns)))
+                }
+            }
+            if wide && showsDownloads {
+                HStack(alignment: .top, spacing: 24) {
+                    historyCard(limit: 8).frame(maxWidth: .infinity)
+                    downloadsCard.frame(width: min(380, contentWidth * 0.38))
                 }
             } else {
-                VStack(alignment: .leading, spacing: 14) { historyBlock(limit: 8) }
-                bookmarksBlock
-                downloadsBlock
-            }
-            capturesBlock
-        }
-    }
-
-    @ViewBuilder private func historyBlock(limit: Int) -> some View {
-        sectionHeader(L10n.string("History"), destination: .history)
-        LibraryHistoryList(controller: controller, query: query, limit: limit)
-    }
-
-    @ViewBuilder private var bookmarksBlock: some View {
-        if !library.bookmarks.isEmpty {
-            VStack(alignment: .leading, spacing: 14) {
-                sectionHeader(L10n.string("Bookmarks"), destination: .bookmarks)
-                LibraryBookmarksList(controller: controller, query: query, limit: 6)
+                historyCard(limit: 8)
+                if showsDownloads { downloadsCard }
             }
         }
     }
 
-    /// Only while something is downloading or finished in the last day.
-    @ViewBuilder private var downloadsBlock: some View {
-        let recent = library.downloads.contains { $0.date > Date().addingTimeInterval(-86_400) }
-        if recent || ChromiumDownloadCoordinator.shared.hasActiveDownloads {
-            VStack(alignment: .leading, spacing: 14) {
-                sectionHeader(L10n.string("Downloads"), destination: .downloads)
-                LibraryDownloadsList(limit: 4)
-            }
+    private var hasRecentDownloads: Bool {
+        library.downloads.contains { $0.date > Date().addingTimeInterval(-86_400) }
+            || ChromiumDownloadCoordinator.shared.hasActiveDownloads
+    }
+
+    private func historyCard(limit: Int) -> some View {
+        LibrarySectionView(title: L10n.string("Recently Visited"), action: { open(.history) }) {
+            LibraryCard { LibraryHistoryList(controller: controller, query: query, limit: limit) }
         }
     }
 
-    /// One full row of the newest captures.
-    @ViewBuilder private var capturesBlock: some View {
-        if !library.captures.isEmpty {
-            VStack(alignment: .leading, spacing: 14) {
-                sectionHeader(L10n.string("Captures"), destination: .screenshots)
-                captureGrid(Array(library.captures.prefix(captureColumns)))
-            }
-        }
-    }
-
-    private func sectionHeader(_ title: String, destination: LibrarySection) -> some View {
-        HStack {
-            Text(title).font(.system(size: 15, weight: .semibold))
-            Spacer()
-            Button(L10n.string("Show All")) { open(destination) }
-                .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.secondary)
+    private var downloadsCard: some View {
+        LibrarySectionView(title: L10n.string("Downloads"), action: { open(.downloads) }) {
+            LibraryCard { LibraryDownloadsList(limit: 4) }
         }
     }
 
@@ -289,7 +266,7 @@ private struct LibraryCaptureCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.05))
+                RoundedRectangle(cornerRadius: 14, style: .continuous).fill(LibraryStyle.card)
                 if let thumbnail {
                     Image(nsImage: thumbnail).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
                         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -312,8 +289,8 @@ private struct LibraryCaptureCard: View {
                 }
             }
             .aspectRatio(16 / 10, contentMode: .fit)
-            .overlay { RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(hovered ? 0.14 : 0.06), lineWidth: 1) }
-            .shadow(color: .black.opacity(hovered ? 0.12 : 0), radius: 14, y: 6)
+            .overlay { RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(hovered ? 0.12 : 0.06), lineWidth: 0.5) }
+            .shadow(color: .black.opacity(hovered ? 0.12 : 0.04), radius: hovered ? 14 : 8, y: hovered ? 6 : 2)
             .scaleEffect(hovered && !reduceMotion ? 1.02 : 1)
             if renaming {
                 TextField("", text: $name).textFieldStyle(.plain).font(.system(size: 12, weight: .medium))
@@ -410,7 +387,7 @@ private struct LibraryHistoryList: View {
                             Text(dayTitle(group.day)).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                                 .padding(.vertical, 8).padding(.top, 10)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color(nsColor: .textBackgroundColor))
+                                .background(LibraryStyle.page)
                         }
                     }
                 }
@@ -773,6 +750,154 @@ struct LibraryUpdatesView: View {
         case .idle:
             Button(L10n.string("Check for Updates")) { updater.checkForUpdates(inline: true) }
                 .buttonStyle(.glass).disabled(!updater.isEnabled)
+        }
+    }
+}
+
+// MARK: - Style
+
+enum LibraryStyle {
+    /// The grouped background cards sit on, as in System Settings and the App Store.
+    static let page = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor(white: 0.105, alpha: 1) : NSColor(white: 0.965, alpha: 1)
+    })
+    static let card = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor(white: 0.16, alpha: 1) : .white
+    })
+    static let radius: CGFloat = 18
+}
+
+/// A titled block of the overview with a quiet “Show All”.
+private struct LibrarySectionView<Content: View>: View {
+    let title: String
+    let action: () -> Void
+    @ViewBuilder var content: Content
+    @State private var hovered = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title).font(.system(size: 20, weight: .bold))
+                Spacer()
+                Button(action: action) {
+                    HStack(spacing: 3) {
+                        Text(L10n.string("Show All"))
+                        Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                    }
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(hovered ? Color.primary : Color.secondary)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .onHover { hovered = $0 }
+            }
+            content
+        }
+    }
+}
+
+/// White rounded card with a hairline edge and a soft shadow.
+private struct LibraryCard<Content: View>: View {
+    @ViewBuilder var content: Content
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        content
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .background(LibraryStyle.card, in: RoundedRectangle(cornerRadius: LibraryStyle.radius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: LibraryStyle.radius, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.06), lineWidth: 0.5)
+            }
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0 : 0.04), radius: 10, y: 3)
+    }
+}
+
+// MARK: - Favorites
+
+/// Bookmarks as large icon tiles, the way Safari shows Favorites.
+private struct LibraryFavoritesGrid: View {
+    let controller: BrowserController
+    let query: String
+    let rows: Int
+    let width: CGFloat
+
+    static let tile: CGFloat = 92
+    static let spacing: CGFloat = 14
+
+    var body: some View {
+        let columns = max(1, Int((width + Self.spacing) / (Self.tile + Self.spacing)))
+        let library = LibraryStore.shared
+        let all = query.trimmingCharacters(in: .whitespaces).isEmpty ? library.bookmarks : library.bookmarks(matching: query, limit: 200)
+        let items = Array(all.prefix(columns * rows))
+        LazyVGrid(columns: Array(repeating: GridItem(.fixed(Self.tile), spacing: Self.spacing, alignment: .top), count: columns),
+                  alignment: .leading, spacing: 18) {
+            ForEach(items) { bookmark in
+                LibraryFavoriteTile(controller: controller, bookmark: bookmark)
+            }
+        }
+        .animation(BrowserMotion.spring, value: items.map(\.id))
+    }
+}
+
+private struct LibraryFavoriteTile: View {
+    let controller: BrowserController
+    let bookmark: LibraryBookmark
+    @State private var favicon: NSImage?
+    @State private var hovered = false
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous).fill(LibraryStyle.card)
+                if let favicon {
+                    Image(nsImage: favicon).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+                        .frame(width: 32, height: 32)
+                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                } else {
+                    Text(String((bookmark.url.host() ?? bookmark.title).replacingOccurrences(of: "www.", with: "").prefix(1)).uppercased())
+                        .font(.system(size: 26, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 72, height: 72)
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.1 : 0.06), lineWidth: 0.5)
+            }
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0 : (hovered ? 0.12 : 0.05)), radius: hovered ? 12 : 6, y: hovered ? 5 : 2)
+            .scaleEffect(hovered && !reduceMotion ? 1.05 : 1)
+            Text(bookmark.title)
+                .font(.system(size: 11, weight: .medium))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .frame(width: LibraryFavoritesGrid.tile)
+        }
+        .contentShape(Rectangle())
+        .onHover { value in withAnimation(reduceMotion ? nil : BrowserMotion.interaction) { hovered = value } }
+        .onTapGesture { controller.model.newTab(url: bookmark.url) }
+        .help(bookmark.url.absoluteString)
+        .contextMenu {
+            Group {
+            Button(L10n.string("Open in New Tab")) { controller.model.newTab(url: bookmark.url) }
+            Button(L10n.string("Copy Link")) {
+                NSPasteboard.general.clearContents(); NSPasteboard.general.setString(bookmark.url.absoluteString, forType: .string)
+            }
+            Divider()
+            Button(L10n.string("Remove Bookmark"), role: .destructive) {
+                withAnimation(BrowserMotion.spring) { LibraryStore.shared.removeBookmark(bookmark.id) }
+            }
+            }
+            // macOS 27 hides menu icons unless asked for.
+            .labelStyle(.titleAndIcon)
+        }
+        .draggable(bookmark.url)
+        .task(id: bookmark.id) {
+            favicon = FaviconStore.shared.cachedImage(for: bookmark.url)
+            if favicon == nil { favicon = await FaviconStore.shared.image(for: bookmark.url) }
         }
     }
 }

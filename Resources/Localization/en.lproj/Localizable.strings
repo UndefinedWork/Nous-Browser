@@ -463,3 +463,6 @@
 "Spaces" = "Spaces";
 "Press %@ to take a screenshot." = "Press %@ to take a screenshot.";
 "Press %@ to record your screen." = "Press %@ to record your screen.";
+"Favorites" = "Favorites";
+"Recent Captures" = "Recent Captures";
+"Recently Visited" = "Recently Visited";

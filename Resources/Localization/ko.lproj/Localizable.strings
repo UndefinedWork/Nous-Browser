@@ -463,3 +463,6 @@
 "Spaces" = "공간";
 "Press %@ to take a screenshot." = "%@ 키를 눌러 스크린샷을 찍으세요.";
 "Press %@ to record your screen." = "%@ 키를 눌러 화면을 녹화하세요.";
+"Favorites" = "즐겨찾기";
+"Recent Captures" = "최근 캡처";
+"Recently Visited" = "최근 방문";

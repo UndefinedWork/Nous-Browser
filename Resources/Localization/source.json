@@ -419,7 +419,10 @@
     "Add New",
     "Spaces",
     "Press %@ to take a screenshot.",
-    "Press %@ to record your screen."
+    "Press %@ to record your screen.",
+    "Favorites",
+    "Recent Captures",
+    "Recently Visited"
   ],
   "infoPlist": {
     "NSCameraUsageDescription": "Allow camera access on websites you authorize, such as video meetings.",

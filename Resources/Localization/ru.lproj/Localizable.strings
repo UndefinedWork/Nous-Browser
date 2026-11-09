@@ -462,3 +462,6 @@
 "Spaces" = "Пространства";
 "Press %@ to take a screenshot." = "Нажмите %@, чтобы сделать снимок экрана.";
 "Press %@ to record your screen." = "Нажмите %@, чтобы записать экран.";
+"Favorites" = "Избранное";
+"Recent Captures" = "Недавние снимки";
+"Recently Visited" = "Недавно посещённые";
