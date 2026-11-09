@@ -1,6 +1,6 @@
 # Build Nous Browser with Chromium (NousCore)
 
-## Current source — 1.4.13 (69), 2026-11-09
+## Current source — 1.4.14 (70), 2026-11-09
 
 Nous Browser embeds Chromium the way Dia/Arc do (see
 [Dia-Architecture-Research.md](Dia-Architecture-Research.md)): Chromium's full
