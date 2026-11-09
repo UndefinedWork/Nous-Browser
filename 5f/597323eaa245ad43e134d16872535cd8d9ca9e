@@ -1,0 +1,19 @@
+Sources/NousBrowser/SpaceSidebar.swift
+  s_a868a580eb8a06::t_28091a5d9e49cb 1207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "5f597323eaa245ad43e134d16872535cd8d9ca9e",
+  "prompts": {},
+  "sessions": {
+    "s_a868a580eb8a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1919a1c-2b86-4a7e-9b4f-767da074be83",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
