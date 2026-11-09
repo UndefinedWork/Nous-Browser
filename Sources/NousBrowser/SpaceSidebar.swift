@@ -1196,7 +1196,7 @@ private struct SidebarControls: View {
                     if compact { WindowTrafficLights(diameter: 12, spacing: 6) }
                     else { WindowTrafficLights() }
                 }
-                .position(x: compact ? 30 : 47, y: compact ? 24 : 30)
+                .position(x: compact ? 30 : 47, y: compact ? 24 : 28)
                 .transition(.opacity)
             }
             GlassSymbolButton("sidebar.left", label: topLabel, help: topLabel + "  ⌘/",
@@ -1566,6 +1566,7 @@ private struct SpaceSwipeMonitor: NSViewRepresentable {
         }
 
         func stop() {
+            phaselessEnd?.cancel()
             if let monitor { NSEvent.removeMonitor(monitor) }
             monitor = nil
         }
@@ -1573,8 +1574,13 @@ private struct SpaceSwipeMonitor: NSViewRepresentable {
         /// True when the event belongs to a page swipe.
         private func consumes(_ event: NSEvent) -> Bool {
             // Momentum after the fingers lift belongs to the finished swipe.
-            if !event.momentumPhase.isEmpty { return swallowMomentum }
             guard event.hasPreciseScrollingDeltas else { return false }
+            // Some input utilities (and screen-control tools) re-post
+            // trackpad scrolling without gesture phases. Those streams are
+            // read as gestures too: one starts after a pause and ends when the
+            // events stop.
+            if event.phase.isEmpty && event.momentumPhase.isEmpty { return consumesPhaseless(event) }
+            if !event.momentumPhase.isEmpty { return swallowMomentum }
             if event.phase.contains(.began) {
                 swallowMomentum = false
                 guard isEnabled, event.window === window, bounds.contains(convert(event.locationInWindow, from: nil)) else {
@@ -1612,6 +1618,52 @@ private struct SpaceSwipeMonitor: NSViewRepresentable {
         }
 
         private var swallowMomentum = false
+        private var lastPhaselessEvent: TimeInterval = 0
+        private var phaselessEnd: DispatchWorkItem?
+
+        private func consumesPhaseless(_ event: NSEvent) -> Bool {
+            let fresh = event.timestamp - lastPhaselessEvent > 0.2
+            lastPhaselessEvent = event.timestamp
+            if fresh {
+                if phase == .horizontal { finish() }
+                guard isEnabled, event.window === window, bounds.contains(convert(event.locationInWindow, from: nil)) else {
+                    phase = .idle
+                    return false
+                }
+                phase = .undecided
+                undecidedX = 0
+                undecidedY = 0
+                samples = []
+            }
+            phaselessEnd?.cancel()
+            let end = DispatchWorkItem { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if self.phase == .horizontal { self.finish() } else { self.phase = .idle }
+                    self.swallowMomentum = false
+                }
+            }
+            phaselessEnd = end
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: end)
+            switch phase {
+            case .idle, .vertical:
+                return false
+            case .undecided:
+                undecidedX += event.scrollingDeltaX
+                undecidedY += event.scrollingDeltaY
+                if abs(undecidedX) > 6 || abs(undecidedY) > 6 {
+                    phase = abs(undecidedX) > abs(undecidedY) * 1.4 ? .horizontal : .vertical
+                    if phase == .horizontal {
+                        onBegin?()
+                        track(undecidedX)
+                    }
+                }
+                return phase == .horizontal
+            case .horizontal:
+                track(event.scrollingDeltaX)
+                return true
+            }
+        }
 
         private func track(_ dx: CGFloat) {
             let now = ProcessInfo.processInfo.systemUptime
