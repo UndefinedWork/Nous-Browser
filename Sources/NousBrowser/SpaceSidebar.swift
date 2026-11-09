@@ -84,7 +84,7 @@ struct BrowserSidebar: View {
     @State private var frames: [SidebarFrameID: CGRect] = [:]
     @State private var drag: SidebarDragState?
     /// Horizontal travel of a two-finger swipe in progress, in points.
-    @State private var swipeOffset: CGFloat = 0
+    @State private var swipe = SpaceSwipeState()
     @State private var renamingGroup: UUID?
     @State private var spaceBanner: UUID?
     @State private var editingSpace: UUID?
@@ -192,19 +192,21 @@ struct BrowserSidebar: View {
                             drag: drag, renamingGroup: $renamingGroup, tooltip: tooltip, frames: frames,
                             actions: dragActions(size: size))
                     .frame(width: size.width, height: size.height)
-                    .allowsHitTesting(current && swipeOffset == 0)
+                    .allowsHitTesting(current)
                     .accessibilityHidden(!current)
                     .id(space.id)
             }
         }
         .fixedSize()
-        .offset(x: -index * size.width + swipeOffset)
+        .offset(x: -index * size.width)
+        .modifier(SpaceSwipeOffset(swipe: swipe))
         .frame(width: size.width, height: size.height, alignment: .topLeading)
         .clipped()
         .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.activeSpaceID)
         .background {
             SpaceSwipeMonitor(isEnabled: drag == nil && spaces.count > 1, width: size.width,
-                              onChange: { delta in swipeOffset = resisted(swipeOffset + delta, index: Int(index), count: spaces.count, width: size.width) },
+                              onBegin: { swipe.isTracking = true },
+                              onChange: { delta in swipe.offset = resisted(swipe.offset + delta, index: Int(index), count: spaces.count, width: size.width) },
                               onEnd: { velocity in finishSwipe(index: Int(index), spaces: spaces, width: size.width, velocity: velocity) })
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -221,10 +223,11 @@ struct BrowserSidebar: View {
 
     private func finishSwipe(index: Int, spaces: [BrowserSpaceRecord], width: CGFloat, velocity: CGFloat) {
         var target = index
-        if swipeOffset < -width * 0.25 || velocity < -600 { target = min(spaces.count - 1, index + 1) }
-        else if swipeOffset > width * 0.25 || velocity > 600 { target = max(0, index - 1) }
+        if swipe.offset < -width * 0.25 || velocity < -600 { target = min(spaces.count - 1, index + 1) }
+        else if swipe.offset > width * 0.25 || velocity > 600 { target = max(0, index - 1) }
+        swipe.isTracking = false
         withAnimation(reduceMotion ? nil : BrowserMotion.spring) {
-            swipeOffset = 0
+            swipe.offset = 0
             if target != index {
                 tooltip.dismiss()
                 model.switchSpace(to: spaces[target].id)
@@ -1395,11 +1398,34 @@ private struct SpaceEditor: View {
     }
 }
 
+/// A swipe in progress. Kept out of the sidebar's own state so each trackpad
+/// event redraws only the pager's offset, not every space's list.
+@MainActor
+@Observable
+final class SpaceSwipeState {
+    var offset: CGFloat = 0
+    var isTracking = false
+}
+
+/// Moves the pages while drawing only: row frames (used for drag and drop)
+/// do not change, so a swipe does not re-measure the lists.
+private struct SpaceSwipeOffset: ViewModifier {
+    let swipe: SpaceSwipeState
+
+    func body(content: Content) -> some View {
+        let offset = swipe.offset
+        content
+            .visualEffect { effect, _ in effect.offset(x: offset) }
+            .allowsHitTesting(!swipe.isTracking)
+    }
+}
+
 /// Two-finger horizontal swipes over the sidebar. Vertical scrolling and
 /// momentum after the fingers lift go on to the lists as usual.
 private struct SpaceSwipeMonitor: NSViewRepresentable {
     let isEnabled: Bool
     let width: CGFloat
+    let onBegin: () -> Void
     let onChange: (CGFloat) -> Void
     let onEnd: (CGFloat) -> Void
 
@@ -1407,6 +1433,7 @@ private struct SpaceSwipeMonitor: NSViewRepresentable {
 
     func updateNSView(_ view: MonitorView, context: Context) {
         view.isEnabled = isEnabled
+        view.onBegin = onBegin
         view.onChange = onChange
         view.onEnd = onEnd
     }
@@ -1415,6 +1442,7 @@ private struct SpaceSwipeMonitor: NSViewRepresentable {
 
     final class MonitorView: NSView {
         var isEnabled = false
+        var onBegin: (() -> Void)?
         var onChange: ((CGFloat) -> Void)?
         var onEnd: ((CGFloat) -> Void)?
         private var monitor: Any?
@@ -1467,7 +1495,10 @@ private struct SpaceSwipeMonitor: NSViewRepresentable {
                 undecidedY += event.scrollingDeltaY
                 if abs(undecidedX) > 6 || abs(undecidedY) > 6 {
                     phase = abs(undecidedX) > abs(undecidedY) * 1.4 ? .horizontal : .vertical
-                    if phase == .horizontal { track(undecidedX) }
+                    if phase == .horizontal {
+                        onBegin?()
+                        track(undecidedX)
+                    }
                 }
                 if ended {
                     if phase == .horizontal { finish() } else { phase = .idle }
