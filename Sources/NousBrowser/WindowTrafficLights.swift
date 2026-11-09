@@ -9,9 +9,9 @@ import SwiftUI
 /// full-screen/zoom setting) and accessibility, while following the
 /// sidebar's layout. `diameter` scales them for the icon rail.
 ///
-/// One difference from the title bar: the system only draws the ×, – and
-/// arrow symbols while the pointer is over the title bar's own group, so
-/// these show no symbols on hover.
+/// The buttons draw their ×, – and arrow symbols when the window's frame view
+/// says the pointer is over their group; `GroupHoverHook` answers that for
+/// this set (see there).
 struct WindowTrafficLights: View {
     var diameter: CGFloat = 14
     var spacing: CGFloat = 9
@@ -26,7 +26,10 @@ struct NativeWindowButtons: NSViewRepresentable {
     let diameter: CGFloat
     let spacing: CGFloat
 
-    func makeNSView(context: Context) -> HostView { HostView() }
+    func makeNSView(context: Context) -> HostView {
+        GroupHoverHook.install()
+        return HostView()
+    }
 
     func updateNSView(_ view: HostView, context: Context) {
         view.diameter = diameter
@@ -50,6 +53,9 @@ struct NativeWindowButtons: NSViewRepresentable {
         private var nativeSize = NSSize(width: 14, height: 14)
         private var observers: [NSObjectProtocol] = []
         private weak var hostWindow: NSWindow?
+        private var tracking: NSTrackingArea?
+        /// The pointer is over this set; read by `GroupHoverHook`.
+        private(set) var isPointerInside = false
 
         override init(frame: NSRect) {
             super.init(frame: frame)
@@ -118,10 +124,64 @@ struct NativeWindowButtons: NSViewRepresentable {
             }
         }
 
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let tracking { removeTrackingArea(tracking) }
+            let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                      owner: self, userInfo: nil)
+            addTrackingArea(area)
+            tracking = area
+        }
+
+        override func mouseEntered(with event: NSEvent) { setPointerInside(true) }
+        override func mouseExited(with event: NSEvent) { setPointerInside(false) }
+
+        private func setPointerInside(_ inside: Bool) {
+            guard inside != isPointerInside else { return }
+            isPointerInside = inside
+            // Each system button re-reads the group's hover state (answered by
+            // `GroupHoverHook`) when told the pointer entered or left.
+            let update = NSSelectorFromString("mouseEnteredOrExited")
+            for button in buttons {
+                if button.responds(to: update) { button.perform(update) }
+                button.needsDisplay = true
+            }
+        }
+
         override func hitTest(_ point: NSPoint) -> NSView? {
             // Only the buttons take clicks; the gaps between them stay draggable.
             let hit = super.hitTest(point)
             return hit === self ? nil : hit
         }
+    }
+}
+
+/// AppKit's traffic-light buttons ask the window's frame view (`NSThemeFrame`,
+/// `-_mouseInGroup:`) whether the pointer is over their group before drawing
+/// their symbols, and the frame view only knows its title-bar group. This
+/// answers for buttons hosted in the sidebar and leaves every other answer to
+/// AppKit. If a future macOS renames the class or method, nothing is hooked
+/// and the sidebar buttons simply draw without symbols.
+@MainActor
+enum GroupHoverHook {
+    private static var installed = false
+
+    static func install() {
+        guard !installed else { return }
+        installed = true
+        let selector = NSSelectorFromString("_mouseInGroup:")
+        guard let frameClass = NSClassFromString("NSThemeFrame"),
+              let method = class_getInstanceMethod(frameClass, selector),
+              String(cString: method_getTypeEncoding(method)!).hasPrefix("B") ||
+              String(cString: method_getTypeEncoding(method)!).hasPrefix("c") else { return }
+        typealias Original = @convention(c) (AnyObject, Selector, AnyObject?) -> Bool
+        let original = unsafeBitCast(method_getImplementation(method), to: Original.self)
+        let replacement: @convention(block) (AnyObject, AnyObject?) -> Bool = { frame, button in
+            if let host = (button as? NSView)?.superview as? NativeWindowButtons.HostView {
+                return MainActor.assumeIsolated { host.isPointerInside }
+            }
+            return original(frame, selector, button)
+        }
+        method_setImplementation(method, imp_implementationWithBlock(replacement))
     }
 }
