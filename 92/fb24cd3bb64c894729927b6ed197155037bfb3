@@ -1,0 +1,26 @@
+Sources/NousBrowser/LibraryView.swift
+  s_a868a580eb8a06::t_72c4655cc9304d 69-71,73-78
+  s_a868a580eb8a06::t_f8c56210172209 79-80
+  s_a868a580eb8a06::t_97b5df6a627642 62-64,66-67,72,81,86-87
+  s_a868a580eb8a06::t_f896e48aac8a07 19-30,33-38,40-47,49,179,196
+Sources/NousBrowser/SpaceSidebar.swift
+  s_a868a580eb8a06::t_822b948f3fe5fe 198-203,240-242,245-247,268
+Docs/releases/1.4.13.md
+  s_a868a580eb8a06::t_1bdda5f47e2182 9,12,21,24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "92fb24cd3bb64c894729927b6ed197155037bfb3",
+  "prompts": {},
+  "sessions": {
+    "s_a868a580eb8a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1919a1c-2b86-4a7e-9b4f-767da074be83",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
