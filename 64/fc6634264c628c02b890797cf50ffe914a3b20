@@ -1,0 +1,67 @@
+Resources/Localization/es.lproj/Localizable.strings
+  s_a868a580eb8a06::t_f115052f0f85e9 461-462
+Resources/Localization/pt-BR.lproj/Localizable.strings
+  s_a868a580eb8a06::t_f115052f0f85e9 461-462
+README.md
+  s_a868a580eb8a06::t_c84f04a19f1256 38
+Resources/Localization/source.json
+  s_a868a580eb8a06::t_f115052f0f85e9 418-420
+Resources/Localization/zh-Hant.lproj/Localizable.strings
+  s_a868a580eb8a06::t_f115052f0f85e9 462-463
+Docs/releases/1.4.13.md
+  s_a868a580eb8a06::t_c84f04a19f1256 1-11
+  s_a868a580eb8a06::t_72ea9f910b21e5 12-17
+Sources/NousBrowser/SidebarNewMenu.swift
+  s_a868a580eb8a06::t_39191c366f18c6 1-155
+Resources/Localization/ja.lproj/Localizable.strings
+  s_a868a580eb8a06::t_f115052f0f85e9 462-463
+Resources/Localization/it.lproj/Localizable.strings
+  s_a868a580eb8a06::t_f115052f0f85e9 461-462
+Docs/Chromium-Build.md
+  s_a868a580eb8a06::t_c84f04a19f1256 3
+Resources/Localization/ko.lproj/Localizable.strings
+  s_a868a580eb8a06::t_f115052f0f85e9 462-463
+Resources/Localization/en.lproj/Localizable.strings
+  s_a868a580eb8a06::t_f115052f0f85e9 462-463
+Resources/Localization/fr.lproj/Localizable.strings
+  s_a868a580eb8a06::t_f115052f0f85e9 461-462
+Sources/NousBrowser/SidebarTabDragging.swift
+  s_a868a580eb8a06::t_17f0edaa7b67fe 26
+Resources/Localization/de.lproj/Localizable.strings
+  s_a868a580eb8a06::t_f115052f0f85e9 461-462
+Tests/NousBrowserTests/SidebarLayoutGeometryTests.swift
+  s_a868a580eb8a06::t_d37a3b2f3c6074 9,11,13,77,85
+Tests/NousBrowserTests/SpaceDotsTests.swift
+  s_a868a580eb8a06::t_beafd209b165b0 1-25
+Resources/Localization/ru.lproj/Localizable.strings
+  s_a868a580eb8a06::t_f115052f0f85e9 461-462
+Sources/NousBrowser/BrowserShell.swift
+  s_a868a580eb8a06::t_17f0edaa7b67fe 9-11
+Resources/Localization/zh-Hans.lproj/Localizable.strings
+  s_a868a580eb8a06::t_f115052f0f85e9 462-463
+Sources/NousBrowser/SpaceSidebar.swift
+  s_a868a580eb8a06::t_17f0edaa7b67fe 117-119,133,1170,1174-1178,1185,1189,1191-1192,1202-1206
+  s_a868a580eb8a06::t_de9034028e4486 151,154-158
+  s_a868a580eb8a06::t_73eff9d4d502f3 649-651,1128-1163
+  s_a868a580eb8a06::t_cc6e48328d5f3f 51-60,94-97,140,207,209-211,213,219-221,547,742
+  s_a868a580eb8a06::t_86ca3488eab919 1381,1385,1388-1398,1400-1402,1404-1410,1414-1451
+  s_a868a580eb8a06::t_6513e3f0708e74 1164
+Resources/Info.plist
+  s_a868a580eb8a06::t_c84f04a19f1256 65,81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "64fc6634264c628c02b890797cf50ffe914a3b20",
+  "prompts": {},
+  "sessions": {
+    "s_a868a580eb8a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1919a1c-2b86-4a7e-9b4f-767da074be83",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
