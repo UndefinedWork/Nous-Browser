@@ -1,0 +1,27 @@
+Tests/NousBrowserTests/SidebarLayoutGeometryTests.swift
+  s_a868a580eb8a06::t_8689a0f1149c44 76-77,80,83
+Sources/NousBrowser/SpaceSidebar.swift
+  s_a868a580eb8a06::t_8689a0f1149c44 116,121,579,1202,1213,1216,1223,1226,1229
+Sources/NousBrowser/SidebarTabDragging.swift
+  s_a868a580eb8a06::t_8689a0f1149c44 41-46
+Sources/NousBrowser/BrowserShell.swift
+  s_a868a580eb8a06::t_8689a0f1149c44 7-9
+Docs/releases/1.4.13.md
+  s_a868a580eb8a06::t_acb3af19309d65 9,22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d16d20096d5597911d03f6722445adf53940f028",
+  "prompts": {},
+  "sessions": {
+    "s_a868a580eb8a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1919a1c-2b86-4a7e-9b4f-767da074be83",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
