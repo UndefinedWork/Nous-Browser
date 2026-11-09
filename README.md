@@ -35,7 +35,7 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 - 当前发布包与受支持构建目标为 **Apple Silicon（arm64）**，没有 Intel 发行包。
 - 宿主需要 **Swift 6.2+** 及匹配 SDK；从头构建 NousCore 需要本机 Chromium 源码树与 depot_tools，具体要求见 [Chromium 构建说明](Docs/Chromium-Build.md)。
 
-当前源码版本：**1.4.10（Build 66）**。预编译安装包的构建号见对应 Release。
+当前源码版本：**1.4.11（Build 67）**。预编译安装包的构建号见对应 Release。
 
 ## 下载与安装
 

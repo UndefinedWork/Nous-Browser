@@ -83,7 +83,8 @@ struct BrowserSidebar: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var frames: [SidebarFrameID: CGRect] = [:]
     @State private var drag: SidebarDragState?
-    @State private var visibleSpace: UUID?
+    /// Horizontal travel of a two-finger swipe in progress, in points.
+    @State private var swipeOffset: CGFloat = 0
     @State private var renamingGroup: UUID?
     @State private var spaceBanner: UUID?
     @State private var editingSpace: UUID?
@@ -136,10 +137,8 @@ struct BrowserSidebar: View {
             .onChange(of: model.isSidebarCompact) { _, _ in cancelDrag(); tooltip.dismiss() }
             .onChange(of: model.activeSpaceID) { _, id in
                 tooltip.dismiss()
-                if visibleSpace != id { withAnimation(reduceMotion ? nil : BrowserMotion.spring) { visibleSpace = id } }
                 showBanner(id)
             }
-            .onAppear { visibleSpace = model.activeSpaceID }
         }
         .contextMenu {
             Group {
@@ -179,48 +178,57 @@ struct BrowserSidebar: View {
 
     // MARK: Paging
 
-    /// One page per space. A plain HStack, not a lazy one: a lazy stack
-    /// re-estimates its off-screen pages when a group opens or closes, and the
-    /// scroll offset then landed between two spaces.
+    /// One page per space, side by side. Its position comes only from the
+    /// active space (and a swipe in progress), never from a scroll view, so
+    /// nothing that happens inside a space — a group opening or closing, a row
+    /// animating — can move the pages. Two-finger horizontal swipes turn pages.
     private func spacePager(size: CGSize) -> some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal) {
-                HStack(spacing: 0) {
-                    ForEach(model.spaces) { space in
-                        SpaceColumn(controller: controller, space: space.id, layout: displayedLayout(for: space.id),
-                                    drag: drag, renamingGroup: $renamingGroup, tooltip: tooltip, frames: frames,
-                                    actions: dragActions(size: size))
-                            .frame(width: size.width, height: size.height)
-                            .id(space.id)
-                    }
-                }
-                .scrollTargetLayout()
+        let spaces = model.spaces
+        let index = CGFloat(spaces.firstIndex { $0.id == model.activeSpaceID } ?? 0)
+        return HStack(spacing: 0) {
+            ForEach(spaces) { space in
+                let current = space.id == model.activeSpaceID
+                SpaceColumn(controller: controller, space: space.id, layout: displayedLayout(for: space.id),
+                            drag: drag, renamingGroup: $renamingGroup, tooltip: tooltip, frames: frames,
+                            actions: dragActions(size: size))
+                    .frame(width: size.width, height: size.height)
+                    .allowsHitTesting(current && swipeOffset == 0)
+                    .accessibilityHidden(!current)
+                    .id(space.id)
             }
-            .scrollTargetBehavior(.paging)
-            .scrollPosition(id: $visibleSpace)
-            .scrollIndicators(.hidden)
-            .scrollDisabled(drag != nil || model.spaces.count < 2)
-            .onChange(of: visibleSpace) { _, id in
-                guard let id, id != model.activeSpaceID else { return }
-                tooltip.dismiss()
-                model.switchSpace(to: id)
-            }
-            // Whatever changes inside a space (a group opening, a tab moving),
-            // the pager stays on that space's page.
-            .onChange(of: model.layout(for: model.activeSpaceID)) { _, _ in snap(proxy) }
-            .onChange(of: size.width) { _, _ in snap(proxy) }
+        }
+        .fixedSize()
+        .offset(x: -index * size.width + swipeOffset)
+        .frame(width: size.width, height: size.height, alignment: .topLeading)
+        .clipped()
+        .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.activeSpaceID)
+        .background {
+            SpaceSwipeMonitor(isEnabled: drag == nil && spaces.count > 1, width: size.width,
+                              onChange: { delta in swipeOffset = resisted(swipeOffset + delta, index: Int(index), count: spaces.count, width: size.width) },
+                              onEnd: { velocity in finishSwipe(index: Int(index), spaces: spaces, width: size.width, velocity: velocity) })
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
-    private func snap(_ proxy: ScrollViewProxy) {
-        let id = model.activeSpaceID
-        Task { @MainActor in
-            // After the change has laid out, without animating the page itself.
-            try? await Task.sleep(for: .milliseconds(30))
-            guard drag == nil, model.activeSpaceID == id else { return }
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) { proxy.scrollTo(id, anchor: .leading) }
+    /// Beyond the first or last space the pages stretch, then spring back.
+    private func resisted(_ offset: CGFloat, index: Int, count: Int, width: CGFloat) -> CGFloat {
+        let atStart = index == 0 && offset > 0
+        let atEnd = index == count - 1 && offset < 0
+        guard atStart || atEnd else { return max(-width, min(width, offset)) }
+        let limit = width * 0.18
+        return (offset > 0 ? 1 : -1) * limit * (1 - exp(-abs(offset) / limit))
+    }
+
+    private func finishSwipe(index: Int, spaces: [BrowserSpaceRecord], width: CGFloat, velocity: CGFloat) {
+        var target = index
+        if swipeOffset < -width * 0.25 || velocity < -600 { target = min(spaces.count - 1, index + 1) }
+        else if swipeOffset > width * 0.25 || velocity > 600 { target = max(0, index - 1) }
+        withAnimation(reduceMotion ? nil : BrowserMotion.spring) {
+            swipeOffset = 0
+            if target != index {
+                tooltip.dismiss()
+                model.switchSpace(to: spaces[target].id)
+            }
         }
     }
 
@@ -642,8 +650,9 @@ private struct SpaceColumn: View {
                     .overlay(alignment: .bottom) {
                         if insertion == visible.count, id == visible.last { insertionMark.offset(y: SidebarTabDragGeometry.rowSpacing / 2 + 1) }
                     }
+                    // Leaving rows fade quickly, inside the group, while it closes.
                     .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: -8)),
-                                            removal: .opacity.combined(with: .scale(scale: 0.96, anchor: .top))))
+                                            removal: .opacity.animation(.easeOut(duration: 0.12))))
             }
             if group.isExpanded, group.tabIDs.isEmpty {
                 Text(L10n.string(isTarget ? "Drop Here" : "Empty"))
@@ -655,12 +664,12 @@ private struct SpaceColumn: View {
         }
         .padding(contained || isTarget ? SidebarMetrics.folderInset : 0)
         .background {
-            let shape = RoundedRectangle(cornerRadius: (compact ? 18 : BrowserDesign.rowHeight / 2) + SidebarMetrics.folderInset,
-                                         style: .continuous)
-            shape.fill(isTarget ? Color.accentColor.opacity(0.12)
-                       : Color.primary.opacity(contained ? (colorScheme == .dark ? 0.06 : 0.045) : 0))
-                .overlay { shape.strokeBorder(Color.accentColor.opacity(isTarget ? 0.45 : 0), lineWidth: 1) }
+            folderShape.fill(isTarget ? Color.accentColor.opacity(0.12)
+                             : Color.primary.opacity(contained ? (colorScheme == .dark ? 0.06 : 0.045) : 0))
+                .overlay { folderShape.strokeBorder(Color.accentColor.opacity(isTarget ? 0.45 : 0), lineWidth: 1) }
         }
+        // Rows never draw outside their group while it opens or closes.
+        .clipShape(contained || isTarget ? AnyShape(folderShape) : AnyShape(Rectangle()))
         .padding(.horizontal, contained || isTarget ? -SidebarMetrics.folderInset : 0)
         .sidebarFrame(.folderBody(group.id))
         .scaleEffect(isTarget && !group.isExpanded && !reduceMotion ? 1.02 : 1)
@@ -668,6 +677,11 @@ private struct SpaceColumn: View {
         .animation(reduceMotion ? nil : BrowserMotion.spring, value: contained)
         .padding(.vertical, contained ? 2 : 0)
         .opacity(dragged ? 0 : 1)
+    }
+
+    private var folderShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: (compact ? 18 : BrowserDesign.rowHeight / 2) + SidebarMetrics.folderInset,
+                         style: .continuous)
     }
 
     private var insertionMark: some View {
@@ -1378,5 +1392,109 @@ private struct SpaceEditor: View {
         .padding(14)
         .frame(width: 230)
         .onAppear { name = space.name }
+    }
+}
+
+/// Two-finger horizontal swipes over the sidebar. Vertical scrolling and
+/// momentum after the fingers lift go on to the lists as usual.
+private struct SpaceSwipeMonitor: NSViewRepresentable {
+    let isEnabled: Bool
+    let width: CGFloat
+    let onChange: (CGFloat) -> Void
+    let onEnd: (CGFloat) -> Void
+
+    func makeNSView(context: Context) -> MonitorView { MonitorView() }
+
+    func updateNSView(_ view: MonitorView, context: Context) {
+        view.isEnabled = isEnabled
+        view.onChange = onChange
+        view.onEnd = onEnd
+    }
+
+    static func dismantleNSView(_ view: MonitorView, coordinator: ()) { view.stop() }
+
+    final class MonitorView: NSView {
+        var isEnabled = false
+        var onChange: ((CGFloat) -> Void)?
+        var onEnd: ((CGFloat) -> Void)?
+        private var monitor: Any?
+        private enum Phase { case idle, undecided, horizontal, vertical }
+        private var phase = Phase.idle
+        private var undecidedX: CGFloat = 0
+        private var undecidedY: CGFloat = 0
+        private var samples: [(time: TimeInterval, dx: CGFloat)] = []
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            stop()
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                let consumed = MainActor.assumeIsolated { self?.consumes(event) ?? false }
+                return consumed ? nil : event
+            }
+        }
+
+        func stop() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+        }
+
+        /// True when the event belongs to a page swipe.
+        private func consumes(_ event: NSEvent) -> Bool {
+            // Momentum after the fingers lift belongs to the finished swipe.
+            if !event.momentumPhase.isEmpty { return swallowMomentum }
+            guard event.hasPreciseScrollingDeltas else { return false }
+            if event.phase.contains(.began) {
+                swallowMomentum = false
+                guard isEnabled, event.window === window, bounds.contains(convert(event.locationInWindow, from: nil)) else {
+                    phase = .idle
+                    return false
+                }
+                phase = .undecided
+                undecidedX = 0
+                undecidedY = 0
+                samples = []
+            }
+            let ended = event.phase.contains(.ended) || event.phase.contains(.cancelled)
+            switch phase {
+            case .idle, .vertical:
+                if ended { phase = .idle }
+                return false
+            case .undecided:
+                undecidedX += event.scrollingDeltaX
+                undecidedY += event.scrollingDeltaY
+                if abs(undecidedX) > 6 || abs(undecidedY) > 6 {
+                    phase = abs(undecidedX) > abs(undecidedY) * 1.4 ? .horizontal : .vertical
+                    if phase == .horizontal { track(undecidedX) }
+                }
+                if ended {
+                    if phase == .horizontal { finish() } else { phase = .idle }
+                }
+                return phase == .horizontal || (ended && swallowMomentum)
+            case .horizontal:
+                if ended { finish() } else { track(event.scrollingDeltaX) }
+                return true
+            }
+        }
+
+        private var swallowMomentum = false
+
+        private func track(_ dx: CGFloat) {
+            let now = ProcessInfo.processInfo.systemUptime
+            samples.append((now, dx))
+            samples.removeAll { now - $0.time > 0.12 }
+            onChange?(dx)
+        }
+
+        private func finish() {
+            let span = max(0.016, (samples.last?.time ?? 0) - (samples.first?.time ?? 0))
+            let velocity = samples.reduce(0) { $0 + $1.dx } / span
+            phase = .idle
+            swallowMomentum = true
+            samples = []
+            onEnd?(velocity)
+        }
     }
 }
