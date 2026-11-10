@@ -1,0 +1,25 @@
+Docs/Chromium-Build.md
+  s_a868a580eb8a06::t_09f1f0f0e35343 3
+Resources/Info.plist
+  s_a868a580eb8a06::t_09f1f0f0e35343 65,81
+README.md
+  s_a868a580eb8a06::t_09f1f0f0e35343 38
+Docs/releases/1.4.18.md
+  s_a868a580eb8a06::t_09f1f0f0e35343 1-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "8196a0ecf7c841e23d1bf831f0b7124576c9e584",
+  "prompts": {},
+  "sessions": {
+    "s_a868a580eb8a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1919a1c-2b86-4a7e-9b4f-767da074be83",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
