@@ -25,6 +25,9 @@ enum BrowserDesign {
 enum BrowserMotion {
     static let spring = Animation.spring(response: 0.28, dampingFraction: 0.86)
     static let interaction = Animation.spring(response: 0.18, dampingFraction: 0.72)
+    /// Space pages settling after a swipe or a switch: a little overshoot,
+    /// so the list visibly springs into place.
+    static let pageSettle = Animation.spring(response: 0.42, dampingFraction: 0.74)
     /// Tab selection should feel immediate; web content itself swaps without animation.
     static let tabSwitch = Animation.spring(response: 0.14, dampingFraction: 0.90)
 }

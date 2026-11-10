@@ -245,7 +245,7 @@ struct BrowserSidebar: View {
         .modifier(SpaceSwipeOffset(swipe: swipe))
         .frame(width: size.width, height: size.height, alignment: .topLeading)
         .clipped()
-        .animation(reduceMotion ? nil : BrowserMotion.spring, value: model.activeSpaceID)
+        .animation(reduceMotion ? nil : BrowserMotion.pageSettle, value: model.activeSpaceID)
         .background {
             SpaceSwipeMonitor(isEnabled: drag == nil && spaces.count > 1, width: size.width,
                               onBegin: { swipe.isTracking = true },
@@ -277,7 +277,7 @@ struct BrowserSidebar: View {
         else if swipe.offset > width * 0.25 || velocity > 600 { target = max(0, index - 1) }
         swipe.isTracking = false
         if target != index { showBanner(spaces[target].id) } else { hideBanner() }
-        withAnimation(reduceMotion ? nil : BrowserMotion.spring) {
+        withAnimation(reduceMotion ? nil : BrowserMotion.pageSettle) {
             swipe.offset = 0
             if target != index {
                 tooltip.dismiss()
@@ -1771,14 +1771,30 @@ private struct SpaceSwipeMonitor: NSViewRepresentable {
             }
         }
 
+        /// Settles a swipe whose end never arrives (a dropped or cancelled
+        /// gesture), so the pages can never stay between two spaces.
+        private var settleGuard: DispatchWorkItem?
+
         private func track(_ dx: CGFloat) {
             let now = ProcessInfo.processInfo.systemUptime
             samples.append((now, dx))
             samples.removeAll { now - $0.time > 0.12 }
             onChange?(dx)
+            settleGuard?.cancel()
+            let settle = DispatchWorkItem { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, self.phase == .horizontal else { return }
+                    self.samples = []  // The fingers stopped: decide by distance only.
+                    self.finish()
+                }
+            }
+            settleGuard = settle
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: settle)
         }
 
         private func finish() {
+            settleGuard?.cancel()
+            settleGuard = nil
             let span = max(0.016, (samples.last?.time ?? 0) - (samples.first?.time ?? 0))
             let velocity = samples.reduce(0) { $0 + $1.dx } / span
             phase = .idle
