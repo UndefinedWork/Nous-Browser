@@ -1342,7 +1342,7 @@ private struct NavigationCluster: View {
                         enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 13, weight: .regular))
+                .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(Self.glyph)
                 .frame(width: vertical ? 16 : width, height: vertical ? 18 : 32)
                 .frame(width: vertical ? 32 : nil)
