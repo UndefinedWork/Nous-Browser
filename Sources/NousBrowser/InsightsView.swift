@@ -517,12 +517,16 @@ private struct InsightsColumnChart: View {
                     .padding(.horizontal, 10).padding(.vertical, 6)
                     .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .fixedSize()
-                    .alignmentGuide(.leading) { $0.width / 2 }
-                    .offset(x: min(max(center, 70), plotWidth - 70), y: max(0, plotHeight - height - 52))
+                    // Centred on the column, kept inside the plot; `position`
+                    // places it without changing the chart's own layout.
+                    .position(x: min(max(center, 70), plotWidth - 70), y: max(24, plotHeight - height - 26))
                     .allowsHitTesting(false)
                     .transition(.opacity)
                 }
             }
+            // The chart always fills exactly its frame: labels and the
+            // tooltip can never push it wider than its card.
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
             .animation(.easeOut(duration: 0.12), value: hovered)
         }
     }
