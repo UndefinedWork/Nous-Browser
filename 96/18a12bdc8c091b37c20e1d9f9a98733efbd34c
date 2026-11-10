@@ -1,0 +1,19 @@
+Sources/NousBrowser/InsightsView.swift
+  s_a868a580eb8a06::t_4b5d5fd183b024 520-522,527-529
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "9618a12bdc8c091b37c20e1d9f9a98733efbd34c",
+  "prompts": {},
+  "sessions": {
+    "s_a868a580eb8a06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1919a1c-2b86-4a7e-9b4f-767da074be83",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "cellier <7893545+cellier@users.noreply.github.com>"
+    }
+  }
+}
