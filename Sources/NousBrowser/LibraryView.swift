@@ -168,6 +168,7 @@ struct LibraryView: View {
         case .bookmarks: LibraryBookmarksList(controller: controller, query: query, limit: nil)
         case .history: LibraryHistoryList(controller: controller, query: query, limit: nil)
         case .downloads: LibraryDownloadsList(limit: nil)
+        case .insights: InsightsView(controller: controller, width: contentWidth)
         case .updates: LibraryUpdatesView()
         }
     }

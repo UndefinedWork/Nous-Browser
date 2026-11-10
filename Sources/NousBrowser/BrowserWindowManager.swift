@@ -406,7 +406,11 @@ final class BrowserWindowManager {
         let model = BrowserModel(sessionURL: workspace.sessionURL(for: session), restoreSession: restoring,
                                  startWithBlankTab: !restoring || !session.usesLegacySession, initialTab: initialTab,
                                  spaceStore: spaceStore)
-        model.onVisit = { [weak self] url, title in self?.history.recordVisit(url: url, title: title) }
+        model.onVisit = { [weak self] url, title in
+            self?.history.recordVisit(url: url, title: title)
+            BrowsingInsights.shared.note(.visit(url))
+        }
+        model.onInsight = { BrowsingInsights.shared.note($0) }
         model.onPageTitleChanged = { [weak self] url, title in self?.history.updateTitle(url: url, title: title) }
         if restoring {
             for tab in model.tabs {

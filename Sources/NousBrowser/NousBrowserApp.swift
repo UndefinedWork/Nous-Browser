@@ -296,6 +296,12 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate {
         BrowserServiceMenuFilter.install()
         ChromiumDownloadCoordinator.shared.start()
         PictureInPicturePlayer.shared.start()
+        // Active time goes to the site in the key browser window's selected tab.
+        BrowsingInsights.shared.start { [weak self] in
+            guard let model = self?.windowManager.keyController?.model,
+                  let site = InsightsLog.site(for: model.selectedTab?.url) else { return nil }
+            return InsightsFocus(site: site, space: model.activeSpaceID)
+        }
         PictureInPicturePlayer.shared.revealPage = { [weak self] view in
             self?.windowManager.revealPage(view)
         }

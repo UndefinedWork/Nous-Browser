@@ -194,6 +194,8 @@ final class BrowserModel {
     @ObservationIgnored private var storeObserver: NSObjectProtocol?
     @ObservationIgnored var onLastTabClosed: (() -> Void)?
     @ObservationIgnored var onVisit: ((URL, String) -> Void)?
+    /// Feeds the local Insights dashboard (tabs, searches, space switches).
+    @ObservationIgnored var onInsight: ((InsightsEvent) -> Void)?
     @ObservationIgnored var onPageTitleChanged: ((URL, String) -> Void)?
     @ObservationIgnored var onOpenLinkInNewWindow: ((URL) -> Void)?
     @ObservationIgnored weak var chromiumPresentationWindow: NSWindow? {
@@ -394,6 +396,7 @@ final class BrowserModel {
         selectedTabID = tab.id
         tab.loadIfNeeded()
         persistSession()
+        onInsight?(.tabOpened)
     }
 
     @discardableResult
@@ -435,6 +438,7 @@ final class BrowserModel {
         if !activate { synchronizeChromiumLifecycleState(for: tab) }
         tab.loadIfNeeded()
         persistSession()
+        onInsight?(.tabOpened)
         return tab
     }
 
@@ -502,6 +506,7 @@ final class BrowserModel {
 
     func selectTab(_ id: UUID) {
         guard let tab = tab(id) else { return }
+        if id != selectedTabID { onInsight?(.tabSwitched) }
         if let space = tab.spaceID, space != activeSpaceID {
             activeSpaceID = space
             spaceStore.noteActive(space)
@@ -520,6 +525,7 @@ final class BrowserModel {
         selectedTabID = duplicate.id
         duplicate.loadIfNeeded()
         persistSession()
+        onInsight?(.tabOpened)
     }
 
     func togglePin(_ id: UUID) {
@@ -681,6 +687,7 @@ final class BrowserModel {
 
     func switchSpace(to id: UUID) {
         guard id != activeSpaceID, spaceStore.space(id) != nil else { return }
+        onInsight?(.spaceSwitched)
         activeSpaceID = id
         spaceStore.noteActive(id)
         selectedTabID = preferredSelection(in: id)
@@ -934,6 +941,7 @@ final class BrowserModel {
             self.pendingTabCloses.remove(id)
             if accepted, let tab, tab.isOwned(by: self), !self.isShutDown {
                 self.chromiumTabDidClose(id)
+                self.onInsight?(.tabClosed)
             }
             completion(accepted)
         }
@@ -1096,6 +1104,8 @@ final class BrowserModel {
 
     func navigate(_ input: String, searchEngine: BrowserSearchEngine = .google) {
         guard let url = Self.normalizeAddress(input, searchEngine: searchEngine) else { return }
+        let query = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if url == searchEngine.searchURL(query: query) { onInsight?(.search) }
         if selectedTab == nil { newTab(url: url) }
         else { selectedTab?.load(url) }
         persistSession()
