@@ -27,6 +27,7 @@
 #include "chrome/browser/printing/print_view_manager_common.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/permission_bubble/permission_prompt.h"
+#include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/ui/tab_helpers.h"
 #include "components/favicon/content/content_favicon_driver.h"
 #include "components/favicon/core/favicon_driver_observer.h"
@@ -262,6 +263,22 @@ class NousTab final : public content::WebContentsDelegate,
   bool MayWriteLocalFiles() override { return false; }
 
   // WebContentsDelegate ----------------------------------------------------
+  // Camera, microphone and screen capture go through Chrome's own flow, as in
+  // Chrome's Browser: the site permission (asked with the Nous sheet and
+  // remembered per site), then the macOS privacy check. Without these the
+  // default delegate refuses every getUserMedia() request.
+  void RequestMediaAccessPermission(content::WebContents* web_contents,
+                                    const content::MediaStreamRequest& request,
+                                    content::MediaResponseCallback callback) override {
+    MediaCaptureDevicesDispatcher::GetInstance()->ProcessMediaAccessRequest(
+        web_contents, request, std::move(callback), nullptr);
+  }
+  bool CheckMediaAccessPermission(content::RenderFrameHost* render_frame_host,
+                                  const url::Origin& security_origin,
+                                  blink::mojom::MediaStreamType type) override {
+    return MediaCaptureDevicesDispatcher::GetInstance()->CheckMediaAccessPermission(
+        render_frame_host, security_origin, type);
+  }
   content::WebContents* OpenURLFromTab(
       content::WebContents* source, const content::OpenURLParams& params,
       base::OnceCallback<void(content::NavigationHandle&)> navigation_handle_callback) override {

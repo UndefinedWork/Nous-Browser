@@ -35,6 +35,7 @@ source_set("browser") {
     "//base",
     "//chrome/browser",
     "//chrome/browser/download",
+    "//chrome/browser/media/webrtc",
     "//chrome/browser/picture_in_picture",
     "//chrome/browser/printing",
     "//chrome/browser/profiles:profile",
