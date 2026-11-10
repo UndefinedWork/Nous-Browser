@@ -96,6 +96,8 @@ struct BrowserSidebar: View {
     @State private var drag: SidebarDragState?
     /// Horizontal travel of a two-finger swipe in progress, in points.
     @State private var swipe = SpaceSwipeState()
+    /// Bumped after leaving full screen to build the lists afresh.
+    @State private var pagerGeneration = 0
     @State private var renamingGroup: UUID?
     @State private var spaceBanner: UUID?
     @State private var bannerGeneration = 0
@@ -147,6 +149,14 @@ struct BrowserSidebar: View {
                     .frame(width: 0, height: 0)
             }
             .onChange(of: model.isSidebarCompact) { _, _ in cancelDrag(); tooltip.dismiss() }
+            // A page or window leaving full screen resizes and re-insets the
+            // window; start the lists (and any interrupted swipe) clean.
+            .onChange(of: model.isPageFullscreen) { _, fullscreen in
+                if !fullscreen { resetAfterFullScreen() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in
+                resetAfterFullScreen()
+            }
             .onChange(of: model.activeSpaceID) { _, id in
                 tooltip.dismiss()
                 showBanner(id)
@@ -229,6 +239,7 @@ struct BrowserSidebar: View {
                     .id(space.id)
             }
         }
+        .id(pagerGeneration)
         .fixedSize()
         .offset(x: -index * size.width)
         .modifier(SpaceSwipeOffset(swipe: swipe))
@@ -416,6 +427,13 @@ struct BrowserSidebar: View {
         }
     }
 
+    private func resetAfterFullScreen() {
+        cancelDrag()
+        swipe.isTracking = false
+        swipe.offset = 0
+        pagerGeneration += 1
+    }
+
     private func cancelDrag() {
         springLoad?.cancel()
         springLoad = nil
@@ -584,6 +602,12 @@ private struct SpaceColumn: View {
             .windowDragBackground()
         }
         .scrollIndicators(.hidden)
+        // The list lays out its own insets. Without this, macOS 27 applies
+        // the window's title-bar safe area and content margins to the scroll
+        // view, and a full-screen transition can leave the tabs scrolled out
+        // of sight.
+        .contentMargins(0, for: .scrollContent)
+        .ignoresSafeArea()
         .scrollDisabled(drag != nil)
         .animation(reduceMotion ? nil : BrowserMotion.spring, value: layout)
     }
