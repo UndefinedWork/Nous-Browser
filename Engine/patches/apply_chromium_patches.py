@@ -397,3 +397,28 @@ edit(VOW, '''void VideoOverlayWindowViews::OnNativeWidgetDestroying() {
     destroyed(static_cast<views::Widget*>(this));
   }
   views::Widget::OnNativeWidgetDestroying();''')
+
+# 19. An approved external-app launch closes its otherwise empty auxiliary
+#     tab. Chrome's cleanup uses its own tab strip, which Nous does not have.
+#     Notify the host only after the unchanged Chrome security and prompt flow.
+EP = 'chrome/browser/external_protocol/external_protocol_handler.cc'
+include_after(EP, '#include "chrome/browser/external_protocol/external_protocol_handler.h"\n', EMBEDDER)
+edit(EP, '''      url);
+
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
+  // If the protocol navigation occurs in a new tab, close it.''', '''      url);
+
+  if (nous::IsEmbedded()) {
+    nous::RunExternalProtocolLaunchedHook(web_contents);
+  }
+
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS)
+  // If the protocol navigation occurs in a new tab, close it.''')
+edit('chrome/browser/external_protocol/BUILD.gn', '''  public_deps = [ ":external_protocol" ]
+
+  deps = [
+    "//base",''', '''  public_deps = [ ":external_protocol" ]
+
+  deps = [
+    "//nous:embedder",
+    "//base",''')

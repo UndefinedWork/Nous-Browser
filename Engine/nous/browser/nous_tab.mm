@@ -23,6 +23,12 @@
 #include "base/no_destructor.h"
 #include "base/observer_list.h"
 #include "base/strings/sys_string_conversions.h"
+#include "chrome/browser/external_protocol/external_protocol_observer.h"
+#include "chrome/browser/custom_handlers/protocol_handler_registry_factory.h"
+#include "chrome/browser/profiles/profile_io_data.h"
+#include "components/custom_handlers/protocol_handler_registry.h"
+#include "content/public/common/url_utils.h"
+#include "chrome/browser/file_select_helper.h"
 #include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/printing/print_view_manager_common.h"
 #include "chrome/browser/profiles/profile.h"
@@ -43,8 +49,10 @@
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
 #include "components/web_modal/web_contents_modal_dialog_manager_delegate.h"
 #include "components/zoom/zoom_controller.h"
+#include "content/public/browser/browser_thread.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/devtools_agent_host_client.h"
+#include "content/public/browser/file_select_listener.h"
 #include "content/public/browser/javascript_dialog_manager.h"
 #include "content/public/browser/keyboard_event_processing_result.h"
 #include "content/public/browser/navigation_controller.h"
@@ -158,7 +166,7 @@ typedef void (^NBCommandCompletion)(NSDictionary* result, NSError* error);
 - (void)findReplyCount:(int)count final:(BOOL)finalUpdate;
 - (void)beforeUnloadFired:(BOOL)proceed;
 - (void)pageFullscreenChanged:(BOOL)fullscreen;
-- (void)presentAlert:(NSAlert*)alert javaScript:(BOOL)javaScript completion:(void (^)(NSModalResponse))completion;
+- (NBPageDialog*)presentAlert:(NSAlert*)alert javaScript:(BOOL)javaScript completion:(void (^)(NSModalResponse))completion;
 - (NousTab*)tab;
 - (void)updatePageBackground;
 @end
@@ -194,6 +202,10 @@ class NousTab final : public content::WebContentsDelegate,
     Tabs()[wc] = this;
     wc->SetDelegate(this);
     NousTabHelpersAttacher::Attach(wc);
+    // Chrome owns this in TabFeatures, not TabHelpers. Without it, the first
+    // external-protocol attempt consumes Chrome's anti-flood allowance and
+    // subsequent real clicks can never re-arm it. Keep Chrome's gesture rules.
+    external_protocol_observer_ = std::make_unique<ExternalProtocolObserver>(wc);
     if (auto* favicon = favicon::ContentFaviconDriver::FromWebContents(wc))
       favicon->AddObserver(this);
     if (auto* modal = web_modal::WebContentsModalDialogManager::FromWebContents(wc))
@@ -263,6 +275,21 @@ class NousTab final : public content::WebContentsDelegate,
   bool MayWriteLocalFiles() override { return false; }
 
   // WebContentsDelegate ----------------------------------------------------
+  // Use Chrome's native chooser, including accept filters, multiple selection,
+  // folder confirmation and cancellation when the requesting frame goes away.
+  // The base delegate cancels these requests without displaying a dialog.
+  void RunFileChooser(content::RenderFrameHost* render_frame_host,
+                      scoped_refptr<content::FileSelectListener> listener,
+                      const blink::mojom::FileChooserParams& params) override {
+    FileSelectHelper::RunFileChooser(render_frame_host, std::move(listener), params);
+  }
+
+  void EnumerateDirectory(content::WebContents* web_contents,
+                          scoped_refptr<content::FileSelectListener> listener,
+                          const base::FilePath& path) override {
+    FileSelectHelper::EnumerateDirectory(web_contents, std::move(listener), path);
+  }
+
   // Camera, microphone and screen capture go through Chrome's own flow, as in
   // Chrome's Browser: the site permission (asked with the Nous sheet and
   // remembered per site), then the macOS privacy check. Without these the
@@ -282,6 +309,33 @@ class NousTab final : public content::WebContentsDelegate,
   content::WebContents* OpenURLFromTab(
       content::WebContents* source, const content::OpenURLParams& params,
       base::OnceCallback<void(content::NavigationHandle&)> navigation_handle_callback) override {
+    const bool new_browsing_context =
+        params.disposition == WindowOpenDisposition::NEW_FOREGROUND_TAB ||
+        params.disposition == WindowOpenDisposition::NEW_BACKGROUND_TAB ||
+        params.disposition == WindowOpenDisposition::NEW_WINDOW ||
+        params.disposition == WindowOpenDisposition::NEW_POPUP;
+    content::RenderFrameHost* initiator = params.initiator_frame_token
+        ? content::RenderFrameHost::FromFrameToken(content::GlobalRenderFrameHostToken(
+              params.initiator_process_id, *params.initiator_frame_token))
+        : nullptr;
+    // The host's URL-only new-tab path accepts web URLs. Keep external links
+    // in Chrome's navigation/security pipeline, with the original initiator.
+    // Restrict this to a real gesture in this top document: rewriting iframe
+    // navigation would change its sandbox semantics.
+    if (new_browsing_context && params.user_gesture &&
+        initiator == source->GetPrimaryMainFrame() && !initiator->GetParent() &&
+        source->GetOutermostWebContents() == source &&
+        content::IsURLHandledByNetworkStack(params.url) &&
+        !ProfileIOData::IsHandledURL(params.url)) {
+      auto* registry = ProtocolHandlerRegistryFactory::GetForBrowserContext(
+          source->GetBrowserContext());
+      if (!registry || !registry->IsHandledProtocol(params.url.GetScheme())) {
+        content::NavigationController::LoadURLParams load(params);
+        auto handle = source->GetController().LoadURLWithParams(load);
+        if (handle && navigation_handle_callback) std::move(navigation_handle_callback).Run(*handle);
+        return source;
+      }
+    }
     NSString* url = String(params.url.spec());
     switch (params.disposition) {
       case WindowOpenDisposition::CURRENT_TAB: {
@@ -496,6 +550,7 @@ class NousTab final : public content::WebContentsDelegate,
   }
 
   std::unique_ptr<content::WebContents> Release() {
+    external_protocol_observer_.reset();
     Tabs().erase(contents_.get());
     contents_->SetDelegate(nullptr);
     Observe(nullptr);
@@ -505,6 +560,7 @@ class NousTab final : public content::WebContentsDelegate,
  private:
   __weak NBChromiumView* view_;
   std::unique_ptr<content::WebContents> contents_;
+  std::unique_ptr<ExternalProtocolObserver> external_protocol_observer_;
   scoped_refptr<content::DevToolsAgentHost> agent_;
   base::ObserverList<web_modal::ModalDialogHostObserver> modal_observers_;
   bool fullscreen_ = false;
@@ -604,14 +660,26 @@ class NousPermissionPrompt final : public permissions::PermissionPrompt {
     alert.buttons[0].keyEquivalent = @"\r";
     alert.buttons[1].keyEquivalent = @"";
     alert.buttons[2].keyEquivalent = @"\e";
-    base::WeakPtr<permissions::PermissionPrompt::Delegate> weak = delegate_;
-    [view presentAlert:alert javaScript:NO completion:^(NSModalResponse response) {
-      if (!weak) return;
+    // The manager outlives individual prompts (for example when switching tabs).
+    // An old sheet must never answer a replacement prompt's pending requests.
+    base::WeakPtr<NousPermissionPrompt> prompt = weak_factory_.GetWeakPtr();
+    dialog_ = [view presentAlert:alert javaScript:NO completion:^(NSModalResponse response) {
+      if (!prompt) return;
+      auto delegate = prompt->delegate_;
+      if (!delegate) return;
       const PromptOptions options = std::monostate();
-      if (response == NSAlertSecondButtonReturn) weak->Accept(options);
-      else if (response == NSAlertFirstButtonReturn) weak->Deny(options);
-      else weak->Dismiss(options);
+      // Accept persists via Chrome's normal origin-scoped content settings.
+      // These calls can synchronously destroy this prompt; do not use it after.
+      if (response == NSAlertSecondButtonReturn) delegate->Accept(options);
+      else if (response == NSAlertFirstButtonReturn) delegate->Deny(options);
+      else delegate->Dismiss(options);
     }];
+  }
+  ~NousPermissionPrompt() override {
+    // Chrome may destroy only the UI and keep the request pending. Close this
+    // sheet without dismissing that request, just like Chrome's prompt bubble.
+    weak_factory_.InvalidateWeakPtrs();
+    [dialog_ finish:NSModalResponseCancel];
   }
   bool UpdateAnchor() override { return true; }
   TabSwitchingBehavior GetTabSwitchingBehavior() override { return kDestroyPromptButKeepRequestPending; }
@@ -627,6 +695,8 @@ class NousPermissionPrompt final : public permissions::PermissionPrompt {
 
  private:
   base::WeakPtr<permissions::PermissionPrompt::Delegate> delegate_;
+  NBPageDialog* __strong dialog_ = nil;
+  base::WeakPtrFactory<NousPermissionPrompt> weak_factory_{this};
 };
 
 static std::unique_ptr<permissions::PermissionPrompt> CreateNousPermissionPrompt(
@@ -641,8 +711,40 @@ static std::unique_ptr<permissions::PermissionPrompt> CreateNousPermissionPrompt
   return std::make_unique<NousPermissionPrompt>(view, delegate);
 }
 
+// Chrome's normal external-protocol cleanup requires a Chrome TabStripModel.
+// Nous owns the tab strip, so apply the same initial-navigation / sibling-tab
+// rule here, and never close the existing page that initiated the request.
+static bool IsEmptyExternalProtocolTab(content::WebContents* contents) {
+  NousTab* tab = NousTab::From(contents);
+  if (!tab || !contents->GetController().IsInitialNavigation()) return false;
+  NSWindow* window = tab->view().dialogPresentationWindow;
+  if (!window) return false;
+  for (const auto& [other_contents, other_tab] : Tabs()) {
+    if (other_contents != contents &&
+        other_tab->view().dialogPresentationWindow == window) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static void DidLaunchExternalProtocol(content::WebContents* contents) {
+  if (!IsEmptyExternalProtocolTab(contents)) return;
+  // Defer destruction until the protocol navigation unwinds. The page or its
+  // owning window may have changed in the meantime, so recheck both conditions.
+  content::GetUIThreadTaskRunner({})->PostTask(
+      FROM_HERE,
+      base::BindOnce([](base::WeakPtr<content::WebContents> contents) {
+        if (contents && IsEmptyExternalProtocolTab(contents.get()))
+          contents->Close();
+      }, contents->GetWeakPtr()));
+}
+
 namespace nous {
-void InstallTabServices() { SetCreatePermissionPromptFunction(&CreateNousPermissionPrompt); }
+void InstallTabServices() {
+  SetCreatePermissionPromptFunction(&CreateNousPermissionPrompt);
+  SetExternalProtocolLaunchedHook(&DidLaunchExternalProtocol);
+}
 void CloseAllTabs() {
   std::vector<NBChromiumView*> views;
   for (auto& [contents, tab] : Tabs()) {
@@ -1002,11 +1104,12 @@ void CloseAllTabs() {
   [_dialogs addObject:dialog];
   return dialog;
 }
-- (void)presentAlert:(NSAlert*)alert javaScript:(BOOL)javaScript completion:(void (^)(NSModalResponse))completion {
+- (NBPageDialog*)presentAlert:(NSAlert*)alert javaScript:(BOOL)javaScript completion:(void (^)(NSModalResponse))completion {
   NBPageDialog* dialog = [self dialogWithSheet:alert.window presenter:alert completion:completion];
-  if (!dialog) return;
+  if (!dialog) return nil;
   [alert beginSheetModalForWindow:dialog.parentWindow
                 completionHandler:^(NSModalResponse response) { [dialog finish:response]; }];
+  return dialog;
 }
 - (void)cancelPageDialogs {
   for (NBPageDialog* dialog in _dialogs.allObjects) [dialog finish:NSModalResponseCancel];

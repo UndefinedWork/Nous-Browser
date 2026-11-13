@@ -92,6 +92,58 @@ enum ChromiumSmokeCheck {
             if !condition { throw Failure(message) }
         }
 
+        // Run only in the opt-in preview harness against the local synthetic
+        // fixture. The tester answers the native permission UI; no grants are
+        // injected and no real clipboard, device, or location data is accessed.
+        private func permissionLifecycle(in context: BrowserWindowContext, tab: BrowserTab) async throws -> [String: Any] {
+            let path = "/permissions.html"
+            tab.load(base.appendingPathComponent("permissions.html"))
+            try await waitForPage(tab.webView, path: path)
+            pending = "Click Request notification permission on the local fixture"; save()
+            for _ in 0..<1200 {
+                if context.window.attachedSheet != nil { break }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            guard let oldSheet = context.window.attachedSheet else { throw Failure("No permission sheet appeared") }
+            let model = context.controller.model
+            model.newTab()
+            context.controller.dismissAddress()
+            for _ in 0..<30 {
+                if context.window.attachedSheet == nil { break }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            try require(context.window.attachedSheet == nil, "Old permission sheet survived hiding its tab")
+            model.selectTab(tab.id)
+            for _ in 0..<30 {
+                if context.window.attachedSheet != nil { break }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            guard let replacement = context.window.attachedSheet else { throw Failure("Pending permission was lost on tab return") }
+            try require(replacement !== oldSheet, "Reused a stale permission sheet")
+            pending = "Answer the replacement notification permission sheet"; save()
+            for _ in 0..<1200 {
+                if context.window.attachedSheet == nil { break }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            try require(context.window.attachedSheet == nil, "Permission sheet was not answered")
+            let query = "navigator.permissions.query({name:'notifications'}).then(p=>p.state)"
+            let decision = try await tab.webView.evaluateScript(query, world: "") as? String
+            try require(decision == "granted" || decision == "denied", "No persistent decision was made")
+            tab.webView.reload()
+            try await Task.sleep(for: .milliseconds(250))
+            try await waitForPage(tab.webView, path: path)
+            let afterReload = try await tab.webView.evaluateScript(query, world: "") as? String
+            try require(afterReload == decision, "Permission changed on reload")
+            model.newTab(url: base.appendingPathComponent("permissions.html"))
+            guard let reopened = model.selectedTab else { throw Failure("Could not reopen fixture") }
+            try await waitForPage(reopened.webView, path: path)
+            let afterReopen = try await reopened.webView.evaluateScript(query, world: "") as? String
+            try require(afterReopen == decision, "Permission changed in new tab")
+            return ["oldSheetClosed": true, "replacementSheetCreated": true,
+                    "decision": decision ?? "", "afterReload": afterReload ?? "", "afterReopen": afterReopen ?? "",
+                    "limit": "Notification permission only; no real devices, clipboard reads, or geolocation requests."]
+        }
+
         func run() async {
             save()
             await check("native-close-preflight-capability") {
@@ -106,6 +158,13 @@ enum ChromiumSmokeCheck {
             context.controller.dismissAddress()
             context.window.title = "Nous Chromium — Synthetic acceptance"
             let view = tab.webView
+            if ProcessInfo.processInfo.environment["NOUS_CHROMIUM_PERMISSION_LIFECYCLE"] == "1" {
+                await check("permission-sheet-lifecycle-and-persistence") {
+                    try await self.permissionLifecycle(in: context, tab: tab)
+                }
+                pending = "finished"; save(finished: true)
+                return
+            }
             view.nativeView.addScript("globalThis.__nousSmokeAtStart=document.readyState;globalThis.__nousSmokeIsolation='isolated';",
                                       world: "NousSmoke", binding: "__nousSmokeMessage")
             tab.load(base.appendingPathComponent(""))

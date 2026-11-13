@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Nous file chooser regression</title>
+<style>
+  body { font: 16px system-ui; margin: 28px; max-width: 900px; }
+  section { margin: 16px 0; padding: 12px; border: 1px solid #bbb; border-radius: 8px; }
+  button, input { font: inherit; padding: 7px; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+</style>
+<h1>File chooser regression</h1>
+<p>Local test only. Selected files are read locally; nothing is uploaded.</p>
+<section>Single file <input id="single" type="file" aria-label="Single file"></section>
+<section>Images / videos (multiple)
+  <input id="media" type="file" multiple accept="image/*,video/*" aria-label="Multiple media">
+</section>
+<section><button onclick="document.querySelector('#attachment').click()">Add attachment</button>
+  <input id="attachment" type="file" hidden multiple>
+  <button onclick="document.querySelector('#picker').showPicker()">Open with showPicker</button>
+  <input id="picker" type="file" hidden accept=".txt">
+</section>
+<section>Folder <input id="folder" type="file" webkitdirectory multiple aria-label="Choose folder"></section>
+<section><label for="labelFile">Click this label to choose a file</label>
+  <input id="labelFile" type="file" hidden>
+</section>
+<section id="frameSection"><iframe id="child" title="Cross-origin file chooser" height="85"></iframe></section>
+<pre id="results" role="log" aria-live="polite">Ready</pre>
+<script>
+  const report = text => { document.querySelector('#results').textContent += '\n' + text; };
+  for (const input of document.querySelectorAll('input')) {
+    input.addEventListener('click', e => report(`${input.id}: click trusted=${e.isTrusted}`));
+    input.addEventListener('cancel', () => report(`${input.id}: cancel; retained=${input.files.length}`));
+    input.addEventListener('change', async () => {
+      report(`${input.id}: change; count=${input.files.length}`);
+      for (const file of input.files) {
+        const bytes = await file.arrayBuffer();
+        report(`${input.id}: ${file.webkitRelativePath || file.name} | ${file.type || '(no MIME)'} | size=${file.size} read=${bytes.byteLength}`);
+      }
+    });
+  }
+  if (location.search === '?frame') {
+    document.querySelector('#frameSection').remove();
+    document.querySelector('h1').remove();
+    document.querySelector('p').remove();
+    for (const s of document.querySelectorAll('section')) if (!s.contains(document.querySelector('#single'))) s.remove();
+  } else {
+    const other = new URL(location.href);
+    other.hostname = location.hostname === 'localhost' ? '127.0.0.1' : 'localhost';
+    other.search = '?frame';
+    document.querySelector('#child').src = other;
+  }
+</script>
