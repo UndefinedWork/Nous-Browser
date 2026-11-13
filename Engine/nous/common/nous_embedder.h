@@ -49,6 +49,13 @@ using PermissionPromptFactory =
 void SetPermissionPromptFactory(PermissionPromptFactory factory);
 PermissionPromptFactory GetPermissionPromptFactory();
 
+// Runs only after Chrome has approved and dispatched an external-protocol
+// launch. The host may close an otherwise empty auxiliary tab; this hook does
+// not participate in scheme, origin, gesture or permission decisions.
+using ExternalProtocolLaunchedHook = void (*)(content::WebContents*);
+void SetExternalProtocolLaunchedHook(ExternalProtocolLaunchedHook hook);
+void RunExternalProtocolLaunchedHook(content::WebContents* contents);
+
 // Video Picture-in-Picture: Chromium's overlay window draws the video, the
 // host draws the controls over it. `window` is the overlay's views::Widget*,
 // `controller` its content::VideoPictureInPictureWindowController*. Both stay
