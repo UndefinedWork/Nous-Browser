@@ -1,0 +1,86 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nous external protocol QA</title>
+<style>
+  :root { color-scheme: light dark; font: 17px system-ui; }
+  body { max-width: 850px; margin: 48px auto; padding: 0 24px; }
+  li { margin: 22px 0; }
+  button, a { font: inherit; }
+  button { padding: 8px 14px; }
+  code { font-size: .9em; }
+  iframe { width: 100%; height: 165px; border: 1px solid #8888; border-radius: 8px; }
+  pre { min-height: 100px; white-space: pre-wrap; border: 1px solid #8888; padding: 16px; }
+</style>
+<h1>External application protocol QA</h1>
+<p>This page opens nothing automatically. Only explicit link/button actions navigate. The registered
+  <code>nous-protocol-qa</code> receiver only records synthetic test URLs locally.</p>
+<p>Page origin: <code id="origin"></code>. Use <code>127.0.0.1</code> and
+  <code>localhost</code> as different origins when checking remembered decisions.</p>
+<ol>
+  <li><a id="same" href="nous-protocol-qa://fixture/same-tab">Open receiver — same tab</a></li>
+  <li><a id="blank" href="nous-protocol-qa://fixture/new-tab" target="_blank" rel="noopener">Open receiver — new tab</a></li>
+  <li><button id="script">Open receiver — window.open from click</button></li>
+  <li><button id="delayed">Attempt receiver after 8 seconds (expired activation)</button>
+    <p>Do not click the page again during the delay. This is a negative/Chrome-parity
+    check, not an assertion that every delayed navigation must be blocked.</p></li>
+  <li><button id="repeated">One click — request immediately, then again after 1 second</button>
+    <p>Do not click this page again during the delay. Both requests use the
+    <code>/delayed</code> path with distinct run IDs. Check that the second attempt
+    cannot produce an extra prompt or launch without another page gesture.</p></li>
+  <li><a id="unknown" href="nous-protocol-qa-unregistered://fixture/no-handler">Unregistered scheme — must not launch an app</a></li>
+  <li><a id="blocked" href="applescript://fixture/no-script">Denied scheme — must not launch an app</a>
+    <p>The blocked URL contains no AppleScript code.</p></li>
+  <li>Restricted iframe — real clicks should retain Chrome's sandbox blocking:
+    <iframe title="Sandboxed external protocol links" sandbox="" srcdoc="
+      <!doctype html><meta charset='utf-8'>
+      <style>:root{color-scheme:light dark;font:16px system-ui}body{padding:8px}p{margin:16px 0}</style>
+      <p><a href='nous-protocol-qa://fixture/delayed?run=101'>Sandbox: external link in this frame</a></p>
+      <p><a href='nous-protocol-qa://fixture/delayed?run=102' target='_blank' rel='noopener'>Sandbox: external link in new tab</a></p>
+    "></iframe>
+    <p>The iframe grants no sandbox exceptions, including no
+    <code>allow-popups</code> or <code>allow-top-navigation-to-custom-protocols</code>.</p></li>
+  <li><a href="https://example.com/" target="_blank" rel="noopener">Ordinary HTTPS link — open Example Domain in a new tab</a></li>
+</ol>
+<p>Cancel should leave the receiver log unchanged. An accepted launch should append
+  exactly one matching URL. Test with the receiver both quit and already running.</p>
+<button id="clear">Clear page event log</button>
+<pre id="events" aria-live="polite"></pre>
+<script>
+  const events = document.querySelector('#events');
+  const log = text => { events.textContent += new Date().toISOString() + ' ' + text + '\n'; };
+  const destination = kind => 'nous-protocol-qa://fixture/' + kind + '?run=' + Date.now();
+  document.querySelector('#origin').textContent = location.origin;
+  for (const id of ['same', 'blank']) {
+    document.querySelector('#' + id).addEventListener('click', event => {
+      const kind = id === 'same' ? 'same-tab' : 'new-tab';
+      event.currentTarget.href = destination(kind);
+      log(kind + ' trusted=' + event.isTrusted);
+    });
+  }
+  document.querySelector('#script').onclick = event => {
+    log('window-open trusted=' + event.isTrusted);
+    window.open(destination('window-open'), '_blank', 'noopener');
+  };
+  document.querySelector('#delayed').onclick = event => {
+    log('delayed request scheduled, trusted=' + event.isTrusted);
+    setTimeout(() => {
+      log('delayed navigation active=' + navigator.userActivation.isActive);
+      location.href = destination('delayed');
+    }, 8000);
+  };
+  document.querySelector('#repeated').onclick = event => {
+    const run = Date.now();
+    log('repeat pair immediate trusted=' + event.isTrusted + ' run=' + run);
+    setTimeout(() => {
+      log('repeat pair second active=' + navigator.userActivation.isActive + ' run=' + (run + 1));
+      location.href = 'nous-protocol-qa://fixture/delayed?run=' + (run + 1);
+    }, 1000);
+    location.href = 'nous-protocol-qa://fixture/delayed?run=' + run;
+  };
+  for (const id of ['unknown', 'blocked']) {
+    document.querySelector('#' + id).addEventListener('click', event => log(id + ' trusted=' + event.isTrusted));
+  }
+  document.querySelector('#clear').onclick = () => { events.textContent = ''; };
+  log('Ready. No protocol launch has been requested.');
+</script>

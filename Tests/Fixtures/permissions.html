@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Nous permission regression</title>
+<style>body{font:18px system-ui;margin:40px;max-width:850px}button,a{font:inherit;margin:8px;padding:10px}pre{white-space:pre-wrap}</style>
+<h1>Website permission regression</h1>
+<p>This local fixture only queries permission states. The notification button requests permission but never sends a notification. No camera, microphone, location, or clipboard data is accessed.</p>
+<button id="query">Query saved permissions</button>
+<button id="request">Request notification permission</button>
+<button onclick="location.reload()">Reload page</button>
+<a href="permissions.html" target="_blank">Open same origin in another tab</a>
+<a href="http://localhost:18881/permissions.html" target="_blank">Open different origin</a>
+<pre id="state"></pre>
+<pre id="events"></pre>
+<script>
+const names = ['notifications', 'clipboard-read', 'camera', 'microphone', 'geolocation'];
+const log = text => document.querySelector('#events').textContent += text + '\n';
+async function query() {
+  const lines = await Promise.all(names.map(async name => {
+    try { return name + ': ' + (await navigator.permissions.query({name})).state; }
+    catch (error) { return name + ': ' + error.name; }
+  }));
+  document.querySelector('#state').textContent = location.origin + '\n' + lines.join('\n');
+}
+document.querySelector('#query').onclick = query;
+document.querySelector('#request').onclick = async () => {
+  log('request started');
+  log('request resolved: ' + await Notification.requestPermission());
+  await query();
+};
+query();
+</script>
