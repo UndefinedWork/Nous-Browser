@@ -1,0 +1,75 @@
+name: Publish Nous Update
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without the v prefix
+        required: true
+        type: string
+      mode:
+        description: Verify only, or sign and publish as the latest stable release
+        required: true
+        default: verify
+        type: choice
+        options:
+          - verify
+          - publish
+
+# Only one run may change the stable update channel at a time.
+concurrency:
+  group: nous-stable-updates
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main' && github.repository == 'UndefinedWork/Nous-Browser'
+    runs-on: macos-15
+    timeout-minutes: 30
+    environment: production-updates
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_MODE: ${{ inputs.mode }}
+    steps:
+      - name: Check out the publisher from main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Fetch the pinned Sparkle tools
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/sparkle-project/Sparkle/releases/download/2.10.1/Sparkle-2.10.1.tar.xz \
+            --output nous-sparkle.tar.xz
+          echo '1a856d2a9edb8e628de88121d7be04cf0e2167f8641650b78fca00b14244cf27  nous-sparkle.tar.xz' | shasum -a 256 --check
+          mkdir nous-sparkle
+          tar -xf nous-sparkle.tar.xz -C nous-sparkle
+          echo "SPARKLE_BIN=$RUNNER_TEMP/nous-sparkle/bin" >> "$GITHUB_ENV"
+
+      - name: Verify the source tag and uploaded packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -I Scripts/github-signed-release.py prepare
+
+      - name: Sign and verify the update
+        env:
+          NOUS_ED25519_KEY: ${{ secrets.NOUS_ED25519_KEY }}
+        run: python3 -I Scripts/github-signed-release.py sign
+
+      - name: Publish the signed release
+        if: inputs.mode == 'publish'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -I Scripts/github-signed-release.py publish
+
+      - name: Check the result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -I Scripts/github-signed-release.py verify
