@@ -12,23 +12,79 @@ Nous 1.1.9 起，GitHub 发行版使用 Sparkle 2.10.1 检查、验证、下载�
 - 1.1.8 及更早的用户需要手动安装一次包含更新器的版本，之后才可应用内更新。
 - Mac App Store 发行应移除 Sparkle 并使用商店更新；代码也会阻止非 `github` 渠道或带 App Store receipt 的应用启动此更新器。
 
-## 发布
+## 从另一台 Mac 发布新版
 
-1. 修改 `Resources/Info.plist` 的显示版本和 **严格递增** 的 `CFBundleVersion`。
-2. 测试后执行 `zsh Scripts/build.sh`。
-3. 执行 `zsh Scripts/package-release.sh`，得到 DMG、ZIP、SHA256SUMS.txt 及签名 `appcast.xml`。
-4. 在 GitHub 创建对应 `v<版本>` 的 draft release，上传以上四个文件，核对安装包后发布为 stable / latest。
-5. 客户端读取 `https://github.com/UndefinedWork/Nous-Browser/releases/latest/download/appcast.xml`。不要只上传 DMG；更新器使用 ZIP。
-6. 不要把预发布版本设置为 latest。四个文件全部上传完成后再发布，避免客户端看到不完整的版本。
+**每次发版只需在开发 Mac 上构建、测试、上传三个文件，然后在 GitHub 点一次发布工作流。** GitHub 用老用户已经信任的密钥签名。开发 Mac 只需仓库写权限，原发布 Mac 可以关机。
 
-`appcast.xml` 指向对应版本的固定 ZIP URL；清单和 ZIP 均有 Ed25519 签名。清单任何修改都需要重新签名。下载包在解压前验证签名，错误签名不会安装。SHA256 文件用于人工核验，不代替签名。
+可以把下面这段话直接发给另一台电脑上的开发助手。
 
-## 发布密钥
+> 请先同步 Nous Browser 的 main，阅读 Docs/Updates.md，按这份手册发布我指定的新版本。构建、测试通过后，用 --for-github 打包，将本版本的三个文件上传到 Release 草稿，运行 Publish Nous Update。完成后发给我正式版链接和旧版「检查更新」的验收结果。更新签名交给 GitHub。
 
-发布私钥位于发布机器用户目录的 `.local/share/NousBrowserRelease/update-signing-key`（目录权限 0700、文件权限 0600），不使用 macOS 钥匙串，不会要求钥匙串密码。私钥绝不能提交到仓库或上传 Release。可以通过 `NOUS_UPDATE_SIGNING_KEY` 指定安全保存的私钥文件路径。
+### 1. 准备版本并打包
 
-应用中只包含 `SUPublicEDKey` 公钥。必须安全备份发布私钥；丢失后不能直接换公钥继续更新已安装的版本。更换发布机器时安全迁移原私钥，不能重新生成后覆盖。脚本使用本地文件签名，不从环境变量打印密钥，也不把密钥包含在安装包内。
+在仓库根目录工作。开始开发前切到 `main` 并同步代码。如果改动在其他分支，先将本次要发布的改动合入 `main`。首次搭建构建环境请看[Chromium 构建说明](Chromium-Build.md)。
 
-macOS 按应用的代码签名身份记录录屏授权。1.4.19 使用了发布机上的 `Nous Browser Local Signing` 证书，1.4.21 使用了 ad-hoc 签名，升级后可能需要重新授权。在原发布 Mac 上构建后续版本时，`Scripts/build.sh` 会使用 `~/Library/Application Support/NousSigning` 中已有的签名工具与证书，构建日志会显示 `Signed with the local certificate`。保持应用签名身份稳定，可以沿用该身份已有的授权。Sparkle 私钥另用于签署打包后的 ZIP 和更新清单。
+```sh
+git switch main
+git pull --ff-only origin main
+```
 
-本地签名和 ad-hoc 签名都未经 Apple 公证，首次安装可能遇到 Gatekeeper 提示。正式对外分发可采用稳定的 Developer ID 身份与公证。应用若不属于当前用户或位于不可写目录，系统仍可能要求安装授权。
+在 `Resources/Info.plist` 设置新的显示版本 `CFBundleShortVersionString`（如 `X.Y.Z`）和比上次发行更大的整数构建号 `CFBundleVersion`。保留已有的更新公钥及更新地址。把用户能感知的变化写入 `Docs/releases/<版本号>.md`。使用全英文说明，或沿用双语文件的 `## English` 小节。GitHub 用该版本标签所对应的说明生成英文 Release notes。
+
+提交本次源码、版本号和说明后，确认当前提交就是要发布的版本。在同一提交上构建、测试和打包。以下命令适用于装好 Xcode 并配置好 NousCore 编译环境的 Apple 芯片 Mac。
+
+```sh
+zsh Scripts/build.sh &&
+zsh Scripts/test.sh &&
+zsh Scripts/package-release.sh --for-github
+```
+
+打包会核对应用签名、版本、架构，以及 DMG 和 ZIP 的内容。成功后，记下 `dist/` 下本版本的 DMG、ZIP 和 `SHA256SUMS.txt`。有任何一步失败就先修复，然后重新打包。
+
+### 2. 上传 GitHub Release 草稿
+
+在同一个终端从项目版本文件读取版本并给本次提交打标签。执行前确认 `git status --short` 为空、这个版本号尚未发布。如果标签已存在，先确认它指向本次构建所用的提交。
+
+```sh
+RELEASE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
+RELEASE_TAG="v${RELEASE_VERSION}"
+RELEASE_ASSET="dist/Nous-Browser-${RELEASE_VERSION}-macOS-arm64"
+git tag "$RELEASE_TAG" HEAD &&
+git push --atomic origin main "refs/tags/$RELEASE_TAG"
+```
+
+在 [GitHub Releases](https://github.com/UndefinedWork/Nous-Browser/releases) 创建草稿，选择刚推送的标签，上传上述三个文件，点 **Save draft**。也可以在同一个终端用已登录的 GitHub CLI 完成这步。
+
+```sh
+gh release create "$RELEASE_TAG" \
+  "${RELEASE_ASSET}.dmg" "${RELEASE_ASSET}.zip" dist/SHA256SUMS.txt \
+  --repo UndefinedWork/Nous-Browser --draft --verify-tag \
+  --title "Nous Browser $RELEASE_VERSION" --notes-file "Docs/releases/$RELEASE_VERSION.md"
+```
+
+### 3. 签名并正式发布
+
+打开 [Actions → Publish Nous Update](https://github.com/UndefinedWork/Nous-Browser/actions/workflows/publish-nous-update.yml)，点 **Run workflow**，分支选 **main**，`version` 填显示版本号（省略开头的 `v`），`mode` 选 **publish**，再点 **Run workflow**。也可以在上一步的终端运行。
+
+```sh
+gh workflow run publish-nous-update.yml --ref main \
+  --repo UndefinedWork/Nous-Browser -f version="$RELEASE_VERSION" -f mode=publish
+```
+
+如果想先演练，选择 **verify**。它会验证包并测试签名，保留当前公开版本。确认后再以 **publish** 运行。已公开为预发布的版本也可以从这一步晋升为正式版。
+
+### 4. 确认老用户能收到
+
+1. 等本次 Actions 运行成功。打开 [最新正式版](https://github.com/UndefinedWork/Nous-Browser/releases/latest)，确认标签为本次版本，下载区有 DMG、ZIP、`SHA256SUMS.txt` 和 GitHub 生成的 `appcast.xml`。
+2. 打开[客户端实际读取的更新清单](https://github.com/UndefinedWork/Nous-Browser/releases/latest/download/appcast.xml)。`sparkle:shortVersionString` 应对应本次版本，`sparkle:version` 应对应新构建号。
+3. 在符合系统要求、仍运行旧版的 GitHub 版 Nous 里点 **Nous Browser → 检查更新**，应看到新版本。运行同一版本的客户端会显示已是最新版。
+
+工作流显示红色时，打开失败的步骤查看原因。核对版本、标签、构建号及三个文件是否来自同一次打包；缺少附件就补入同一个草稿，再运行工作流。若失败发生在最后的公开下载验证，先检查 Latest 和更新清单的实际状态再重试。已公开的安装包要改内容时，使用新的版本号和构建号重新发布。
+
+## 密钥和 macOS 授权
+
+GitHub 的 `production-updates` 发布环境保存了加密密钥，只用于签署更新 ZIP 和更新清单。其他开发电脑无需复制、导出或重新生成私钥。仓库、Release 附件和发版说明里只应包含公开信息。
+
+macOS 通过应用代码签名身份识别录屏授权。1.4.19 使用本地签名证书，1.4.21 使用 ad-hoc 签名，切换身份后系统可能要求重新授权。GitHub 的更新签名不会改变应用已有的 macOS 签名或 Apple 公证状态。
+
+保有原更新私钥的 Mac 仍可用 `zsh Scripts/package-release.sh` 完成本地离线签名。请将原私钥单独安全备份。

@@ -184,10 +184,12 @@ python3 Tests/Fixtures/browser_test_server.py
 
 ## 打包安装文件
 
-完成 Release 构建后运行：
+在开发 Mac 上完成 Release 构建后，运行以下命令为 GitHub 准备安装包。
 
 ```sh
-zsh Scripts/package-release.sh
+zsh Scripts/package-release.sh --for-github
 ```
 
 安装镜像、ZIP 和 SHA256 校验文件生成在 `dist/`。脚本会核对版本、实际 CPU 架构和应用签名，并验证 DMG 与 ZIP 的内容。
+
+从另一台 Mac 上传草稿、让 GitHub 签名并推送给老用户，请按[发版手册](Docs/Updates.md)操作。

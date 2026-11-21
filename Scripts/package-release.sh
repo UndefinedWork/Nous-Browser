@@ -11,6 +11,15 @@ DIST_DIR="$PROJECT_DIR/dist"
 fail() { print -u2 -- "Release packaging failed: $*"; exit 1; }
 plist_value() { /usr/libexec/PlistBuddy -c "Print :$2" "$1"; }
 
+if (( $# > 1 )); then
+    fail "Usage: package-release.sh [--for-github]"
+fi
+case "${1:-}" in
+    "") SIGN_LOCALLY=1 ;;
+    --for-github) SIGN_LOCALLY=0 ;;
+    *) fail "Usage: package-release.sh [--for-github]" ;;
+esac
+
 [[ -d "$APP_DIR" ]] || fail "Build the app first: $APP_DIR"
 [[ -f "$SOURCE_INFO" ]] || fail "Missing project Info.plist."
 
@@ -179,5 +188,8 @@ for asset in "$ASSET_BASENAME.dmg" "$ASSET_BASENAME.zip" SHA256SUMS.txt; do
 done
 /bin/cat "$DIST_DIR/SHA256SUMS.txt"
 
-# Every release also carries its authenticated updater feed.
-zsh "$PROJECT_DIR/Scripts/generate-update-feed.sh"
+if (( SIGN_LOCALLY )); then
+    zsh "$PROJECT_DIR/Scripts/generate-update-feed.sh"
+else
+    print -- "Upload the three files listed above to a draft GitHub Release. Run the Publish Nous Update workflow to sign and publish it."
+fi
