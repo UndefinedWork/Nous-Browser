@@ -168,6 +168,7 @@
 "Try downloading the image and opening it again." = "이미지를 다운로드한 후 다시 열어 보세요.";
 "Check for Updates…" = "업데이트 확인…";
 "Checking for updates…" = "업데이트 확인 중…";
+"Last checked %@" = "마지막 확인: %@";
 "Update available" = "업데이트 사용 가능";
 "Downloading update…" = "업데이트 다운로드 중…";
 "Installing and restarting…" = "설치 및 재시작 중…";

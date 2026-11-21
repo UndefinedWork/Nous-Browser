@@ -18,6 +18,32 @@ import Sparkle
         #expect(choice == .dismiss)
         #expect(updater.phase == .idle)
     }
+    @Test func noUpdateResultSurvivesSparkleDismissal() {
+        let updater = BrowserUpdater()
+        #expect(updater.checkFeedback == nil)
+        let result = NSError(domain: "test", code: 1, userInfo: [
+            NSLocalizedDescriptionKey: "Up to date",
+            NSLocalizedRecoverySuggestionErrorKey: "The installed build is newer than the published version."
+        ])
+        var acknowledged = false
+        updater.showUpdateNotFoundWithError(result) { acknowledged = true }
+        updater.dismissUpdateInstallation()
+        #expect(acknowledged)
+        #expect(updater.phase == .idle)
+        #expect(updater.lastChecked != nil)
+        #expect(updater.checkFeedback?.title == L10n.string("No update available"))
+        #expect(updater.checkFeedback?.detail == result.localizedRecoverySuggestion)
+    }
+    @Test func checkFailureReplacesAnEarlierSuccess() {
+        let updater = BrowserUpdater()
+        updater.showUpdateNotFoundWithError(NSError(domain: "test", code: 1)) {}
+        let offline = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)
+        updater.showUpdaterError(offline) {}
+        updater.dismissUpdateInstallation()
+        #expect(updater.checkFeedback?.title == L10n.string("Unable to update"))
+        #expect(updater.checkFeedback?.detail.contains(offline.localizedDescription) == true)
+        #expect(updater.phase == .idle)
+    }
     @Test func executableAndTestProcessesDoNotStartUpdater() {
         #expect(!BrowserUpdater.permitsUpdates(bundle: .main))
     }

@@ -168,6 +168,7 @@
 "Try downloading the image and opening it again." = "画像をダウンロードして、もう一度開いてください。";
 "Check for Updates…" = "アップデートを確認…";
 "Checking for updates…" = "アップデートを確認中…";
+"Last checked %@" = "前回の確認：%@";
 "Update available" = "アップデートがあります";
 "Downloading update…" = "アップデートをダウンロード中…";
 "Installing and restarting…" = "インストールして再起動中…";

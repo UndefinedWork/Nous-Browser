@@ -168,6 +168,7 @@
 "Try downloading the image and opening it again." = "請嘗試下載圖片後重新開啟。";
 "Check for Updates…" = "檢查更新…";
 "Checking for updates…" = "正在檢查更新…";
+"Last checked %@" = "上次檢查時間：%@";
 "Update available" = "有可用更新";
 "Downloading update…" = "正在下載更新…";
 "Installing and restarting…" = "正在安裝並重新啟動…";

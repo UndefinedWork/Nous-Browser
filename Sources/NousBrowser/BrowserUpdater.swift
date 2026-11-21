@@ -10,10 +10,15 @@ import SwiftUI
 final class BrowserUpdater: NSObject, SPUUserDriver {
     static let shared = BrowserUpdater()
     enum Phase: Equatable { case idle, checking, available, downloading, installing }
+    struct CheckFeedback {
+        let title: String
+        let detail: String
+    }
     private(set) var phase: Phase = .idle
     private(set) var version = ""
     private(set) var progress: Double?
-    private(set) var isEnabled = false
+    let supportsUpdates = BrowserUpdater.permitsUpdates(bundle: .main)
+    private(set) var checkFeedback: CheckFeedback?
     /// Plain-text release notes from the appcast, shown in the Library.
     private(set) var releaseNotes: String?
     private(set) var lastChecked: Date?
@@ -22,8 +27,9 @@ final class BrowserUpdater: NSObject, SPUUserDriver {
     var showsButton: Bool { phase == .available || phase == .downloading || phase == .installing }
     var isBusy: Bool { phase == .checking || phase == .downloading || phase == .installing }
     @ObservationIgnored private var engine: SPUUpdater?
+    @ObservationIgnored private var pendingCheck: NSKeyValueObservation?
     @ObservationIgnored private var installReply: ((SPUUserUpdateChoice) -> Void)?
-    @ObservationIgnored private var cancellation: (() -> Void)?
+    private var cancellation: (() -> Void)?
     @ObservationIgnored private var progressWindow: NSWindow?
     @ObservationIgnored private var expectedBytes: UInt64 = 0
     @ObservationIgnored private var receivedBytes: UInt64 = 0
@@ -38,29 +44,49 @@ final class BrowserUpdater: NSObject, SPUUserDriver {
     }
 
     func start() {
-        guard engine == nil, Self.permitsUpdates(bundle: .main) else { return }
+        guard engine == nil, supportsUpdates else { return }
         let updater = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: self, delegate: nil)
-        engine = updater
         do {
             try updater.start()
-            isEnabled = true
+            engine = updater
         } catch {
-            engine = nil
+            checkFeedback = CheckFeedback(title: L10n.string("Unable to update"), detail: Self.errorDetail(error))
             NSLog("Nous updater could not start: %@", error.localizedDescription)
         }
     }
 
     func checkForUpdates(inline: Bool = false) {
         showsProgressInline = inline
-        guard isEnabled, let engine else { return }
-        if phase == .available { installUpdate(); return }
+        guard supportsUpdates else { return }
+        start()
+        guard let engine else {
+            if !inline, let checkFeedback { showMessage(checkFeedback.title, detail: checkFeedback.detail) }
+            return
+        }
+        if phase == .available { presentAvailableUpdate(); return }
         if isBusy { showProgress(); return }
         userRequestedCheck = true
-        engine.checkForUpdates()
+        phase = .checking
+        progress = nil
+        showProgress()
+        if engine.canCheckForUpdates {
+            engine.checkForUpdates()
+        } else {
+            // Sparkle ignores manual checks during a silent scheduled check.
+            // Keep the user's request until the engine can accept it.
+            pendingCheck = engine.observe(\.canCheckForUpdates, options: [.new]) { [weak self] _, _ in
+                Task { @MainActor [weak self] in
+                    guard let self, pendingCheck != nil, phase == .checking,
+                          let engine = self.engine, engine.canCheckForUpdates else { return }
+                    pendingCheck = nil
+                    engine.checkForUpdates()
+                }
+            }
+        }
     }
 
     func installUpdate(inline: Bool = false) {
-        if inline { showsProgressInline = true }
+        showsProgressInline = inline
         guard phase == .available, let reply = installReply else {
             if isBusy { showProgress() }
             return
@@ -99,41 +125,32 @@ final class BrowserUpdater: NSObject, SPUUserDriver {
     }
     func showUpdateFound(with appcastItem: SUAppcastItem, state: SPUUserUpdateState,
                          reply: @escaping (SPUUserUpdateChoice) -> Void) {
+        pendingCheck = nil
         cancellation = nil
         guard !appcastItem.isInformationOnlyUpdate else {
+            finishCheck(title: L10n.string("Update unavailable"),
+                        detail: L10n.string("This update cannot be installed automatically."))
             reply(.dismiss)
-            if userRequestedCheck { showMessage(L10n.string("Update unavailable"), detail: L10n.string("This update cannot be installed automatically.")) }
             return
         }
+        checkFeedback = nil
+        lastChecked = Date()
         version = appcastItem.displayVersionString
         releaseNotes = appcastItem.itemDescription.flatMap(Self.plainText)
-        lastChecked = Date()
         phase = .available
         installReply = reply
         progressWindow?.orderOut(nil)
-        // A menu check reveals the update without implicitly authorizing restart.
-        // From the Library, the Updates card is the confirmation.
-        if userRequestedCheck && !showsProgressInline {
-            let alert = NSAlert()
-            alert.messageText = L10n.string("Update available") + " — " + version
-            alert.informativeText = L10n.string("Download the update, then restart Nous Browser. Save any work in webpages first.")
-            alert.addButton(withTitle: L10n.string("Update and Restart"))
-            alert.addButton(withTitle: L10n.string("Later"))
-            if alert.runModal() == .alertFirstButtonReturn { installUpdate() }
-        }
+        if userRequestedCheck { presentAvailableUpdate() }
     }
     func showUpdateReleaseNotes(with downloadData: SPUDownloadData) {}
     func showUpdateReleaseNotesFailedToDownloadWithError(_ error: Error) {}
     func showUpdateNotFoundWithError(_ error: Error, acknowledgement: @escaping () -> Void) {
-        progressWindow?.orderOut(nil)
-        lastChecked = Date()
-        phase = .idle
-        if userRequestedCheck && !showsProgressInline { showMessage(L10n.string("No update available"), detail: error.localizedDescription) }
+        let detail = (error as NSError).localizedRecoverySuggestion ?? error.localizedDescription
+        finishCheck(title: L10n.string("No update available"), detail: detail)
         acknowledgement()
     }
     func showUpdaterError(_ error: Error, acknowledgement: @escaping () -> Void) {
-        progressWindow?.orderOut(nil)
-        if userRequestedCheck || installWasRequested { showMessage(L10n.string("Unable to update"), detail: error.localizedDescription) }
+        finishCheck(title: L10n.string("Unable to update"), detail: Self.errorDetail(error))
         acknowledgement()
     }
     func showDownloadInitiated(cancellation: @escaping () -> Void) {
@@ -163,12 +180,42 @@ final class BrowserUpdater: NSObject, SPUUserDriver {
     }
     func showUpdateInstalledAndRelaunched(_ relaunched: Bool, acknowledgement: @escaping () -> Void) { acknowledgement() }
     func dismissUpdateInstallation() {
+        // Sparkle dismisses a completed check just before it accepts another.
+        // A second click in that interval already owns the progress UI.
+        if pendingCheck != nil { return }
         phase = .idle; progress = nil; cancellation = nil; installReply = nil
         userRequestedCheck = false; installWasRequested = false
         progressWindow?.close(); progressWindow = nil
     }
     func showUpdateInFocus() {
-        if phase == .available { installUpdate() } else { showProgress() }
+        if phase == .available { presentAvailableUpdate() } else { showProgress() }
+    }
+
+    private func presentAvailableUpdate() {
+        guard !showsProgressInline else { return }
+        let alert = NSAlert()
+        alert.messageText = L10n.string("Update available") + " — " + version
+        alert.informativeText = L10n.string("Download the update, then restart Nous Browser. Save any work in webpages first.")
+        alert.addButton(withTitle: L10n.string("Update and Restart"))
+        alert.addButton(withTitle: L10n.string("Later"))
+        if alert.runModal() == .alertFirstButtonReturn { installUpdate() }
+    }
+
+    private func finishCheck(title: String, detail: String) {
+        pendingCheck = nil
+        progressWindow?.orderOut(nil)
+        cancellation = nil
+        checkFeedback = CheckFeedback(title: title, detail: detail)
+        lastChecked = Date()
+        phase = .idle
+        if (userRequestedCheck || installWasRequested) && !showsProgressInline { showMessage(title, detail: detail) }
+    }
+
+    private static func errorDetail(_ error: Error) -> String {
+        let message = error.localizedDescription
+        guard let suggestion = (error as NSError).localizedRecoverySuggestion,
+              suggestion != message else { return message }
+        return message + " " + suggestion
     }
 
     private static func plainText(_ html: String) -> String? {

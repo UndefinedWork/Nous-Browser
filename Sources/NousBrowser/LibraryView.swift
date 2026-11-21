@@ -821,12 +821,22 @@ struct LibraryUpdatesView: View {
                         Text(L10n.string("Nous Browser") + " " + updater.version).font(.system(size: 16, weight: .semibold))
                         Text(L10n.string("A new version is ready to download.")).font(.system(size: 12)).foregroundStyle(.secondary)
                     } else {
-                        Text(L10n.string("Nous Browser is up to date")).font(.system(size: 16, weight: .semibold))
+                        Text(updater.phase == .checking ? updater.status : updater.checkFeedback?.title ?? L10n.string("Nous Browser"))
+                            .font(.system(size: 16, weight: .semibold))
                         Text(L10n.string("Version") + " " + currentVersion).font(.system(size: 12)).foregroundStyle(.secondary)
                     }
                 }
                 Spacer()
                 actions
+            }
+            if updater.phase == .idle, let feedback = updater.checkFeedback {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(feedback.detail).font(.system(size: 12)).textSelection(.enabled)
+                    if let date = updater.lastChecked {
+                        Text(L10n.format("Last checked %@", date.formatted(date: .abbreviated, time: .standard)))
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                }
             }
             if updater.phase == .downloading || updater.phase == .installing {
                 VStack(alignment: .leading, spacing: 6) {
@@ -839,7 +849,7 @@ struct LibraryUpdatesView: View {
                 Text(notes).font(.system(size: 12)).foregroundStyle(.secondary).textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if !updater.isEnabled, !compact {
+            if !updater.supportsUpdates, !compact {
                 Text(L10n.string("Updates are managed outside the app for this copy of Nous Browser."))
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
@@ -863,7 +873,7 @@ struct LibraryUpdatesView: View {
             EmptyView()
         case .idle:
             Button(L10n.string("Check for Updates")) { updater.checkForUpdates(inline: true) }
-                .buttonStyle(.glass).disabled(!updater.isEnabled)
+                .buttonStyle(.glass).disabled(!updater.supportsUpdates)
         }
     }
 }

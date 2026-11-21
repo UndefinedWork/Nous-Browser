@@ -85,7 +85,7 @@ final class BrowserMainMenu: NSObject, NSMenuItemValidation, NSMenuDelegate {
         var app: [NSMenuItem] = [
             system(L10n.format("About %@", appName), #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
         ]
-        if BrowserUpdater.shared.isEnabled {
+        if BrowserUpdater.shared.supportsUpdates {
             app.append(item(L10n.string("Check for Updates…")) { BrowserUpdater.shared.checkForUpdates() })
         }
         let services = NSMenuItem(title: L10n.string("Services"), action: nil, keyEquivalent: "")

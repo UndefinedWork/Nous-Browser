@@ -168,6 +168,7 @@
 "Try downloading the image and opening it again." = "Try downloading the image and opening it again.";
 "Check for Updates…" = "Check for Updates…";
 "Checking for updates…" = "Checking for updates…";
+"Last checked %@" = "Last checked %@";
 "Update available" = "Update available";
 "Downloading update…" = "Downloading update…";
 "Installing and restarting…" = "Installing and restarting…";

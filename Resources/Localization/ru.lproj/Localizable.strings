@@ -167,6 +167,7 @@
 "Try downloading the image and opening it again." = "Попробуйте скачать изображение и открыть его снова.";
 "Check for Updates…" = "Проверить обновления…";
 "Checking for updates…" = "Проверка обновлений…";
+"Last checked %@" = "Последняя проверка: %@";
 "Update available" = "Доступно обновление";
 "Downloading update…" = "Загрузка обновления…";
 "Installing and restarting…" = "Установка и перезапуск…";
