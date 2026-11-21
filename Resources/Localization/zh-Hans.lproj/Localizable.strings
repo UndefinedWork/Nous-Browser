@@ -272,6 +272,12 @@
 "All" = "全部";
 "Allow Camera for Nous Browser in System Settings › Privacy & Security › Camera" = "请在“系统设置 › 隐私与安全性 › 相机”中允许 Nous Browser";
 "Allow Microphone for Nous Browser in System Settings, or record with the microphone off." = "请在系统设置中允许 Nous Browser 使用麦克风，或关闭麦克风后录制。";
+"Allow Screen Capture" = "允许截屏和录屏";
+"Turn on Nous Browser in System Settings → Privacy & Security → Screen & System Audio Recording. If macOS asks you to quit and reopen Nous Browser, do so, then try the capture again." = "在“系统设置 → 隐私与安全 → 录屏与系统录音”中打开 Nous Browser 的开关。如果 macOS 提示退出并重新打开浏览器，请按提示操作后再试一次。";
+"Screen Capture Is Still Unavailable" = "仍无法截屏或录屏";
+"If Nous Browser is already on in Screen & System Audio Recording, turn it off and on again. Follow any prompt to quit and reopen Nous Browser, then try the capture again." = "如果“录屏与系统录音”中的 Nous Browser 已打开，请关闭再重新打开该开关。如果 macOS 提示退出并重新打开浏览器，请按提示操作后再试一次。";
+"Open System Settings" = "打开系统设置";
+"Could not complete the screenshot." = "未能完成截图。";
 "Allow Screen Recording for Nous Browser in System Settings, then try again." = "请在系统设置中允许 Nous Browser 录屏，然后重试。";
 "Arrow" = "箭头";
 "Aspect Ratio" = "宽高比";

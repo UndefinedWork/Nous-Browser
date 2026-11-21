@@ -271,6 +271,12 @@
 "All" = "Tutto";
 "Allow Camera for Nous Browser in System Settings › Privacy & Security › Camera" = "Consenti la fotocamera a Nous Browser in Impostazioni di Sistema › Privacy e sicurezza › Fotocamera";
 "Allow Microphone for Nous Browser in System Settings, or record with the microphone off." = "Consenti il microfono a Nous Browser in Impostazioni di Sistema oppure registra senza microfono.";
+"Allow Screen Capture" = "Consenti la cattura dello schermo";
+"Turn on Nous Browser in System Settings → Privacy & Security → Screen & System Audio Recording. If macOS asks you to quit and reopen Nous Browser, do so, then try the capture again." = "Attiva Nous Browser in Impostazioni di Sistema → Privacy e sicurezza → Registrazione schermo e audio di sistema. Se macOS ti chiede di chiudere e riaprire Nous Browser, segui le indicazioni e riprova.";
+"Screen Capture Is Still Unavailable" = "La cattura dello schermo non è ancora disponibile";
+"If Nous Browser is already on in Screen & System Audio Recording, turn it off and on again. Follow any prompt to quit and reopen Nous Browser, then try the capture again." = "Se Nous Browser è già attivo in Registrazione schermo e audio di sistema, disattivalo e riattivalo. Se richiesto, chiudi e riapri Nous Browser, quindi riprova.";
+"Open System Settings" = "Apri Impostazioni di Sistema";
+"Could not complete the screenshot." = "Impossibile completare l’istantanea dello schermo.";
 "Allow Screen Recording for Nous Browser in System Settings, then try again." = "Consenti la registrazione dello schermo a Nous Browser in Impostazioni di Sistema, poi riprova.";
 "Arrow" = "Freccia";
 "Aspect Ratio" = "Proporzioni";

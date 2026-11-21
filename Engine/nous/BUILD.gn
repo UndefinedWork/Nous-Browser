@@ -7,6 +7,8 @@
 # Zero-dependency hooks consulted by the small patches inside //chrome.
 source_set("embedder") {
   sources = [
+    "common/nous_extension_install.cc",
+    "common/nous_extension_install.h",
     "common/nous_embedder.cc",
     "common/nous_embedder.h",
   ]

@@ -272,6 +272,12 @@
 "All" = "전체";
 "Allow Camera for Nous Browser in System Settings › Privacy & Security › Camera" = "시스템 설정 › 개인정보 보호 및 보안 › 카메라에서 Nous Browser를 허용하세요";
 "Allow Microphone for Nous Browser in System Settings, or record with the microphone off." = "시스템 설정에서 Nous Browser의 마이크를 허용하거나 마이크를 끄고 녹화하세요.";
+"Allow Screen Capture" = "화면 캡처 허용";
+"Turn on Nous Browser in System Settings → Privacy & Security → Screen & System Audio Recording. If macOS asks you to quit and reopen Nous Browser, do so, then try the capture again." = "시스템 설정 → 개인정보 보호 및 보안 → 화면 및 시스템 오디오 녹음에서 Nous Browser를 켜세요. macOS에서 앱을 종료하고 다시 열라는 메시지가 표시되면 안내에 따라 앱을 다시 연 뒤 캡처를 다시 시도하세요.";
+"Screen Capture Is Still Unavailable" = "아직 화면을 캡처할 수 없습니다";
+"If Nous Browser is already on in Screen & System Audio Recording, turn it off and on again. Follow any prompt to quit and reopen Nous Browser, then try the capture again." = "화면 및 시스템 오디오 녹음에서 Nous Browser가 이미 켜져 있다면 껐다가 다시 켜세요. 앱을 종료하고 다시 열라는 메시지가 표시되면 안내에 따른 뒤 캡처를 다시 시도하세요.";
+"Open System Settings" = "시스템 설정 열기";
+"Could not complete the screenshot." = "스크린샷을 찍을 수 없습니다.";
 "Allow Screen Recording for Nous Browser in System Settings, then try again." = "시스템 설정에서 Nous Browser의 화면 기록을 허용한 후 다시 시도하세요.";
 "Arrow" = "화살표";
 "Aspect Ratio" = "화면비";

@@ -1,3 +1,4 @@
 /* Nous Browser */
 "NSCameraUsageDescription" = "允許你授權的網站使用相機，例如參加視訊會議。";
 "NSMicrophoneUsageDescription" = "允許你授權的網站使用麥克風，例如參加語音或視訊通話。";
+"NSScreenCaptureUsageDescription" = "在你擷取截圖或開始螢幕錄影時擷取螢幕內容。";

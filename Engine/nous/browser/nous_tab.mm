@@ -68,6 +68,10 @@
 #include "net/base/net_errors.h"
 #include "url/origin.h"
 #include "nous/browser/nous_internal.h"
+#include "nous/common/nous_extension_install.h"
+#include "extensions/browser/install_prompt_data.h"
+#include "chrome/grit/generated_resources.h"
+#include "ui/base/l10n/l10n_util.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
 #include "ui/base/page_transition_types.h"
 #include "third_party/skia/include/core/SkColor.h"
@@ -119,7 +123,7 @@ typedef void (^NBCommandCompletion)(NSDictionary* result, NSError* error);
 
 // Match Chrome's activation protection so the opening gesture cannot also
 // confirm the sheet. A floating PiP window must not cover the confirmation.
-@interface NBExternalProtocolInputProtection : NSObject
+@interface NBConfirmationInputProtection : NSObject
 - (instancetype)initWithOpenButton:(NSButton*)button
                       cancelButton:(NSButton*)cancelButton
                             sheet:(NSWindow*)sheet
@@ -127,7 +131,7 @@ typedef void (^NBCommandCompletion)(NSDictionary* result, NSError* error);
 - (void)stop;
 @end
 
-@implementation NBExternalProtocolInputProtection {
+@implementation NBConfirmationInputProtection {
   __weak NSButton* _openButton;
   id _cancelKeyMonitor;
   NSUInteger _activation;
@@ -176,10 +180,10 @@ typedef void (^NBCommandCompletion)(NSDictionary* result, NSError* error);
 - (void)protectActivation:(NSNotification*)notification {
   _openButton.enabled = NO;
   const NSUInteger activation = ++_activation;
-  __weak NBExternalProtocolInputProtection* weak = self;
-  const int64_t interval = static_cast<int64_t>(NSEvent.doubleClickInterval * NSEC_PER_SEC);
+  __weak NBConfirmationInputProtection* weak = self;
+  const int64_t interval = static_cast<int64_t>(MAX(0.5, NSEvent.doubleClickInterval) * NSEC_PER_SEC);
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, interval), dispatch_get_main_queue(), ^{
-    NBExternalProtocolInputProtection* protection = weak;
+    NBConfirmationInputProtection* protection = weak;
     if (protection && protection->_activation == activation)
       protection->_openButton.enabled = YES;
   });
@@ -216,9 +220,9 @@ typedef void (^NBCommandCompletion)(NSDictionary* result, NSError* error);
   __weak NSWindow* _dialogPresentationWindow;
   BOOL _managesDialogPresentationWindow;
   NSUInteger _dialogPresentationGeneration;
-  NSAlert* _pendingExternalProtocolAlert;
-  void (^_pendingExternalProtocolCompletion)(NSModalResponse);
-  __weak NBPageDialog* _externalProtocolDialog;
+  NSAlert* _pendingConfirmationAlert;
+  void (^_pendingConfirmationCompletion)(NSModalResponse);
+  __weak NBPageDialog* _confirmationDialog;
   void (^_findCompletion)(BOOL);
   BOOL _activeInWindow;
   BOOL _pinned;
@@ -245,9 +249,9 @@ typedef void (^NBCommandCompletion)(NSDictionary* result, NSError* error);
 - (void)cancelCommands:(NSError*)error;
 - (void)invalidateContexts;
 - (void)cancelPageDialogs;
-- (void)queueExternalProtocolAlert:(NSAlert*)alert completion:(void (^)(NSModalResponse))completion;
-- (void)presentPendingExternalProtocolAlert;
-- (void)cancelExternalProtocolDialog;
+- (void)queueConfirmationAlert:(NSAlert*)alert completion:(void (^)(NSModalResponse))completion;
+- (void)presentPendingConfirmationAlert;
+- (void)cancelConfirmationDialog;
 - (void)findReplyCount:(int)count final:(BOOL)finalUpdate;
 - (void)beforeUnloadFired:(BOOL)proceed;
 - (void)pageFullscreenChanged:(BOOL)fullscreen;
@@ -581,7 +585,7 @@ class NousTab final : public content::WebContentsDelegate,
   void PrimaryMainFrameRenderProcessGone(base::TerminationStatus status) override {
     NBChromiumView* view = view_;
     view->_navigationGeneration++;
-    [view cancelExternalProtocolDialog];
+    [view cancelConfirmationDialog];
     [view invalidateContexts];
     [view cancelCommands:Failure(@"The page renderer was closed.")];
     [view emit:@"error" payload:@{@"message" : Localized(@"The webpage stopped responding. Reload to continue.")}];
@@ -809,6 +813,69 @@ static std::unique_ptr<permissions::PermissionPrompt> CreateNousPermissionPrompt
   return std::make_unique<NousPermissionPrompt>(view, delegate);
 }
 
+static void PresentNousExtensionInstallDialog(
+    content::WebContents* contents,
+    const extensions::InstallPromptData& prompt,
+    nous::ExtensionInstallReply& reply) {
+  NousTab* tab = NousTab::From(contents);
+  NBChromiumView* view = tab ? tab->view() : nil;
+  if (!view) {
+    std::move(reply).Run(false, false);
+    return;
+  }
+  NSAlert* alert = [NSAlert new];
+  alert.messageText = String(prompt.GetDialogTitle());
+  if (!prompt.icon().IsEmpty()) alert.icon = prompt.icon().AsNSImage();
+
+  auto permissions = prompt.GetPermissions();
+  if (!permissions.permissions.empty()) {
+    alert.informativeText = String(prompt.GetPermissionsHeading());
+    NSMutableArray<NSString*>* rows = [NSMutableArray array];
+    for (size_t i = 0; i < permissions.permissions.size(); ++i) {
+      [rows addObject:[@"• " stringByAppendingString:String(permissions.permissions[i])]];
+      if (i < permissions.details.size() && !permissions.details[i].empty())
+        [rows addObject:String(permissions.details[i])];
+    }
+    NSString* text = [rows componentsJoinedByString:@"\n"];
+    // A long list of matching hosts must remain readable without pushing the
+    // buttons off screen. Let AppKit size short lists normally.
+    if (text.length <= 260 && [text componentsSeparatedByString:@"\n"].count <= 5) {
+      alert.informativeText = [NSString stringWithFormat:@"%@\n%@", alert.informativeText, text];
+    } else {
+      NSScrollView* scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 300, 140)];
+      scroll.hasVerticalScroller = YES;
+      scroll.autohidesScrollers = YES;
+      scroll.drawsBackground = NO;
+      NSTextView* list = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, scroll.contentSize.width, 140)];
+      list.editable = NO;
+      list.drawsBackground = NO;
+      list.font = [NSFont systemFontOfSize:NSFont.smallSystemFontSize];
+      list.textColor = NSColor.labelColor;
+      list.autoresizingMask = NSViewWidthSizable;
+      list.textContainer.widthTracksTextView = YES;
+      list.string = text;
+      scroll.documentView = list;
+      alert.accessoryView = scroll;
+    }
+  }
+
+  NSButton* cancel = [alert addButtonWithTitle:String(prompt.GetAbortButtonLabel())];
+  [alert addButtonWithTitle:String(prompt.GetAcceptButtonLabel())].keyEquivalent = @"";
+  alert.window.defaultButtonCell = (NSButtonCell*)cancel.cell;
+  if (prompt.ShouldWithheldPermissionsOnDialogAccept()) {
+    alert.showsSuppressionButton = YES;
+    alert.suppressionButton.title = String(l10n_util::GetStringUTF16(
+        IDS_EXTENSION_PROMPT_GRANT_PERMISSIONS_CHECKBOX));
+    alert.suppressionButton.state = NSControlStateValueOff;
+  }
+  __block nous::ExtensionInstallReply callback = std::move(reply);
+  [view queueConfirmationAlert:alert completion:^(NSModalResponse result) {
+    std::move(callback).Run(result == NSAlertSecondButtonReturn,
+                            alert.showsSuppressionButton &&
+                                alert.suppressionButton.state == NSControlStateValueOn);
+  }];
+}
+
 static bool PresentNousExternalProtocolDialog(
     content::WebContents* contents,
     const GURL& url,
@@ -843,7 +910,7 @@ static bool PresentNousExternalProtocolDialog(
   alert.window.defaultButtonCell = (NSButtonCell*)cancel.cell;
 
   __block nous::ExternalProtocolDialogResponse callback = std::move(response);
-  [view queueExternalProtocolAlert:alert completion:^(NSModalResponse result) {
+  [view queueConfirmationAlert:alert completion:^(NSModalResponse result) {
     const bool accepted = result == NSAlertSecondButtonReturn;
     const bool remember = accepted && alert.showsSuppressionButton &&
                           alert.suppressionButton.state == NSControlStateValueOn;
@@ -885,6 +952,7 @@ namespace nous {
 void InstallTabServices() {
   SetCreatePermissionPromptFunction(&CreateNousPermissionPrompt);
   SetExternalProtocolDialogHook(&PresentNousExternalProtocolDialog);
+  SetExtensionInstallPresenter(&PresentNousExtensionInstallDialog);
   SetExternalProtocolLaunchedHook(&DidLaunchExternalProtocol);
 }
 void CloseAllTabs() {
@@ -926,7 +994,7 @@ void CloseAllTabs() {
 }
 
 - (void)dealloc {
-  [self cancelExternalProtocolDialog];
+  [self cancelConfirmationDialog];
   [self cancelCommands:Failure(@"The tab was released.")];
   _tab.reset();
 }
@@ -1205,7 +1273,7 @@ void CloseAllTabs() {
   if (native.hidden == visible) native.hidden = !visible;
   if (visible) {
     _tab->contents()->WasShown();
-    [self presentPendingExternalProtocolAlert];
+    [self presentPendingConfirmationAlert];
   } else {
     _tab->contents()->WasHidden();
   }
@@ -1215,9 +1283,9 @@ void CloseAllTabs() {
   _pinned = pinned;
   _autoDiscardable = autoDiscardable;
   if (active) {
-    [self presentPendingExternalProtocolAlert];
+    [self presentPendingConfirmationAlert];
   } else {
-    [_externalProtocolDialog finish:NSModalResponseCancel];
+    [_confirmationDialog finish:NSModalResponseCancel];
     [self exitPageFullscreen];
   }
 }
@@ -1263,53 +1331,53 @@ void CloseAllTabs() {
                 completionHandler:^(NSModalResponse response) { [dialog finish:response]; }];
   return dialog;
 }
-- (void)queueExternalProtocolAlert:(NSAlert*)alert completion:(void (^)(NSModalResponse))completion {
-  if (_closed || _pendingExternalProtocolAlert || _externalProtocolDialog) {
+- (void)queueConfirmationAlert:(NSAlert*)alert completion:(void (^)(NSModalResponse))completion {
+  if (_closed || _pendingConfirmationAlert || _confirmationDialog) {
     completion(NSModalResponseCancel);
     return;
   }
-  _pendingExternalProtocolAlert = alert;
-  _pendingExternalProtocolCompletion = [completion copy];
-  [self presentPendingExternalProtocolAlert];
+  _pendingConfirmationAlert = alert;
+  _pendingConfirmationCompletion = [completion copy];
+  [self presentPendingConfirmationAlert];
 }
-- (void)presentPendingExternalProtocolAlert {
-  if (!_pendingExternalProtocolAlert || !_activeInWindow) return;
+- (void)presentPendingConfirmationAlert {
+  if (!_pendingConfirmationAlert || !_activeInWindow) return;
   NSWindow* parent = self.dialogPresentationWindow;
   // Foreground selection precedes mounting for newly created auxiliary tabs.
   // Leave a background request pending until its own page is really visible.
   if (!parent || self.window != parent || self.isHiddenOrHasHiddenAncestor) return;
 
-  NSAlert* alert = _pendingExternalProtocolAlert;
-  void (^completion)(NSModalResponse) = _pendingExternalProtocolCompletion;
-  _pendingExternalProtocolAlert = nil;
-  _pendingExternalProtocolCompletion = nil;
+  NSAlert* alert = _pendingConfirmationAlert;
+  void (^completion)(NSModalResponse) = _pendingConfirmationCompletion;
+  _pendingConfirmationAlert = nil;
+  _pendingConfirmationCompletion = nil;
   if (_closed || parent.attachedSheet) {
     completion(NSModalResponseCancel);
     return;
   }
 
-  NBExternalProtocolInputProtection* protection =
-      [[NBExternalProtocolInputProtection alloc] initWithOpenButton:alert.buttons[1]
+  NBConfirmationInputProtection* protection =
+      [[NBConfirmationInputProtection alloc] initWithOpenButton:alert.buttons[1]
                                                       cancelButton:alert.buttons[0]
                                                             sheet:alert.window
                                                            parent:parent];
   __weak NBChromiumView* weak = self;
-  _externalProtocolDialog = [self presentAlert:alert javaScript:NO completion:^(NSModalResponse response) {
+  _confirmationDialog = [self presentAlert:alert javaScript:NO completion:^(NSModalResponse response) {
     [protection stop];
     NBChromiumView* view = weak;
-    if (view) view->_externalProtocolDialog = nil;
+    if (view) view->_confirmationDialog = nil;
     completion(view && view->_activeInWindow ? response : NSModalResponseCancel);
   }];
 }
-- (void)cancelExternalProtocolDialog {
-  void (^completion)(NSModalResponse) = _pendingExternalProtocolCompletion;
-  _pendingExternalProtocolAlert = nil;
-  _pendingExternalProtocolCompletion = nil;
+- (void)cancelConfirmationDialog {
+  void (^completion)(NSModalResponse) = _pendingConfirmationCompletion;
+  _pendingConfirmationAlert = nil;
+  _pendingConfirmationCompletion = nil;
   if (completion) completion(NSModalResponseCancel);
-  [_externalProtocolDialog finish:NSModalResponseCancel];
+  [_confirmationDialog finish:NSModalResponseCancel];
 }
 - (void)cancelPageDialogs {
-  [self cancelExternalProtocolDialog];
+  [self cancelConfirmationDialog];
   for (NBPageDialog* dialog in _dialogs.allObjects) [dialog finish:NSModalResponseCancel];
 }
 

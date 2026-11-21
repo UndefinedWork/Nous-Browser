@@ -29,4 +29,6 @@ Nous 1.1.9 起，GitHub 发行版使用 Sparkle 2.10.1 检查、验证、下载�
 
 应用中只包含 `SUPublicEDKey` 公钥。必须安全备份发布私钥；丢失后不能直接换公钥继续更新已安装的版本。更换发布机器时安全迁移原私钥，不能重新生成后覆盖。脚本使用本地文件签名，不从环境变量打印密钥，也不把密钥包含在安装包内。
 
-当前应用仍采用 ad-hoc 代码签名，更新包签名不等于 Apple Developer ID 签名或公证。首次安装仍可能遇到 Gatekeeper 提示；正式对外分发建议配置 Developer ID 和公证，且保持签名身份稳定。应用若不属于当前用户或位于不可写目录，系统仍可能要求安装授权，这与发布私钥无关。
+macOS 按应用的代码签名身份记录录屏授权。1.4.19 使用了发布机上的 `Nous Browser Local Signing` 证书，1.4.21 使用了 ad-hoc 签名，升级后可能需要重新授权。在原发布 Mac 上构建后续版本时，`Scripts/build.sh` 会使用 `~/Library/Application Support/NousSigning` 中已有的签名工具与证书，构建日志会显示 `Signed with the local certificate`。保持应用签名身份稳定，可以沿用该身份已有的授权。Sparkle 私钥另用于签署打包后的 ZIP 和更新清单。
+
+本地签名和 ad-hoc 签名都未经 Apple 公证，首次安装可能遇到 Gatekeeper 提示。正式对外分发可采用稳定的 Developer ID 身份与公证。应用若不属于当前用户或位于不可写目录，系统仍可能要求安装授权。

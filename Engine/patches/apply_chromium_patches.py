@@ -553,3 +553,74 @@ edit(EPD, '''  // Windowing system takes ownership.
   // Windowing system takes ownership.
   new ExternalProtocolDialog(web_contents, url, program_name, initiating_origin,
                              std::move(initiator_document));''')
+
+# 22. The Web Store runs Chromium's original verification, supervision and
+#     permission pipeline. Present its ordinary install decision on the Nous
+#     page instead of looking up a Chrome Views browser window.
+EIV = 'chrome/browser/ui/views/extensions/extension_install_dialog_view.cc'
+include_after(EIV, '#include "chrome/browser/ui/views/extensions/extension_install_dialog_view.h"\n',
+              '#include "nous/common/nous_extension_install.h"\n')
+edit('chrome/browser/ui/views/extensions/BUILD.gn',
+     '''source_set("extension_install_dialog_view_impl") {
+  sources = [ "extension_install_dialog_view.cc" ]
+  public_deps = [''',
+     '''source_set("extension_install_dialog_view_impl") {
+  sources = [ "extension_install_dialog_view.cc" ]
+  public_deps = [
+    "//nous:embedder",''')
+edit(EIV, '''  // If the dialog has to be parented to WebContents, force activate the''',
+     '''  if (auto presenter = nous::GetExtensionInstallPresenter();
+      presenter && prompt->type() == InstallPromptData::INSTALL_PROMPT &&
+      !prompt->requires_parent_permission() && !prompt->has_webstore_data() &&
+      show_params->GetParentWebContents()) {
+    const auto* data = prompt.get();
+    nous::ExtensionInstallReply reply = base::BindOnce(
+        [](std::unique_ptr<InstallPromptData> prompt,
+           ExtensionInstallPrompt::DoneCallback done, bool accepted, bool grant_hosts) {
+          auto result = ExtensionInstallPrompt::Result::USER_CANCELED;
+          if (accepted) {
+            prompt->OnDialogAccepted();
+            result = prompt->ShouldWithheldPermissionsOnDialogAccept() && !grant_hosts
+                         ? ExtensionInstallPrompt::Result::ACCEPTED_WITH_WITHHELD_PERMISSIONS
+                         : ExtensionInstallPrompt::Result::ACCEPTED;
+          } else {
+            prompt->OnDialogCanceled();
+          }
+          std::move(done).Run(ExtensionInstallPrompt::DoneCallbackPayload(result));
+        }, std::move(prompt), std::move(done_callback));
+    presenter(show_params->GetParentWebContents(), *data, reply);
+    return;
+  }
+
+  // If the dialog has to be parented to WebContents, force activate the''')
+
+# The Library and the Web Store both call Chromium's uninstall dialog factory.
+# Keep its registry/policy checks, observers, metrics and report-abuse choice.
+UD = 'chrome/browser/ui/extensions/extension_uninstall_dialog_impl.cc'
+include_after(UD, '#include "chrome/browser/extensions/extension_uninstall_dialog.h"\n',
+              '''#if defined(NOUS_NATIVE_UNINSTALL_SHEET)
+#include "nous/browser/nous_extension_uninstall_dialog.h"
+#include "nous/common/nous_embedder.h"
+#endif
+''')
+edit(UD, '  return std::make_unique<ExtensionUninstallDialogImpl>(profile, parent,',
+     '''#if defined(NOUS_NATIVE_UNINSTALL_SHEET)
+  if (nous::IsEmbedded()) {
+    return nous::CreateExtensionUninstallSheet(profile, parent, delegate);
+  }
+#endif
+  return std::make_unique<ExtensionUninstallDialogImpl>(profile, parent,''')
+import_nous_gni('chrome/browser/ui/extensions/BUILD.gn')
+edit('chrome/browser/ui/extensions/BUILD.gn', '''source_set("impl") {
+  sources = [
+    "controlled_home_dialog.cc",''', '''source_set("impl") {
+  sources = []
+  if (is_mac && nous_core) {
+    defines = [ "NOUS_NATIVE_UNINSTALL_SHEET" ]
+    sources += [
+      "//nous/browser/nous_extension_uninstall_dialog.h",
+      "//nous/browser/nous_extension_uninstall_dialog.mm",
+    ]
+  }
+  sources += [
+    "controlled_home_dialog.cc",''')

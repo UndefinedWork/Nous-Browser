@@ -1,3 +1,4 @@
 /* Nous Browser */
 "NSCameraUsageDescription" = "영상 회의 등 사용자가 허용한 웹사이트에서 카메라를 사용합니다.";
 "NSMicrophoneUsageDescription" = "음성 및 영상 통화 등 사용자가 허용한 웹사이트에서 마이크를 사용합니다.";
+"NSScreenCaptureUsageDescription" = "스크린샷을 찍거나 화면 기록을 시작할 때 화면을 캡처합니다.";

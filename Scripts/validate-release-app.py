@@ -48,7 +48,8 @@ def validate(app):
     require(info['CFBundleIdentifier'] == 'com.cellier.nous-browser' and info['NousDistributionChannel'] == 'github', 'Invalid distribution identity')
     require(info['NousCredentialStorage'] == 'local-key', 'Missing explicit no-prompt storage policy')
     require('NousSupportsEngineSwitching' not in info, 'Unexpected engine switch setting')
-    for key in ('NSCameraUsageDescription','NSMicrophoneUsageDescription','NSBluetoothAlwaysUsageDescription'):
+    for key in ('NSCameraUsageDescription', 'NSMicrophoneUsageDescription', 'NSBluetoothAlwaysUsageDescription',
+                'NSScreenCaptureUsageDescription'):
         require(isinstance(info.get(key), str) and info[key].strip(), f'Missing privacy description: {key}')
     mac = app / 'Contents/MacOS'
     require({p.name for p in mac.iterdir()} == {'NousBrowser','NousBrowserMCP'}, 'Unexpected top-level executable (WebKit/relaunch must not ship)')

@@ -68,6 +68,7 @@ nonisolated struct CursorTrack: Codable, Equatable, Sendable {
     private enum Phase { case idle, selecting, starting, recording, finishing }
     private var phase = Phase.idle
     var failed: (String) -> Void = { _ in }
+    var screenAccessDenied: () -> Void = {}
     var finished: (Result) -> Void = { _ in }
     var isBusy: Bool { phase != .idle }
     var isRecording: Bool { phase == .recording }
@@ -105,11 +106,6 @@ nonisolated struct CursorTrack: Codable, Equatable, Sendable {
 
     func start() {
         guard phase == .idle else { return }
-        guard CGPreflightScreenCaptureAccess() else {
-            _ = CGRequestScreenCaptureAccess()
-            failed(L10n.string("Allow Screen Recording for Nous Browser in System Settings, then try again."))
-            return
-        }
         phase = .selecting
         setup.reset()
         selection = nil; windowMode = false; hovered = nil; dragRect = nil; notice = nil
@@ -346,7 +342,12 @@ nonisolated struct CursorTrack: Codable, Equatable, Sendable {
             if let recorder = recorder as? ScreenRecorder { _ = await recorder.stop() }
             tearDownRecording()
             phase = .idle
-            guard !(error is CancellationError) else { return }
+            guard !Task.isCancelled, !(error is CancellationError) else { return }
+            let streamError = error as NSError
+            if streamError.domain == SCStreamErrorDomain, streamError.code == SCStreamError.userDeclined.rawValue {
+                screenAccessDenied()
+                return
+            }
             failed(error is RecordingFailure ? error.localizedDescription
                    : L10n.string("Could not start screen recording:") + " " + error.localizedDescription)
         }

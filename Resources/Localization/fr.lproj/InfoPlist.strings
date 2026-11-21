@@ -1,2 +1,3 @@
 "NSCameraUsageDescription" = "Autorisez l’accès à la caméra sur les sites web auxquels vous donnez votre accord, par exemple pour les visioconférences.";
 "NSMicrophoneUsageDescription" = "Autorisez l’accès au microphone sur les sites web auxquels vous donnez votre accord, par exemple pour les appels audio et vidéo.";
+"NSScreenCaptureUsageDescription" = "Capture le contenu de l’écran lorsque vous faites une capture ou lancez un enregistrement.";

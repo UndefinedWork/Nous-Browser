@@ -1,4 +1,6 @@
 import AppKit
+import ImageIO
+import UniformTypeIdentifiers
 
 /// Screenshot and recording entry points. Capture reuses Pico's flows (the
 /// system selection UI and Pico's ScreenCaptureKit recorder); the result
@@ -6,6 +8,7 @@ import AppKit
 @MainActor
 final class CaptureCoordinator {
     static let shared = CaptureCoordinator()
+    private let screenAccess = ScreenCapturePermission()
     private let recorder = ScreenRecordingController()
     private var screenshotProcess: Process?
     /// Where the editor tab opens.
@@ -16,27 +19,45 @@ final class CaptureCoordinator {
 
     private init() {
         recorder.failed = { [weak self] message in self?.report(message) }
+        recorder.screenAccessDenied = { [weak self] in self?.selectRecording(afterDenial: true) }
         recorder.finished = { [weak self] result in self?.recordingFinished(result) }
     }
 
     /// Crosshair selection; Space switches to window capture; Escape cancels.
     func takeScreenshot(from source: BrowserTab?) {
         guard screenshotProcess == nil else { return }
+        screenAccess.perform { [weak self, weak source] in self?.startScreenshot(from: source) }
+    }
+
+    private func startScreenshot(from source: BrowserTab?) {
+        guard screenshotProcess == nil else { return }
         let output = FileManager.default.temporaryDirectory.appendingPathComponent("NousScreenshot-\(UUID().uuidString).png")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        process.arguments = ["-i", "-J", "selection", "-t", "png", output.path]
+        // Let the system selector show its own capture errors. Escape and
+        // Control-click (clipboard only) both legitimately leave no file.
+        process.arguments = ["-i", "-J", "selection", "-d", "-t", "png", output.path]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         process.terminationHandler = { [weak self, weak source] ended in
             let status = ended.terminationStatus
+            let reason = ended.terminationReason
             Task { @MainActor [weak self, weak source] in
                 guard let self else { return }
                 self.screenshotProcess = nil
                 defer { try? FileManager.default.removeItem(at: output) }
-                // Escape leaves no file; that is a normal cancellation.
-                guard status == 0, let data = try? Data(contentsOf: output), !data.isEmpty else { return }
-                self.saveScreenshot(data, from: source)
+                switch Self.screenshotResult(at: output, status: status, reason: reason) {
+                case .file(let data):
+                    self.saveScreenshot(data, from: source)
+                case .noFile:
+                    if status != 0, !CGPreflightScreenCaptureAccess() {
+                        self.screenAccess.perform(afterDenial: true) { [weak self, weak source] in
+                            self?.startScreenshot(from: source)
+                        }
+                    }
+                case .failed:
+                    self.report(L10n.string("Could not complete the screenshot."))
+                }
             }
         }
         screenshotProcess = process
@@ -45,6 +66,19 @@ final class CaptureCoordinator {
             screenshotProcess = nil
             report(L10n.string("Could not start screenshot selection."))
         }
+    }
+
+    enum ScreenshotResult: Equatable { case file(Data), noFile, failed }
+
+    static func screenshotResult(at url: URL, status: Int32, reason: Process.TerminationReason) -> ScreenshotResult {
+        guard reason == .exit else { return .failed }
+        guard FileManager.default.fileExists(atPath: url.path) else { return .noFile }
+        guard status == 0, let data = try? Data(contentsOf: url),
+              let image = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetType(image) as String? == UTType.png.identifier,
+              CGImageSourceGetCount(image) > 0,
+              CGImageSourceGetStatus(image) == .statusComplete else { return .failed }
+        return .file(data)
     }
 
     /// The visible part of the current webpage, without the browser around it.
@@ -69,7 +103,11 @@ final class CaptureCoordinator {
 
     func toggleRecording() {
         if recorder.isRecording { recorder.stop() }
-        else if !recorder.isBusy { recorder.start() }
+        else if !recorder.isBusy { selectRecording() }
+    }
+
+    private func selectRecording(afterDenial: Bool = false) {
+        screenAccess.perform(afterDenial: afterDenial) { [weak self] in self?.recorder.start() }
     }
 
     private func recordingFinished(_ result: ScreenRecordingController.Result) {

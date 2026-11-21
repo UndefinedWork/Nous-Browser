@@ -271,6 +271,12 @@
 "All" = "Все";
 "Allow Camera for Nous Browser in System Settings › Privacy & Security › Camera" = "Разрешите Nous Browser доступ к камере: Системные настройки › Конфиденциальность и безопасность › Камера";
 "Allow Microphone for Nous Browser in System Settings, or record with the microphone off." = "Разрешите Nous Browser доступ к микрофону в Системных настройках или записывайте без микрофона.";
+"Allow Screen Capture" = "Разрешить захват экрана";
+"Turn on Nous Browser in System Settings → Privacy & Security → Screen & System Audio Recording. If macOS asks you to quit and reopen Nous Browser, do so, then try the capture again." = "Откройте Системные настройки → Конфиденциальность и безопасность → Запись экрана и системного звука и включите Nous Browser. Если macOS предложит закрыть и снова открыть браузер, сделайте это и повторите попытку.";
+"Screen Capture Is Still Unavailable" = "Захват экрана пока недоступен";
+"If Nous Browser is already on in Screen & System Audio Recording, turn it off and on again. Follow any prompt to quit and reopen Nous Browser, then try the capture again." = "Если Nous Browser уже включён в разделе «Запись экрана и системного звука», выключите его и включите снова. Если macOS предложит закрыть и снова открыть браузер, сделайте это и повторите попытку.";
+"Open System Settings" = "Открыть Системные настройки";
+"Could not complete the screenshot." = "Не удалось сделать снимок экрана.";
 "Allow Screen Recording for Nous Browser in System Settings, then try again." = "Разрешите Nous Browser запись экрана в Системных настройках и повторите попытку.";
 "Arrow" = "Стрелка";
 "Aspect Ratio" = "Пропорции";

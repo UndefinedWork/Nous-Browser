@@ -1,2 +1,3 @@
 "NSCameraUsageDescription" = "Permite el acceso a la cámara en los sitios web que autorices, por ejemplo, para videoconferencias.";
 "NSMicrophoneUsageDescription" = "Permite el acceso al micrófono en los sitios web que autorices, por ejemplo, para llamadas de voz y vídeo.";
+"NSScreenCaptureUsageDescription" = "Captura la pantalla cuando haces una captura o inicias una grabación.";

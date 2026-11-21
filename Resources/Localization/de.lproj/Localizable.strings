@@ -271,6 +271,12 @@
 "All" = "Alle";
 "Allow Camera for Nous Browser in System Settings › Privacy & Security › Camera" = "Erlaube Nous Browser die Kamera unter Systemeinstellungen › Datenschutz & Sicherheit › Kamera";
 "Allow Microphone for Nous Browser in System Settings, or record with the microphone off." = "Erlaube Nous Browser das Mikrofon in den Systemeinstellungen oder nimm ohne Mikrofon auf.";
+"Allow Screen Capture" = "Bildschirmaufnahme erlauben";
+"Turn on Nous Browser in System Settings → Privacy & Security → Screen & System Audio Recording. If macOS asks you to quit and reopen Nous Browser, do so, then try the capture again." = "Aktiviere Nous Browser unter Systemeinstellungen → Datenschutz & Sicherheit → Aufnahme von Bildschirm & Systemaudio. Falls macOS einen Neustart von Nous Browser verlangt, öffne die App erneut und versuche die Aufnahme noch einmal.";
+"Screen Capture Is Still Unavailable" = "Bildschirmaufnahme weiterhin nicht verfügbar";
+"If Nous Browser is already on in Screen & System Audio Recording, turn it off and on again. Follow any prompt to quit and reopen Nous Browser, then try the capture again." = "Wenn Nous Browser unter „Aufnahme von Bildschirm & Systemaudio“ bereits aktiviert ist, schalte es aus und wieder ein. Wenn du aufgefordert wirst, die App zu beenden und erneut zu öffnen, folge der Aufforderung und versuche die Aufnahme erneut.";
+"Open System Settings" = "Systemeinstellungen öffnen";
+"Could not complete the screenshot." = "Das Bildschirmfoto konnte nicht erstellt werden.";
 "Allow Screen Recording for Nous Browser in System Settings, then try again." = "Erlaube Nous Browser die Bildschirmaufnahme in den Systemeinstellungen und versuche es erneut.";
 "Arrow" = "Pfeil";
 "Aspect Ratio" = "Seitenverhältnis";
