@@ -13,22 +13,27 @@ final class BrowserPopupWindow: NSObject, NSWindowDelegate {
     private var observation: UUID?
     private var isClosing = false
 
-    static func make(over parent: NSWindow?) -> BrowserTab {
-        let popup = BrowserPopupWindow(parent: parent)
+    static func make(over parent: NSWindow?, isPrivate: Bool = false) -> BrowserTab {
+        let popup = BrowserPopupWindow(parent: parent, isPrivate: isPrivate)
         open.append(popup)
         return popup.tab
     }
 
     /// Quitting: popups hold no session state worth asking about.
     static func closeAll() { open.forEach { $0.close() } }
+    static func closePrivateWindows() { open.filter { $0.tab.isPrivate }.forEach { $0.close() } }
 
-    private init(parent: NSWindow?) {
-        tab = BrowserTab(owner: nil, isPopup: true)
+    private init(parent: NSWindow?, isPrivate: Bool) {
+        tab = BrowserTab(owner: nil, isPopup: true, isPrivate: isPrivate)
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 640),
                           styleMask: [.titled, .closable, .resizable, .miniaturizable],
                           backing: .buffered, defer: false)
         super.init()
         window.isReleasedWhenClosed = false
+        if isPrivate {
+            window.isRestorable = false
+            window.appearance = NSAppearance(named: .darkAqua)
+        }
         window.delegate = self
         window.tabbingMode = .disallowed
         window.minSize = NSSize(width: 320, height: 260)
@@ -45,7 +50,7 @@ final class BrowserPopupWindow: NSObject, NSWindowDelegate {
         tab.webView.popupHandler = { [weak self] _, _ in
             MainActor.assumeIsolated {
                 guard let self, !self.isClosing else { return nil }
-                return BrowserPopupWindow.make(over: self.window).webView
+                return BrowserPopupWindow.make(over: self.window, isPrivate: self.tab.isPrivate).webView
             }
         }
         observation = tab.webView.addEventObserver { [weak self] event, _ in
@@ -70,7 +75,8 @@ final class BrowserPopupWindow: NSObject, NSWindowDelegate {
             let title = tab.webView.title ?? ""
             window.title = title.isEmpty ? (tab.webView.url?.host() ?? "") : title
             // Always show which site this is: sign-in popups are a phishing target.
-            window.subtitle = tab.webView.url?.host() ?? ""
+            let host = tab.webView.url?.host() ?? ""
+            window.subtitle = tab.isPrivate ? [L10n.string("Private Browsing"), host].filter { !$0.isEmpty }.joined(separator: " · ") : host
         case "closed":
             close()
         default: break

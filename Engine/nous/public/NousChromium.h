@@ -7,6 +7,12 @@ NS_ASSUME_NONNULL_BEGIN
 /// Public Objective-C boundary. Chromium C++ types never cross into Swift.
 NOUS_EXPORT
 @interface NBChromiumRuntime : NSObject
+/// Availability includes Chromium's managed and platform Incognito settings.
++ (BOOL)canOpenPrivateWindows;
+/// All private Nous windows share one Chromium Incognito session.
++ (BOOL)beginPrivateBrowsing;
+/// Call after the last private page has closed. The next session is fresh.
++ (void)endPrivateBrowsing;
 + (void)prepareApplication;
 + (BOOL)startWithProfilePath:(NSString *)profilePath error:(NSError * _Nullable * _Nullable)error;
 + (void)shutdown;
@@ -33,6 +39,8 @@ NOUS_EXPORT
 
 NOUS_EXPORT
 @interface NBChromiumView : NSView
+/// Set before creating or adopting a browser for this view.
+@property(nonatomic, getter=isPrivateBrowsing) BOOL privateBrowsing;
 @property(nonatomic, copy, nullable) void (^eventHandler)(NSString *event, NSDictionary<NSString *, id> *payload);
 /// Return a retained native host for a user-initiated popup. Chromium retains
 /// its opener and navigation state. A background tab must not steal selection.

@@ -66,19 +66,7 @@ struct LibraryView: View {
         VStack(alignment: .leading, spacing: 18) {
             title
             HStack(spacing: 10) {
-                // Clipped to its own space with a soft fade, so tabs that do
-                // not fit scroll under the edge instead of under the search field.
-                ScrollView(.horizontal) { tabs.padding(.vertical, 8).padding(.horizontal, 4) }
-                    .scrollIndicators(.hidden)
-                    .mask {
-                        HStack(spacing: 0) {
-                            Rectangle()
-                            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 18)
-                        }
-                    }
-                    .padding(.horizontal, -4)
-                    .padding(.vertical, -8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                tabBar
                 searchField
                 syncBadge
             }
@@ -94,36 +82,50 @@ struct LibraryView: View {
             .fixedSize()
     }
 
-    private var tabs: some View {
-        GlassEffectContainer(spacing: 4) {
-            HStack(spacing: 2) {
-                ForEach(LibrarySection.allCases) { item in
-                    Button { withAnimation(reduceMotion ? nil : BrowserMotion.interaction) { open(item) } } label: {
-                        HStack(spacing: 5) {
-                            Text(item.title).font(.system(size: 12, weight: .medium)).fixedSize()
-                            if item == .updates, BrowserUpdater.shared.showsButton {
-                                Circle().fill(Color.accentColor).frame(width: 6, height: 6)
-                            }
-                            if item == .downloads, ChromiumDownloadCoordinator.shared.hasActiveDownloads {
-                                ProgressView().controlSize(.mini)
-                            }
-                        }
-                        .padding(.horizontal, 11).frame(height: 28)
-                        .foregroundStyle(section == item ? Color.primary : Color.secondary)
-                        .background {
-                            if section == item {
-                                Capsule().fill(Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.09))
-                                    .matchedGeometryEffect(id: "pill", in: pills)
-                            }
-                        }
-                        .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
+    private var tabBar: some View {
+        // The capsule belongs to the viewport. Only the labels scroll inside it.
+        ViewThatFits(in: .horizontal) {
+            tabs
+            ScrollViewReader { scroll in
+                ScrollView(.horizontal) { tabs }
+                    .scrollIndicators(.hidden)
+                    .onChange(of: section, initial: true) { _, section in scroll.scrollTo(section) }
             }
-            .padding(3)
-            .glassEffect(.regular, in: Capsule())
         }
+        .frame(height: 34)
+        .clipShape(Capsule())
+        .glassEffect(.regular, in: Capsule())
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var tabs: some View {
+        HStack(spacing: 2) {
+            ForEach(LibrarySection.allCases) { item in
+                Button { withAnimation(reduceMotion ? nil : BrowserMotion.interaction) { open(item) } } label: {
+                    HStack(spacing: 5) {
+                        Text(item.title).font(.system(size: 12, weight: .medium)).fixedSize()
+                        if item == .updates, BrowserUpdater.shared.showsButton {
+                            Circle().fill(Color.accentColor).frame(width: 6, height: 6)
+                        }
+                        if item == .downloads, ChromiumDownloadCoordinator.shared.hasActiveRegularDownloads {
+                            ProgressView().controlSize(.mini)
+                        }
+                    }
+                    .padding(.horizontal, 11).frame(height: 28)
+                    .foregroundStyle(section == item ? Color.primary : Color.secondary)
+                    .background {
+                        if section == item {
+                            Capsule().fill(Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.09))
+                                .matchedGeometryEffect(id: "pill", in: pills)
+                        }
+                    }
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .id(item)
+            }
+        }
+        .padding(3)
         .fixedSize()
     }
 
@@ -137,7 +139,7 @@ struct LibraryView: View {
             TextField(L10n.string("Search"), text: $query).textFieldStyle(.plain).font(.system(size: 12))
         }
         .padding(.horizontal, 12)
-        .frame(minWidth: 120, idealWidth: 240, maxWidth: 240)
+        .frame(minWidth: 112, idealWidth: 156, maxWidth: 156)
         .frame(height: 32)
         .glassEffect(.regular, in: Capsule())
         .opacity(searchable ? 1 : 0.45)
@@ -168,6 +170,7 @@ struct LibraryView: View {
         case .bookmarks: LibraryBookmarksList(controller: controller, query: query, limit: nil)
         case .history: LibraryHistoryList(controller: controller, query: query, limit: nil)
         case .downloads: LibraryDownloadsList(limit: nil)
+        case .extensions: LibraryExtensionsView(controller: controller)
         case .insights: InsightsView(controller: controller, width: contentWidth)
         case .updates: LibraryUpdatesView()
         }
@@ -205,7 +208,7 @@ struct LibraryView: View {
 
     private var hasRecentDownloads: Bool {
         library.downloads.contains { $0.date > Date().addingTimeInterval(-86_400) }
-            || ChromiumDownloadCoordinator.shared.hasActiveDownloads
+            || ChromiumDownloadCoordinator.shared.hasActiveRegularDownloads
     }
 
     private func historyCard(limit: Int) -> some View {
@@ -254,6 +257,95 @@ struct LibraryView: View {
             }
         }
         .animation(reduceMotion ? nil : BrowserMotion.spring, value: items.map(\.id))
+    }
+}
+
+private struct LibraryExtensionsView: View {
+    let controller: BrowserController
+    private let store = BrowserExtensionStore.shared
+
+    var body: some View {
+        Group {
+            if !store.isAvailable {
+                ContentUnavailableView(L10n.string("Extensions are unavailable in this build."),
+                                       systemImage: "puzzlepiece.extension")
+                    .padding(.top, 80)
+            } else if store.extensions.isEmpty {
+                ContentUnavailableView {
+                    Label(L10n.string("No Extensions Installed"), systemImage: "puzzlepiece.extension")
+                } actions: {
+                    storeButton.buttonStyle(.glassProminent)
+                }
+                .padding(.top, 80)
+            } else {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Text(L10n.string("Installed Extensions"))
+                            .font(.system(size: 20, weight: .bold))
+                            .accessibilityAddTraits(.isHeader)
+                        Spacer()
+                        storeButton.buttonStyle(.glass)
+                    }
+                    LibraryCard {
+                        VStack(spacing: 0) {
+                            ForEach(store.extensions, id: \.id) { entry in
+                                if entry.id != store.extensions.first?.id { Divider().padding(.horizontal, 12) }
+                                row(entry)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .onAppear { store.refresh() }
+    }
+
+    private var storeButton: some View {
+        Button(L10n.string("Open Chrome Web Store"), systemImage: "arrow.up.right") {
+            controller.model.newTab(url: BrowserExtensionStore.webStoreURL)
+        }
+    }
+
+    private func row(_ entry: BrowserExtension) -> some View {
+        HStack(spacing: 10) {
+            Group {
+                if let icon = entry.icon {
+                    Image(nsImage: icon).resizable().scaledToFit()
+                } else {
+                    Image(systemName: "puzzlepiece.extension").foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 28, height: 28)
+            .accessibilityHidden(true)
+
+            Text(verbatim: entry.name)
+                .font(.system(size: 13, weight: .medium))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 8)
+            if !entry.isEnabled {
+                Text(L10n.string("Disabled")).font(.caption).foregroundStyle(.secondary)
+            }
+            if entry.canModify {
+                Menu {
+                    Button(L10n.string(entry.isEnabled ? "Disable Extension" : "Enable Extension")) {
+                        store.setEnabled(!entry.isEnabled, for: entry)
+                    }
+                    Button(L10n.string("Remove Extension…"), role: .destructive) {
+                        store.uninstall(entry, in: controller.model.selectedTab)
+                    }
+                } label: {
+                    Label(L10n.string("Extension Options"), systemImage: "ellipsis.circle")
+                        .labelStyle(.iconOnly)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help(L10n.string("Extension Options"))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 }
 
@@ -607,7 +699,7 @@ private struct LibraryDownloadsList: View {
     @ObservedObject private var coordinator = ChromiumDownloadCoordinator.shared
 
     var body: some View {
-        let active = coordinator.records.filter { $0.state.isActive }
+        let active = coordinator.activeRegularDownloads
         let finished = LibraryStore.shared.downloads
         VStack(alignment: .leading, spacing: 8) {
             if active.isEmpty && finished.isEmpty {

@@ -65,7 +65,7 @@ enum ChromiumReservedBrowserShortcuts {
         case [.command, .shift]:
             // Braces are the shifted bracket equivalents on common layouts;
             // AppKit still resolves the exact menu shortcut for that layout.
-            return ["t", "w", "r", "[", "]", "{", "}"].contains(characters)
+            return ["n", "t", "w", "r", "[", "]", "{", "}"].contains(characters)
         default:
             return false
         }
@@ -80,9 +80,8 @@ enum ChromiumReservedBrowserShortcuts {
         // Chrome discards repeats of new-tab/new-window commands. A held key
         // must not create a burst of pages; keep all other commands repeatable.
         let modifiers = event.modifierFlags.intersection([.command, .shift, .control, .option])
-        if event.isARepeat, modifiers == .command,
-           let characters = event.charactersIgnoringModifiers?.lowercased(),
-           characters == "t" || characters == "n" { return true }
+        if event.isARepeat, let characters = event.charactersIgnoringModifiers?.lowercased(),
+           characters == "n" || (characters == "t" && modifiers == .command) { return true }
         _ = menu?.performKeyEquivalent(with: event)
         return true
     }

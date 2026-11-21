@@ -14,6 +14,7 @@ final class ChromiumDownloadRecord: ObservableObject, Identifiable {
 
     let id: String
     let filename: String
+    let isPrivate: Bool
     weak var sourceWindow: NSWindow?
     @Published private(set) var state: State = .choosingDestination
     @Published private(set) var receivedBytes: Int64 = 0
@@ -23,11 +24,12 @@ final class ChromiumDownloadRecord: ObservableObject, Identifiable {
     private var chooseNative: ((URL) -> Void)?
     private var cancelNative: (() -> Void)?
 
-    init(id: String, filename: String, sourceWindow: NSWindow?,
+    init(id: String, filename: String, sourceWindow: NSWindow?, isPrivate: Bool = false,
          choose: @escaping (URL) -> Void, cancel: @escaping () -> Void) {
         self.id = id
         self.filename = filename
         self.sourceWindow = sourceWindow
+        self.isPrivate = isPrivate
         chooseNative = choose
         cancelNative = cancel
     }

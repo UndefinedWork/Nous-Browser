@@ -120,6 +120,11 @@
 "Bing" = "Bing";
 "DuckDuckGo" = "DuckDuckGo";
 "Baidu" = "Baidu";
+"Yahoo!" = "Yahoo!";
+"Brave Search" = "Brave Search";
+"Ecosia" = "Ecosia";
+"Qwant" = "Qwant";
+"Startpage" = "Startpage";
 "Choose how Nous Browser looks." = "Choose how Nous Browser looks.";
 "Password Import" = "Password Import";
 "Reload Without Cache" = "Reload Without Cache";
@@ -518,3 +523,23 @@
 "from this time yesterday" = "from this time yesterday";
 "from this point last week" = "from this point last week";
 "from this point last month" = "from this point last month";
+
+"Default Browser" = "Default Browser";
+"Make Default" = "Make Default";
+"Nous Browser is your default web browser." = "Nous Browser is your default web browser.";
+"Nous Browser isn’t your default web browser." = "Nous Browser isn’t your default web browser.";
+"Couldn’t set Nous Browser as the default web browser." = "Couldn’t set Nous Browser as the default web browser.";
+"New Private Window" = "New Private Window";
+"Private Browsing" = "Private Browsing";
+"Browsing history isn’t saved. Site data is cleared when you close all private windows." = "Browsing history isn’t saved. Site data is cleared when you close all private windows.";
+"Extensions" = "Extensions";
+"Extensions are unavailable in this build." = "Extensions are unavailable in this build.";
+"No Extensions Installed" = "No Extensions Installed";
+"Installed Extensions" = "Installed Extensions";
+"Open Chrome Web Store" = "Open Chrome Web Store";
+"Manage Extensions" = "Manage Extensions";
+"Disabled" = "Disabled";
+"Enable Extension" = "Enable Extension";
+"Disable Extension" = "Disable Extension";
+"Remove Extension…" = "Remove Extension…";
+"Extension Options" = "Extension Options";

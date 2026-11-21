@@ -189,7 +189,8 @@ final class BrowserTabDragCoordinator {
         }
         var proposed: Target?
         for (id, endpoint) in endpoints where id != sourceID {
-            guard let controller = endpoint.controller, controller.model.isSidebarVisible,
+            guard let controller = endpoint.controller, controller.model.isPrivate == tab.isPrivate,
+                  controller.model.isSidebarVisible,
                   let window = endpoint.reference.window, window.windowNumber == number,
                   window.isVisible, !window.isMiniaturized, window.attachedSheet == nil,
                   !controller.isAddressPresented,

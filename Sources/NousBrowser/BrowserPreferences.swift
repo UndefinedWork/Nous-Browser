@@ -4,6 +4,7 @@ import Observation
 
 nonisolated enum BrowserSearchEngine: String, Codable, CaseIterable, Identifiable, Sendable {
     case google, bing, duckDuckGo, baidu
+    case yahoo, braveSearch, ecosia, qwant, startpage
 
     var id: Self { self }
     var title: String {
@@ -12,6 +13,11 @@ nonisolated enum BrowserSearchEngine: String, Codable, CaseIterable, Identifiabl
         case .bing: "Bing"
         case .duckDuckGo: "DuckDuckGo"
         case .baidu: "Baidu"
+        case .yahoo: "Yahoo!"
+        case .braveSearch: "Brave Search"
+        case .ecosia: "Ecosia"
+        case .qwant: "Qwant"
+        case .startpage: "Startpage"
         }
         return L10n.string(key)
     }
@@ -24,6 +30,11 @@ nonisolated enum BrowserSearchEngine: String, Codable, CaseIterable, Identifiabl
         case .bing: (endpoint, parameter) = ("https://www.bing.com/search", "q")
         case .duckDuckGo: (endpoint, parameter) = ("https://duckduckgo.com/", "q")
         case .baidu: (endpoint, parameter) = ("https://www.baidu.com/s", "wd")
+        case .yahoo: (endpoint, parameter) = ("https://search.yahoo.com/search", "p")
+        case .braveSearch: (endpoint, parameter) = ("https://search.brave.com/search", "q")
+        case .ecosia: (endpoint, parameter) = ("https://www.ecosia.org/search", "q")
+        case .qwant: (endpoint, parameter) = ("https://www.qwant.com/", "q")
+        case .startpage: (endpoint, parameter) = ("https://www.startpage.com/sp/search", "query")
         }
         var components = URLComponents(string: endpoint)!
         components.queryItems = [URLQueryItem(name: parameter, value: query)]

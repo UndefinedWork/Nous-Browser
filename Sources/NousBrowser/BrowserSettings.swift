@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import NousCore
 
@@ -9,6 +10,8 @@ enum BrowserSettingsPanes {
         var panes: [SettingsWindowController.Pane] = [
             .init(id: "search", title: L10n.string("Search"), symbol: "magnifyingglass",
                   view: AnyView(SearchSettingsView(preferences: preferences))),
+            .init(id: "defaultBrowser", title: L10n.string("Default Browser"), symbol: "globe",
+                  view: AnyView(DefaultBrowserSettingsView())),
             .init(id: "quickAccess", title: L10n.string("Quick Access"), symbol: "square.grid.2x2",
                   view: AnyView(QuickAccessSettingsView(preferences: preferences))),
             .init(id: "passwords", title: L10n.string("Passwords"), symbol: "key",
@@ -27,6 +30,81 @@ enum BrowserSettingsPanes {
                            symbol: "point.3.connected.trianglepath.dotted",
                            view: AnyView(BrowserAutomationSettingsView(service: automation))))
         return panes
+    }
+}
+
+private struct DefaultBrowserSettingsView: View {
+    private static let webSchemes = ["http", "https"]
+
+    @State private var isDefault = false
+    @State private var isRequesting = false
+    @State private var requestFailed = false
+
+    private var canRequestDefault: Bool {
+        guard Bundle.main.bundleURL.pathExtension == "app", Bundle.main.bundleIdentifier != nil,
+              let urlTypes = Bundle.main.object(forInfoDictionaryKey: "CFBundleURLTypes") as? [[String: Any]] else {
+            return false
+        }
+        let registered = urlTypes.flatMap { $0["CFBundleURLSchemes"] as? [String] ?? [] }
+        return Self.webSchemes.allSatisfy(registered.contains)
+    }
+
+    var body: some View {
+        SettingsForm {
+            SettingsRow("Default Browser") {
+                if isDefault {
+                    SettingsNote("Nous Browser is your default web browser.")
+                } else {
+                    SettingsNote("Nous Browser isn’t your default web browser.")
+                    Button(L10n.string("Make Default"), action: requestDefault)
+                        .disabled(!canRequestDefault || isRequesting)
+                    if requestFailed {
+                        SettingsNote("Couldn’t set Nous Browser as the default web browser.")
+                    }
+                }
+            }
+        }
+        .onAppear(perform: refreshStatus)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshStatus()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            refreshStatus()
+        }
+    }
+
+    private func requestDefault() {
+        guard canRequestDefault, !isRequesting else { return }
+        isRequesting = true
+        requestFailed = false
+        Task { @MainActor in
+            defer { isRequesting = false }
+            do {
+                // Wait for the system’s HTTP confirmation before requesting HTTPS.
+                for scheme in Self.webSchemes where !Self.isDefault(for: scheme) {
+                    try await NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpenURLsWithScheme: scheme)
+                }
+                refreshStatus()
+                requestFailed = !isDefault
+            } catch let error as CocoaError where error.code == .userCancelled {
+                refreshStatus()
+            } catch {
+                refreshStatus()
+                requestFailed = !isDefault
+            }
+        }
+    }
+
+    private func refreshStatus() {
+        isDefault = Self.webSchemes.allSatisfy { Self.isDefault(for: $0) }
+        if isDefault { requestFailed = false }
+    }
+
+    private static func isDefault(for scheme: String) -> Bool {
+        guard let bundleID = Bundle.main.bundleIdentifier,
+              let webURL = URL(string: "\(scheme):"),
+              let appURL = NSWorkspace.shared.urlForApplication(toOpen: webURL) else { return false }
+        return Bundle(url: appURL)?.bundleIdentifier == bundleID
     }
 }
 

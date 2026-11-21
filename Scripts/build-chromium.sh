@@ -29,9 +29,13 @@ NOUSCORE="$SDK_DIR/NousCore.framework"
 [[ -d "$NOUSCORE" ]] || { print -u2 "NousCore.framework not found in $SDK_DIR"; exit 1; }
 export NOUS_CORE_SDK_DIR="$SDK_DIR"
 
-swift build --scratch-path "$CHROMIUM_DIR/swift" --configuration "$CONFIGURATION" --jobs "${NOUS_BUILD_JOBS:-4}"
+swift_flags=()
+if [[ "$CHANNEL" == chromium-preview ]]; then
+    swift_flags+=(-Xswiftc -DNOUS_CHROMIUM_PREVIEW)
+fi
+swift build --scratch-path "$CHROMIUM_DIR/swift" --configuration "$CONFIGURATION" --jobs "${NOUS_BUILD_JOBS:-4}" "${swift_flags[@]}"
 BIN_DIR="$(swift build --scratch-path "$CHROMIUM_DIR/swift" --configuration "$CONFIGURATION" --show-bin-path)"
-STAGING_DIR="$(mktemp -d "$CHROMIUM_DIR/package.XXXXXX")"
+STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/nous-browser-package.XXXXXX")"
 # Each staged bundle is ~575 MB; never leave one behind.
 trap 'rm -rf "$STAGING_DIR"' EXIT
 STAGED_APP="$STAGING_DIR/$APP_NAME"
@@ -41,12 +45,13 @@ cp "$BIN_DIR/NousBrowser" "$CONTENTS/MacOS/NousBrowser"
 cp "$BIN_DIR/NousBrowserMCP" "$CONTENTS/MacOS/NousBrowserMCP"
 
 SPARKLE="$CHROMIUM_DIR/swift/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
-ditto "$SPARKLE" "$CONTENTS/Frameworks/Sparkle.framework"
+ditto --norsrc --noextattr "$SPARKLE" "$CONTENTS/Frameworks/Sparkle.framework"
 # Chrome resolves its framework at Contents/Frameworks/NousCore.framework/
 # Versions/<chrome version>/ and its helper apps inside that directory.
 FRAMEWORK="$CONTENTS/Frameworks/NousCore.framework"
-ditto "$NOUSCORE" "$FRAMEWORK"
+ditto --norsrc --noextattr "$NOUSCORE" "$FRAMEWORK"
 cp Resources/AppIcon.png "$CONTENTS/Resources/NewTabLogo.png"
+cp -R Resources/QuickLinkIcons "$CONTENTS/Resources/QuickLinkIcons"
 cp -R Resources/Fonts "$CONTENTS/Resources/Fonts"
 cp Resources/ThirdPartyNotices.txt "$CONTENTS/Resources/ThirdPartyNotices.txt"
 for LOCALIZATION_DIR in "$PROJECT_DIR"/Resources/Localization/*.lproj(N/); do

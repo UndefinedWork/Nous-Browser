@@ -124,9 +124,7 @@ final class BrowsingInsights {
     static let minimumFocus: TimeInterval = 60
 
     init(fileURL: URL? = nil) {
-        self.fileURL = fileURL ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Nous Browser", isDirectory: true)
-            .appendingPathComponent("insights.json")
+        self.fileURL = fileURL ?? BrowserRuntimePaths.current.directory.appendingPathComponent("insights.json")
         isPaused = UserDefaults.standard.bool(forKey: Self.pausedKey)
         if let data = try? Data(contentsOf: self.fileURL),
            let saved = try? JSONDecoder().decode(InsightsLog.self, from: data), saved.version == 1 {

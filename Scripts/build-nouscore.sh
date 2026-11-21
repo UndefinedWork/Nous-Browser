@@ -17,7 +17,7 @@ OUT_NAME="${NOUS_CHROMIUM_OUT:-Nous_Release_arm64}"
 OUT="$SRC/out/$OUT_NAME"
 DEPOT="${NOUS_DEPOT_TOOLS:-$CACHE/depot_tools}"
 SDK="$PROJECT_DIR/.build/nouscore/sdk"
-export PATH="$DEPOT:$PATH" DEPOT_TOOLS_UPDATE=0
+export PATH="$SRC/third_party/cpython3/host/bin:$DEPOT:$PATH" DEPOT_TOOLS_UPDATE=0
 
 [[ -f "$SRC/chrome/VERSION" ]] || { print -u2 "Chromium source not found: $SRC"; exit 1; }
 
@@ -33,10 +33,10 @@ if [[ ! -f "$OUT/args.gn" ]]; then
     cp "$PROJECT_DIR/Engine/args.gn" "$OUT/args.gn"
 fi
 grep -q '^nous_core = true' "$OUT/args.gn" || { print -u2 "$OUT/args.gn must set nous_core = true"; exit 1; }
-(cd "$SRC" && gn gen "out/$OUT_NAME" >/dev/null)
+(cd "$SRC" && "$SRC/buildtools/mac/gn" gen "out/$OUT_NAME")
 
 # 4. Build the framework (it bundles its own helper apps).
-(cd "$SRC" && autoninja -C "out/$OUT_NAME" -j "${NOUS_BUILD_JOBS:-12}" chrome_framework)
+(cd "$SRC" && "$SRC/third_party/ninja/ninja" -C "out/$OUT_NAME" -j "${NOUS_BUILD_JOBS:-12}" chrome_framework)
 
 # 5. Assemble a linkable SDK copy with the public headers and module map.
 rm -rf "$SDK"

@@ -1,3 +1,4 @@
+#if NOUS_CHROMIUM_PREVIEW
 import AppKit
 import Foundation
 import NousAutomation
@@ -92,6 +93,85 @@ enum ChromiumSmokeCheck {
             if !condition { throw Failure(message) }
         }
 
+        private func privateSessionStorage(regular: BrowserTab) async throws -> [String: Any] {
+            try require(windows.windows.allSatisfy { !$0.controller.model.isPrivate },
+                        "The private session check needs a preview without existing private windows")
+            let fixture = base.appendingPathComponent("page2")
+            let key = "nous_private_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+            var opened: [UUID] = []
+            defer { for id in opened { windows.closeWindow(id) } }
+
+            func write(_ value: String, in tab: BrowserTab) async throws {
+                _ = try await tab.webView.evaluateScript(
+                    "document.cookie='\(key)=\(value); Path=/page2; SameSite=Lax';localStorage.setItem('\(key)','\(value)');true",
+                    world: "")
+            }
+
+            func expect(_ value: String, in tab: BrowserTab, message: String) async throws {
+                let actual = try dictionary(await tab.webView.evaluateScript(
+                    "({cookie:document.cookie.split('; ').includes('\(key)=\(value)'),local:localStorage.getItem('\(key)')})",
+                    world: ""))
+                try require(actual["cookie"] as? Bool == true && actual["local"] as? String == value, message)
+            }
+
+            func expectAbsent(in tab: BrowserTab, message: String) async throws {
+                let actual = try dictionary(await tab.webView.evaluateScript(
+                    "({cookie:document.cookie.split('; ').some(entry=>entry.startsWith('\(key)=')),local:localStorage.getItem('\(key)')!==null})",
+                    world: ""))
+                try require(actual["cookie"] as? Bool == false && actual["local"] as? Bool == false, message)
+            }
+
+            func openPrivate() async throws -> (UUID, BrowserTab) {
+                guard let context = windows.newPrivateWindow() else { throw Failure("Could not open a private window") }
+                let id = context.session.id
+                opened.append(id)
+                guard context.controller.model.isPrivate, let tab = context.controller.model.selectedTab else {
+                    throw Failure("The private window has no private browser tab")
+                }
+                tab.load(fixture)
+                try await waitForPage(tab.webView, path: fixture.path)
+                return (id, tab)
+            }
+
+            func closePrivate(_ id: UUID) async throws {
+                windows.closeWindow(id)
+                for _ in 0..<160 {
+                    if !windows.windows.contains(where: { $0.session.id == id }) { return }
+                    try await Task.sleep(for: .milliseconds(100))
+                }
+                throw Failure("The private window did not close")
+            }
+
+            regular.load(fixture)
+            try await waitForPage(regular.webView, path: fixture.path)
+            try await write("regular", in: regular)
+            try await expect("regular", in: regular, message: "Regular storage could not be seeded")
+            let (firstID, first) = try await openPrivate()
+            try await expectAbsent(in: first, message: "Regular storage leaked into the private session")
+            try await write("private", in: first)
+            let (secondID, second) = try await openPrivate()
+            try await expect("private", in: second, message: "Private windows did not share storage")
+            try await expect("regular", in: regular, message: "Private storage overwrote regular storage")
+
+            try await closePrivate(firstID)
+            try await expect("private", in: second, message: "Closing one window cleared the active private session")
+            try await closePrivate(secondID)
+            for _ in 0..<160 {
+                if windows.canOpenPrivateWindows { break }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            try require(windows.canOpenPrivateWindows, "Closing the last private window did not release the session")
+            let (reopenedID, reopened) = try await openPrivate()
+            try await expectAbsent(in: reopened, message: "A new private session retained storage from the closed session")
+            try await expect("regular", in: regular, message: "Ending the private session changed regular storage")
+            try await closePrivate(reopenedID)
+            _ = try await regular.webView.evaluateScript(
+                "document.cookie='\(key)=; Path=/page2; Max-Age=0';localStorage.removeItem('\(key)');true",
+                world: "")
+            return ["cookieSharedBetweenPrivateWindows": true, "localStorageSharedBetweenPrivateWindows": true,
+                    "regularStorageIsolated": true, "newPrivateSessionStartsEmpty": true]
+        }
+
         // Run only in the opt-in preview harness against the local synthetic
         // fixture. The tester answers the native permission UI; no grants are
         // injected and no real clipboard, device, or location data is accessed.
@@ -164,6 +244,19 @@ enum ChromiumSmokeCheck {
                 }
                 pending = "finished"; save(finished: true)
                 return
+            }
+            await check("private-and-extension-menu-entries") {
+                let source = SidebarNewMenu(controller: context.controller, newGroup: {}, newSpace: {})
+                let menu = source.makeMenu()
+                let privateWindow = menu.item(withTitle: L10n.string("New Private Window"))
+                let extensions = menu.item(withTitle: L10n.string("Extensions"))?.submenu
+                let webStore = extensions?.item(withTitle: L10n.string("Open Chrome Web Store"))
+                try self.require(privateWindow?.isEnabled == true, "The private window command is disabled")
+                try self.require(webStore?.isEnabled == true, "The Chrome Web Store command is disabled")
+                return ["privateWindowEnabled": true, "webStoreEnabled": true]
+            }
+            await check("private-session-storage") {
+                try await self.privateSessionStorage(regular: tab)
             }
             view.nativeView.addScript("globalThis.__nousSmokeAtStart=document.readyState;globalThis.__nousSmokeIsolation='isolated';",
                                       world: "NousSmoke", binding: "__nousSmokeMessage")
@@ -903,3 +996,4 @@ enum ChromiumSmokeCheck {
         #endif
     }
 }
+#endif

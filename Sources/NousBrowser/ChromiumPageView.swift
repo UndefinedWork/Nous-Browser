@@ -73,7 +73,7 @@ final class ChromiumPageView: NBChromiumView {
     /// Explicit, local-fixture-only diagnostics for native compositing failures.
     /// No page content is collected during ordinary browsing.
     private func recordLocalDisplayDiagnosticsIfRequested() {
-        guard Bundle.main.bundleIdentifier == "com.cellier.nous-browser.chromium-preview",
+        guard !isPrivateBrowsing, Bundle.main.bundleIdentifier == "com.cellier.nous-browser.chromium-preview",
               let directory = ProcessInfo.processInfo.environment["NOUS_CHROMIUM_DISPLAY_DIAGNOSTICS"],
               let target = url, target.host == "127.0.0.1",
               (target.port == 18869 && target.path == "/chromium_download_unload.html")

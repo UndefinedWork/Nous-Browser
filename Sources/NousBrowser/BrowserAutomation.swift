@@ -39,11 +39,11 @@ final class BrowserAutomationExecutor {
         let args = request.arguments
         switch request.tool {
         case "browser_list_windows":
-            return value(.object(["windows": .array(windows.windows.map(windowValue))]))
+            return value(.object(["windows": .array(windows.regularWindows.map(windowValue))]))
         case "browser_list_tabs":
             let contexts: [BrowserWindowContext]
             if args["window_id"] != nil { contexts = [try context(args)] }
-            else { contexts = windows.windows }
+            else { contexts = windows.regularWindows }
             return value(.object(["tabs": .array(contexts.flatMap { context in
                 context.controller.model.tabs.map { tabValue($0, in: context) }
             })]))
@@ -192,7 +192,7 @@ final class BrowserAutomationExecutor {
 
     private func context(_ args: [String: JSONValue]) throws -> BrowserWindowContext {
         let id = try uuid(args, "window_id")
-        guard let context = windows.windows.first(where: { $0.session.id == id }) else {
+        guard let context = windows.regularWindows.first(where: { $0.session.id == id }) else {
             throw AutomationFailure("The window no longer exists. List windows again.")
         }
         return context
@@ -200,7 +200,7 @@ final class BrowserAutomationExecutor {
 
     private func target(_ args: [String: JSONValue]) throws -> (BrowserWindowContext, BrowserTab) {
         let id = try uuid(args, "tab_id")
-        for context in windows.windows {
+        for context in windows.regularWindows {
             if let tab = context.controller.model.tabs.first(where: { $0.id == id }) { return (context, tab) }
         }
         throw AutomationFailure("The tab no longer exists. List tabs again.")
@@ -208,7 +208,7 @@ final class BrowserAutomationExecutor {
 
     private func windowValue(_ context: BrowserWindowContext) -> JSONValue {
         .object(["window_id": .string(context.session.id.uuidString), "title": .string(context.window.title),
-                 "active": .bool(context.session.id == windows.activeWindowID),
+                 "active": .bool(context === windows.activeRegularContext),
                  "selected_tab_id": context.controller.model.selectedTabID.map { .string($0.uuidString) } ?? .null,
                  "tab_count": .number(Double(context.controller.model.tabs.count))])
     }
@@ -238,7 +238,7 @@ final class BrowserAutomationExecutor {
     private func requireCurrent(_ tab: BrowserTab, webView: BrowserPageView) throws {
         try Task.checkCancellation()
         guard tab.webView === webView,
-              windows.windows.contains(where: { $0.controller.model.tabs.contains(where: { $0 === tab }) }) else {
+              windows.regularWindows.contains(where: { $0.controller.model.tabs.contains(where: { $0 === tab }) }) else {
             throw AutomationFailure("The tab changed or closed while the operation was running.")
         }
         guard let current = webView.url else { throw AutomationFailure("The page is not ready. Wait for navigation to finish and try again.") }
@@ -543,7 +543,7 @@ extension BrowserAutomationExecutor {
     fileprivate func organize(_ tool: String, _ args: [String: JSONValue]) async throws -> JSONValue {
         switch tool {
         case "browser_get_layout":
-            let contexts = args["window_id"] != nil ? [try context(args)] : windows.windows
+            let contexts = args["window_id"] != nil ? [try context(args)] : windows.regularWindows
             return .object(["windows": .array(contexts.map(layoutValue)),
                             "note": .string("Pinned items are shared by every window; ordinary tabs belong to one window.")])
 
@@ -737,7 +737,7 @@ extension BrowserAutomationExecutor {
 
     private func windowOrActive(_ args: [String: JSONValue]) throws -> BrowserWindowContext {
         if args["window_id"] != nil { return try context(args) }
-        guard let context = windows.activeContext else { throw AutomationFailure("No browser window is open. Create one first.") }
+        guard let context = windows.activeRegularContext else { throw AutomationFailure("No browser window is open. Create one first.") }
         return context
     }
 
@@ -753,7 +753,7 @@ extension BrowserAutomationExecutor {
     /// Pinned groups appear in every window; prefer the named or active one.
     private func existingGroup(_ args: [String: JSONValue]) throws -> (BrowserWindowContext, UUID) {
         let id = try uuid(args, "group_id")
-        let preferred = args["window_id"] != nil ? [try context(args)] : [windows.activeContext].compactMap { $0 } + windows.windows
+        let preferred = args["window_id"] != nil ? [try context(args)] : [windows.activeRegularContext].compactMap { $0 } + windows.regularWindows
         for context in preferred where context.controller.model.layouts.values.contains(where: { $0.group(id) != nil }) {
             return (context, id)
         }
@@ -791,7 +791,7 @@ extension BrowserAutomationExecutor {
         let model = context.controller.model
         return .object([
             "window_id": .string(context.session.id.uuidString),
-            "active": .bool(context.session.id == windows.activeWindowID),
+            "active": .bool(context === windows.activeRegularContext),
             "active_space_id": .string(model.activeSpaceID.uuidString),
             "spaces": .array(model.spaces.map { space in
                 let layout = model.layout(for: space.id)

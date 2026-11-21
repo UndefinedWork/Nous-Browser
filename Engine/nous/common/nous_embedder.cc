@@ -7,6 +7,7 @@ BrowserStartedHook g_browser_started = nullptr;
 TerminateRequestHook g_terminate_request = nullptr;
 MainLoopEndedHook g_main_loop_ended = nullptr;
 PermissionPromptFactory g_permission_prompt_factory = nullptr;
+ExternalProtocolDialogHook g_external_protocol_dialog = nullptr;
 ExternalProtocolLaunchedHook g_external_protocol_launched = nullptr;
 PictureInPictureHooks g_picture_in_picture_hooks;
 }  // namespace
@@ -36,6 +37,17 @@ void SetPermissionPromptFactory(PermissionPromptFactory factory) {
 }
 PermissionPromptFactory GetPermissionPromptFactory() {
   return g_permission_prompt_factory;
+}
+
+void SetExternalProtocolDialogHook(ExternalProtocolDialogHook hook) {
+  g_external_protocol_dialog = hook;
+}
+bool RunExternalProtocolDialogHook(content::WebContents* contents,
+                                   const GURL& url,
+                                   const ExternalProtocolDialogStrings& strings,
+                                   ExternalProtocolDialogResponse& response) {
+  return g_external_protocol_dialog &&
+         g_external_protocol_dialog(contents, url, strings, response);
 }
 
 void SetExternalProtocolLaunchedHook(ExternalProtocolLaunchedHook hook) {

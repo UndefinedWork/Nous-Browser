@@ -5,5 +5,6 @@
 #endif
 #import <NousCore/NousBrowserApplication.h>
 #import <NousCore/NBChromiumDownloads.h>
+#import <NousCore/NBChromiumExtensions.h>
 #import <NousCore/NousChromium.h>
 #import <NousCore/NBPictureInPicture.h>

@@ -120,6 +120,11 @@
 "Bing" = "Bing";
 "DuckDuckGo" = "DuckDuckGo";
 "Baidu" = "Baidu";
+"Yahoo!" = "Yahoo!";
+"Brave Search" = "Brave Search";
+"Ecosia" = "Ecosia";
+"Qwant" = "Qwant";
+"Startpage" = "Startpage";
 "Choose how Nous Browser looks." = "選擇 Nous Browser 的顯示模式。";
 "Password Import" = "密碼匯入";
 "Reload Without Cache" = "忽略快取重新載入";
@@ -518,3 +523,23 @@
 "from this time yesterday" = "較昨天同一時間";
 "from this point last week" = "較上週同期";
 "from this point last month" = "較上月同期";
+
+"Default Browser" = "預設瀏覽器";
+"Make Default" = "設為預設瀏覽器";
+"Nous Browser is your default web browser." = "Nous Browser 是你的預設瀏覽器。";
+"Nous Browser isn’t your default web browser." = "Nous Browser 不是你的預設瀏覽器。";
+"Couldn’t set Nous Browser as the default web browser." = "無法將 Nous Browser 設為預設瀏覽器。";
+"New Private Window" = "新增私密視窗";
+"Private Browsing" = "私密瀏覽";
+"Browsing history isn’t saved. Site data is cleared when you close all private windows." = "瀏覽記錄不會儲存。關閉所有私密視窗後，網站資料會清除。";
+"Extensions" = "擴充功能";
+"Extensions are unavailable in this build." = "此版本暫不支援擴充功能。";
+"No Extensions Installed" = "尚未安裝擴充功能";
+"Installed Extensions" = "已安裝的擴充功能";
+"Open Chrome Web Store" = "開啟 Chrome 線上應用程式商店";
+"Manage Extensions" = "管理擴充功能";
+"Disabled" = "已停用";
+"Enable Extension" = "啟用擴充功能";
+"Disable Extension" = "停用擴充功能";
+"Remove Extension…" = "移除擴充功能…";
+"Extension Options" = "擴充功能選項";

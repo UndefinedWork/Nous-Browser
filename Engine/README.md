@@ -63,9 +63,10 @@ NOUS_SKIP_ENGINE_BUILD=1 Scripts/build.sh   # 只改 Swift 时跳过引擎
 
 ## 已知差距（下一阶段）
 
-- 标签尚未接入 Chrome 的 `Browser`/`TabStripModel`（Dia 的 `ArcBrowser`）。因此
-  Memory Saver 自动丢弃、扩展程序、标签组 API 暂不可用：`hasNativeTabLifecycle`
-  返回 NO，`memorySaverMode` 返回 -1，Swift 端走既有降级路径。
+- 标签尚未接入 Chrome 的 `Browser`/`TabStripModel`（Dia 的 `ArcBrowser`）。
+  Memory Saver 自动丢弃和 Chrome 标签组 API 仍依赖这项接入。
+- 库中的插件入口使用 Chromium 的商店安装流程和普通配置文件的扩展注册表。
+  依赖 Chrome 原生窗口列表、标签列表或侧边栏的插件仍有兼容性限制。
 - 网站数据使用 Chrome 默认的 “Chromium Safe Storage” 钥匙串项，而不是 CEF 版的
   按构建隔离存储；首次启动可能出现钥匙串授权提示。
 - Helper 仍沿用 Chromium 品牌名（`Chromium Helper*.app`）；改为 Nous 品牌需要

@@ -68,6 +68,7 @@ extension BrowserController {
             results.append(.bookmark(bookmark))
             if results.count == 6 { return results }
         }
+        guard !model.isPrivate else { return results }
         for entry in history.matches(query: addressText, limit: 6) where !shown.contains(entry.id) {
             results.append(.visitedPage(entry))
             if results.count == 6 { break }

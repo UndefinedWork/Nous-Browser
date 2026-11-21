@@ -3,7 +3,7 @@ import Foundation
 nonisolated enum LibrarySection: String, CaseIterable, Identifiable, Sendable {
     // Ordered by how often people reach for them: finding a page again
     // first, maintenance last.
-    case all, history, bookmarks, downloads, screenshots, recordings, insights, updates
+    case all, history, bookmarks, downloads, screenshots, recordings, extensions, insights, updates
 
     var id: String { rawValue }
 
@@ -13,6 +13,7 @@ nonisolated enum LibrarySection: String, CaseIterable, Identifiable, Sendable {
         case .bookmarks: L10n.string("Bookmarks")
         case .screenshots: L10n.string("Screenshots")
         case .recordings: L10n.string("Recordings")
+        case .extensions: L10n.string("Extensions")
         case .insights: L10n.string("Insights")
         case .history: L10n.string("History")
         case .downloads: L10n.string("Downloads")
@@ -26,6 +27,7 @@ nonisolated enum LibrarySection: String, CaseIterable, Identifiable, Sendable {
         case .bookmarks: "star"
         case .screenshots: "photo"
         case .recordings: "video"
+        case .extensions: "puzzlepiece.extension"
         case .insights: "chart.bar.xaxis"
         case .history: "clock"
         case .downloads: "arrow.down.circle"

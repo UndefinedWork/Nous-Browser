@@ -103,6 +103,40 @@ struct BrowserAddressTests {
 
 @Suite("Session restoration")
 struct BrowserSessionTests {
+    @Test @MainActor func privateModelIgnoresSavedSessionsAndCannotWriteToThem() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let session = directory.appendingPathComponent("session.json")
+        let regular = BrowserModel(sessionURL: session, restoreSession: false, loadSelectedTab: false,
+                                   startWithBlankTab: true)
+        defer { regular.shutdown(); try? FileManager.default.removeItem(at: directory) }
+        let regularSpace = regular.createSpace(name: "Regular space", icon: nil)
+        regular.newTab()
+        let originalSession = try Data(contentsOf: session)
+        let spaces = BrowserSpaceStore.fileURL(besideSession: session)
+        let originalSpaces = try Data(contentsOf: spaces)
+
+        let privateModel = BrowserModel(sessionURL: session, loadSelectedTab: false,
+                                        spaceStore: regular.spaceStore, isPrivate: true)
+        defer { privateModel.shutdown() }
+        let tab = try #require(privateModel.selectedTab)
+        #expect(tab.isPrivate && privateModel.tabs.count == 1)
+        #expect(privateModel.spaceStore !== regular.spaceStore)
+        #expect(privateModel.spaceStore.space(regularSpace) == nil)
+        let privateSpace = privateModel.createSpace(name: "Private space", icon: nil)
+        #expect(regular.spaceStore.space(privateSpace) == nil)
+
+        let library = NativePage.library(.history)
+        privateModel.openNativePage(library)
+        privateModel.navigate(library.url.absoluteString)
+        privateModel.newTab(url: library.url)
+        #expect(privateModel.tabs.count == 1 && tab.url == nil)
+        tab.title = "Private page"
+        try privateModel.persistForRestart()
+        privateModel.shutdown()
+        #expect(try Data(contentsOf: session) == originalSession)
+        #expect(try Data(contentsOf: spaces) == originalSpaces)
+    }
+
     @Test @MainActor func restartSaveWritesCurrentSessionAndKeepsTheModelAlive() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let file = directory.appendingPathComponent("session.json")

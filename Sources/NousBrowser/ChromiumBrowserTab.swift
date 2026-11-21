@@ -7,6 +7,7 @@ import Observation
 @Observable
 final class BrowserTab: NSObject, Identifiable {
     let id: UUID
+    let isPrivate: Bool
     var title: String
     var url: URL?
     var isPinned: Bool {
@@ -33,6 +34,7 @@ final class BrowserTab: NSObject, Identifiable {
         didSet { webView.dialogPresentationWindow = owner?.chromiumPresentationWindow }
     }
     @ObservationIgnored private var hasLoaded: Bool
+    @ObservationIgnored var screenshotSourceTabID: UUID?
     @ObservationIgnored private var isShutDown = false
     @ObservationIgnored private var isInNativeLifecycleTransfer = false
     #if DEBUG
@@ -55,8 +57,11 @@ final class BrowserTab: NSObject, Identifiable {
     var pageTitle: BrowserPageTitle { BrowserPageTitle(displayTitle) }
 
     init(id: UUID = UUID(), title: String? = nil, url: URL? = nil, isPinned: Bool = false,
-         owner: BrowserModel?, isPopup: Bool = false) {
+         owner: BrowserModel?, isPopup: Bool = false, isPrivate: Bool = false) {
         self.id = id
+        let isPrivate = owner?.isPrivate ?? isPrivate
+        self.isPrivate = isPrivate
+        let url = isPrivate && url.flatMap(NativePage.init(url:)) != nil ? nil : url
         self.isPinned = isPinned
         self.url = url
         self.owner = owner
@@ -67,6 +72,7 @@ final class BrowserTab: NSObject, Identifiable {
             ?? (url == nil && !isPopup ? L10n.string("New Tab") : title ?? Self.fallbackTitle(for: url) ?? L10n.string("New Tab"))
         self.webView = ChromiumPageView(frame: .zero)
         super.init()
+        webView.isPrivateBrowsing = isPrivate
         webView.dialogPresentationWindow = owner?.chromiumPresentationWindow
         if isPopup { webView.reserveForPopup() }
         // Chromium handles scrollbar visibility natively, without observing
@@ -122,6 +128,7 @@ final class BrowserTab: NSObject, Identifiable {
     func load(_ url: URL, cachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy) {
         guard !isShutDown else { return }
         if let page = NativePage(url: url) {
+            guard !isPrivate else { return }
             // Native pages never reach Chromium; any previous page stays hidden.
             self.url = url
             hasLoaded = true
@@ -227,14 +234,20 @@ final class BrowserTab: NSObject, Identifiable {
         case "favicon":
             guard let data = payload["data"] as? Data, let pageURL = url,
                   payload["pageURL"] as? String == pageURL.absoluteString,
-                  let source = (payload["url"] as? String).flatMap(URL.init(string:)),
-                  let image = FaviconStore.shared.storePageImage(data, for: pageURL, sourceURL: source) else { return }
+                  let source = (payload["url"] as? String).flatMap(URL.init(string:)) else { return }
+            let image = isPrivate ? NSImage(data: data)
+                : FaviconStore.shared.storePageImage(data, for: pageURL, sourceURL: source)
+            guard let image else { return }
             cancelFaviconLoading()
             favicon = image
         case "open-tab":
             openNativeResource(payload, inNewWindow: false)
         case "open-window":
             openNativeResource(payload, inNewWindow: true)
+        case "open-private-window":
+            if !isPrivate, let url = Self.websiteURL(payload["url"]) {
+                owner?.onOpenLinkInPrivateWindow?(url)
+            }
         case "download-complete":
             owner?.onDownloadNotice?(L10n.string("Download complete"), false)
         case "download-error":
@@ -265,7 +278,7 @@ final class BrowserTab: NSObject, Identifiable {
         cancelFaviconLoading()
         let changed = faviconPageURL != pageURL
         faviconPageURL = pageURL
-        guard Self.websiteURL(pageURL.absoluteString) != nil else { favicon = nil; return }
+        guard !isPrivate, Self.websiteURL(pageURL.absoluteString) != nil else { favicon = nil; return }
         if changed || favicon == nil { favicon = FaviconStore.shared.cachedImage(for: pageURL) }
         let request = faviconRequestID
         faviconTask = Task { [weak self] in

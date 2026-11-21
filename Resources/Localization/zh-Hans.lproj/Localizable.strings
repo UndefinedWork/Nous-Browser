@@ -120,6 +120,11 @@
 "Bing" = "Bing";
 "DuckDuckGo" = "DuckDuckGo";
 "Baidu" = "百度";
+"Yahoo!" = "Yahoo!";
+"Brave Search" = "Brave Search";
+"Ecosia" = "Ecosia";
+"Qwant" = "Qwant";
+"Startpage" = "Startpage";
 "Choose how Nous Browser looks." = "选择 Nous Browser 的显示模式。";
 "Password Import" = "密码导入";
 "Reload Without Cache" = "忽略缓存重新加载";
@@ -518,3 +523,23 @@
 "from this time yesterday" = "较昨天同一时间";
 "from this point last week" = "较上周同期";
 "from this point last month" = "较上月同期";
+
+"Default Browser" = "默认浏览器";
+"Make Default" = "设为默认浏览器";
+"Nous Browser is your default web browser." = "Nous Browser 是你的默认浏览器。";
+"Nous Browser isn’t your default web browser." = "Nous Browser 不是你的默认浏览器。";
+"Couldn’t set Nous Browser as the default web browser." = "无法将 Nous Browser 设为默认浏览器。";
+"New Private Window" = "新建隐私窗口";
+"Private Browsing" = "隐私浏览";
+"Browsing history isn’t saved. Site data is cleared when you close all private windows." = "浏览记录不会保存。关闭所有隐私窗口后，网站数据会被清除。";
+"Extensions" = "插件";
+"Extensions are unavailable in this build." = "此版本暂不支持插件。";
+"No Extensions Installed" = "尚未安装插件";
+"Installed Extensions" = "已安装的插件";
+"Open Chrome Web Store" = "打开 Chrome 网上应用店";
+"Manage Extensions" = "管理插件";
+"Disabled" = "已停用";
+"Enable Extension" = "启用插件";
+"Disable Extension" = "停用插件";
+"Remove Extension…" = "移除插件…";
+"Extension Options" = "插件选项";

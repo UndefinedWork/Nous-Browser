@@ -4,17 +4,22 @@
 
 #import <AppKit/AppKit.h>
 
+@class NBChromiumView;
+
 class Profile;
 namespace content {
 class WebContents;
 }
 
 namespace nous {
-// The profile all Nous tabs use (Chromium's "Default" profile in the
+// The profile regular Nous tabs use (Chromium's "Default" profile in the
 // configured --user-data-dir). Null before the browser process is ready.
 Profile* GetProfile();
+// Null outside an active, explicitly started private browsing session.
+Profile* GetPrivateProfile();
 // The NSWindow that hosts (or will host) a Nous tab's page.
 NSWindow* WindowForWebContents(content::WebContents* contents);
+content::WebContents* WebContentsForView(NBChromiumView* view);
 // Replace Chrome's download target step with the Nous host flow.
 void InstallDownloadDelegate(Profile* profile);
 // Chrome UI singletons (JS dialogs, permission prompts) routed to Nous tabs.

@@ -120,6 +120,11 @@
 "Bing" = "Bing";
 "DuckDuckGo" = "DuckDuckGo";
 "Baidu" = "Baidu";
+"Yahoo!" = "Yahoo!";
+"Brave Search" = "Brave Search";
+"Ecosia" = "Ecosia";
+"Qwant" = "Qwant";
+"Startpage" = "Startpage";
 "Choose how Nous Browser looks." = "Nous Browser の外観を選択します。";
 "Password Import" = "パスワードのインポート";
 "Reload Without Cache" = "キャッシュを無視して再読み込み";
@@ -518,3 +523,23 @@
 "from this time yesterday" = "昨日の同じ時刻と比較";
 "from this point last week" = "先週の同時点と比較";
 "from this point last month" = "先月の同時点と比較";
+
+"Default Browser" = "デフォルトブラウザ";
+"Make Default" = "デフォルトに設定";
+"Nous Browser is your default web browser." = "Nous Browser はデフォルトブラウザです。";
+"Nous Browser isn’t your default web browser." = "Nous Browser はデフォルトブラウザに設定されていません。";
+"Couldn’t set Nous Browser as the default web browser." = "Nous Browser をデフォルトブラウザに設定できませんでした。";
+"New Private Window" = "新規プライベートウインドウ";
+"Private Browsing" = "プライベートブラウズ";
+"Browsing history isn’t saved. Site data is cleared when you close all private windows." = "閲覧履歴は保存されません。すべてのプライベートウインドウを閉じると、サイトデータが消去されます。";
+"Extensions" = "拡張機能";
+"Extensions are unavailable in this build." = "このビルドでは拡張機能を利用できません。";
+"No Extensions Installed" = "インストール済みの拡張機能はありません";
+"Installed Extensions" = "インストール済みの拡張機能";
+"Open Chrome Web Store" = "Chrome ウェブストアを開く";
+"Manage Extensions" = "拡張機能を管理";
+"Disabled" = "無効";
+"Enable Extension" = "拡張機能を有効にする";
+"Disable Extension" = "拡張機能を無効にする";
+"Remove Extension…" = "拡張機能を削除…";
+"Extension Options" = "拡張機能のオプション";

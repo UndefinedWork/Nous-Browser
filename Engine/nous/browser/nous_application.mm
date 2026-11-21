@@ -21,6 +21,7 @@
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_destroyer.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/os_crypt/common/keychain_password_mac.h"
@@ -93,10 +94,12 @@ NSError* Failure(NSString* message) {
 
 namespace {
 raw_ptr<Profile> g_profile = nullptr;
+raw_ptr<Profile> g_private_profile = nullptr;
 }  // namespace
 
 namespace nous {
 Profile* GetProfile() { return g_profile; }
+Profile* GetPrivateProfile() { return g_private_profile; }
 }  // namespace nous
 
 @implementation NousBrowserApplicationConfiguration
@@ -205,10 +208,17 @@ static void MainLoopEndedHook() {
   if (profile)
     g_profile_keep_alive = std::make_unique<ScopedProfileKeepAlive>(profile, ProfileKeepAliveOrigin::kBrowserWindow);
   if (profile) nous::InstallDownloadDelegate(profile);
-  // Nous has no private windows; hide Chromium's "Open Link in Incognito
-  // Window" (it did nothing) from page context menus.
-  if (profile)
-    IncognitoModePrefs::SetAvailability(profile->GetPrefs(), policy::IncognitoModeAvailability::kDisabled);
+  // Older Nous releases forced a user-pref value because the host did not
+  // support Incognito. Clear only that legacy value, leaving policy in place.
+  if (profile) {
+    auto* prefs = profile->GetPrefs();
+    constexpr auto* key = policy::policy_prefs::kIncognitoModeAvailability;
+    const auto* legacy_value = prefs->GetUserPrefValue(key);
+    if (legacy_value && legacy_value->is_int() &&
+        legacy_value->GetInt() == static_cast<int>(policy::IncognitoModeAvailability::kDisabled)) {
+      prefs->ClearPref(key);
+    }
+  }
   nous::InstallTabServices();
   [self.delegate browserApplicationDidInitialize:self];
 }
@@ -244,12 +254,13 @@ static void MainLoopEndedHook() {
 - (void)mainLoopEnded {
   if (getenv("NOUS_TRACE")) fprintf(stderr, "Nous: main loop ended\n");
   g_profile_keep_alive.reset();
-  g_profile = nullptr;
   if ([self.delegate respondsToSelector:@selector(browserApplicationWillShutDown:)])
     [self.delegate browserApplicationWillShutDown:self];
   // Pages must not outlive their Profile; Chromium destroys profiles next.
   nous::CloseAllTabs();
   [[NBChromiumDownloadCenter sharedCenter] cancelAll];
+  [NBChromiumRuntime endPrivateBrowsing];
+  g_profile = nullptr;
 }
 @end
 
@@ -257,6 +268,31 @@ static void MainLoopEndedHook() {
 // NBChromiumRuntime: the engine-facing facade the Swift UI already uses.
 
 @implementation NBChromiumRuntime
++ (BOOL)canOpenPrivateWindows {
+  Profile* profile = nous::GetProfile();
+  return profile && !g_quitting &&
+         IncognitoModePrefs::IsIncognitoTypeAllowed(
+             profile, IncognitoModePrefs::IncognitoModeType::kStandard) &&
+         (nous::GetPrivateProfile() || !profile->HasPrimaryOTRProfile());
+}
+
++ (BOOL)beginPrivateBrowsing {
+  if (![self canOpenPrivateWindows]) return NO;
+  if (g_private_profile) return YES;
+  g_private_profile = nous::GetProfile()->GetPrimaryOTRProfile(/*create_if_needed=*/true);
+  CHECK(g_private_profile && g_private_profile->IsOffTheRecord());
+  nous::InstallDownloadDelegate(g_private_profile);
+  return YES;
+}
+
++ (void)endPrivateBrowsing {
+  Profile* profile = nous::GetPrivateProfile();
+  if (!profile) return;
+  // Do not expose the exiting context while its last renderers drain.
+  g_private_profile = nullptr;
+  ProfileDestroyer::DestroyOTRProfileWhenAppropriate(profile);
+}
+
 + (void)prepareApplication {}
 + (BOOL)startWithProfilePath:(NSString*)profilePath error:(NSError**)error {
   if (nous::GetProfile()) return YES;

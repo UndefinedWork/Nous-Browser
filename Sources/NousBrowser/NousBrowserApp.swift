@@ -129,6 +129,8 @@ final class BrowserController {
     let history: BrowserHistoryStore
     let find: BrowserPageFindController
     @ObservationIgnored var onNewWindow: (() -> Void)?
+    @ObservationIgnored var onNewPrivateWindow: (() -> Void)?
+    @ObservationIgnored var privateWindowAvailability: (() -> Bool)?
     @ObservationIgnored var onCloseWindow: (() -> Void)?
     @ObservationIgnored var onMoveTabToNewWindow: ((UUID, NSPoint) -> Bool)?
     @ObservationIgnored var onMoveTabToWindow: ((UUID, BrowserController, Int) -> Bool)?
@@ -198,6 +200,8 @@ final class BrowserController {
     }
 
     func newWindow() { onNewWindow?() }
+    func newPrivateWindow() { onNewPrivateWindow?() }
+    var canOpenPrivateWindows: Bool { privateWindowAvailability?() == true }
     func closeWindow() { onCloseWindow?() }
 
     func moveTabToNewWindow(_ id: UUID, at point: NSPoint) -> Bool {
@@ -230,6 +234,8 @@ final class BrowserController {
         toast = nil
         passwords.dismiss()
         onNewWindow = nil
+        onNewPrivateWindow = nil
+        privateWindowAvailability = nil
         onCloseWindow = nil
         onMoveTabToNewWindow = nil
         onMoveTabToWindow = nil
@@ -298,7 +304,7 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate {
         PictureInPicturePlayer.shared.start()
         // Active time goes to the site in the key browser window's selected tab.
         BrowsingInsights.shared.start { [weak self] in
-            guard let model = self?.windowManager.keyController?.model,
+            guard let model = self?.windowManager.keyController?.model, !model.isPrivate,
                   let site = InsightsLog.site(for: model.selectedTab?.url) else { return nil }
             return InsightsFocus(site: site, space: model.activeSpaceID)
         }
@@ -315,26 +321,32 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate {
         LibraryStore.shared.start(history: windowManager.history)
         CaptureShortcuts.shared.perform = { [weak self] action in
             switch action {
-            case .screenshot: CaptureCoordinator.shared.takeScreenshot()
+            case .screenshot:
+                CaptureCoordinator.shared.takeScreenshot(from: self?.windowManager.visibleContext?.controller.model.selectedTab)
             case .recording: CaptureCoordinator.shared.toggleRecording()
             case .capturePage: CaptureCoordinator.shared.capturePage(self?.windowManager.activeContext?.controller.model.selectedTab)
             }
         }
         CaptureShortcuts.shared.register()
-        CaptureCoordinator.shared.openPage = { [weak self] page in
+        CaptureCoordinator.shared.openPage = { [weak self] page, source in
             guard let self else { return }
-            // A tab in the window in front of the user; a window only when none is open.
-            if self.windowManager.activeController == nil { self.windowManager.newWindow() }
-            guard let context = self.windowManager.visibleContext else { return }
+            let sourceContext = source.flatMap { source in
+                self.windowManager.regularWindows.first { $0.controller.model.tab(source.id) === source }
+            }
+            let visible = self.windowManager.visibleContext
+            guard let context = sourceContext ?? visible.flatMap({ $0.controller.model.isPrivate ? nil : $0 })
+                ?? self.windowManager.activeRegularContext ?? self.windowManager.newWindow() else { return }
             context.controller.dismissAddress()
-            context.controller.model.openNativePage(page)
+            context.controller.model.openNativePage(page, after: sourceContext == nil ? nil : source?.id)
             self.windowManager.activate(context)
         }
         CaptureCoordinator.shared.report = { [weak self] message in
             if let controller = self?.windowManager.activeController { controller.showToast(message) }
             else { let alert = NSAlert(); alert.messageText = message; alert.runModal() }
         }
+        #if NOUS_CHROMIUM_PREVIEW
         ChromiumSmokeCheck.run(windowManager: windowManager)
+        #endif
         automation.startIfEnabled()
         BrowserUpdater.shared.start()
     }

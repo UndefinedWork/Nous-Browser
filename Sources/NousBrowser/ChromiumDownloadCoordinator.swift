@@ -18,6 +18,7 @@ final class ChromiumDownloadCoordinator: NSObject, ObservableObject {
     }
     private var saveDrafts: [String: SaveDraft] = [:]
     private var downloadsWindow: NSWindow?
+    private var downloadsWindowPrivacy: Bool?
     private var installed = false
     private var shuttingDown = false
     private var saveChoicesSuspended = false
@@ -51,6 +52,7 @@ final class ChromiumDownloadCoordinator: NSObject, ObservableObject {
         let filename = BrowserDownloadFilename.filename(job.suggestedFilename, hint: nil, mimeType: job.mimeType)
         let record = ChromiumDownloadRecord(id: job.identifier, filename: filename,
             sourceWindow: job.sourceWindow,
+            isPrivate: job.snapshot["privateBrowsing"] as? Bool == true,
             choose: { job.chooseDestination($0) }, cancel: { job.cancel() })
         // Both native and UI history retain only a small transfer object,
         // never the originating CefBrowser, WebContents, or NSView.
@@ -69,7 +71,7 @@ final class ChromiumDownloadCoordinator: NSObject, ObservableObject {
                     self.pending.removeAll { $0.id == record.id }
                     self.saveDrafts.removeValue(forKey: record.id)
                     if self.activeChoice?.id == record.id { self.activePanel?.cancel(nil) }
-                    if case .failed = record.state { self.showDownloads() }
+                    if case .failed = record.state { self.showDownloads(onlyPrivate: record.isPrivate) }
                     self.trimHistory()
                 }
             }
@@ -110,7 +112,7 @@ final class ChromiumDownloadCoordinator: NSObject, ObservableObject {
                     self.pending.removeAll { $0.id == record.id }
                     self.saveDrafts.removeValue(forKey: record.id)
                 }
-                if case .failed = record.state { self.showDownloads() }
+                if case .failed = record.state { self.showDownloads(onlyPrivate: record.isPrivate) }
                 let suspended = self.suspensionCompletion
                 self.suspensionCompletion = nil
                 suspended?()
@@ -150,6 +152,18 @@ final class ChromiumDownloadCoordinator: NSObject, ObservableObject {
     }
 
     var hasActiveDownloads: Bool { records.contains { $0.state.isActive } }
+    var hasActiveRegularDownloads: Bool { records.contains { !$0.isPrivate && $0.state.isActive } }
+    var activeRegularDownloads: [ChromiumDownloadRecord] { records.filter { !$0.isPrivate && $0.state.isActive } }
+
+    func endPrivateSession() {
+        let privateRecords = records.filter(\.isPrivate)
+        for record in privateRecords where record.state.isActive { record.cancel() }
+        records.removeAll(where: \.isPrivate)
+        pending.removeAll(where: \.isPrivate)
+        for record in privateRecords { saveDrafts.removeValue(forKey: record.id) }
+        if activeChoice?.isPrivate == true { activePanel?.cancel(nil) }
+        if downloadsWindowPrivacy == true { downloadsWindow?.orderOut(nil) }
+    }
 
     func confirmTermination(completion: @escaping @MainActor (Bool) -> Void) {
         guard hasActiveDownloads else {
@@ -209,9 +223,11 @@ final class ChromiumDownloadCoordinator: NSObject, ObservableObject {
         NBChromiumDownloadCenter.shared().cancelAll()
     }
 
-    func showDownloads() {
+    func showDownloads(onlyPrivate: Bool? = nil) {
+        downloadsWindowPrivacy = onlyPrivate
+        let content = ChromiumDownloadsView(coordinator: self, onlyPrivate: onlyPrivate)
         if downloadsWindow == nil {
-            let controller = NSHostingController(rootView: ChromiumDownloadsView(coordinator: self))
+            let controller = NSHostingController(rootView: content)
             let window = NSWindow(contentViewController: controller)
             window.title = L10n.string("Downloads")
             window.setContentSize(NSSize(width: 520, height: 420))
@@ -219,12 +235,17 @@ final class ChromiumDownloadCoordinator: NSObject, ObservableObject {
             window.isReleasedWhenClosed = false
             window.center()
             downloadsWindow = window
+        } else if let controller = downloadsWindow?.contentViewController as? NSHostingController<ChromiumDownloadsView> {
+            controller.rootView = content
         }
-        if let downloadsWindow { showWindow(downloadsWindow) }
+        if let downloadsWindow {
+            downloadsWindow.appearance = onlyPrivate == true ? NSAppearance(named: .darkAqua) : nil
+            showWindow(downloadsWindow)
+        }
     }
 
-    func clearFinished() {
-        records.removeAll { !$0.state.isActive }
+    func clearFinished(onlyPrivate: Bool? = nil) {
+        records.removeAll { !$0.state.isActive && (onlyPrivate == nil || $0.isPrivate == onlyPrivate) }
     }
 
     private func trimHistory() {
@@ -240,14 +261,16 @@ final class ChromiumDownloadCoordinator: NSObject, ObservableObject {
 @MainActor
 private struct ChromiumDownloadsView: View {
     @ObservedObject var coordinator: ChromiumDownloadCoordinator
+    let onlyPrivate: Bool?
     var body: some View {
+        let records = coordinator.records.filter { onlyPrivate == nil || $0.isPrivate == onlyPrivate }
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text(L10n.string("Downloads")).font(.title2.bold())
                 Spacer()
-                Button(L10n.string("Clear finished")) { coordinator.clearFinished() }
+                Button(L10n.string("Clear finished")) { coordinator.clearFinished(onlyPrivate: onlyPrivate) }
             }
-            if coordinator.records.isEmpty {
+            if records.isEmpty {
                 Spacer()
                 Text(L10n.string("No downloads yet")).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
@@ -255,7 +278,7 @@ private struct ChromiumDownloadsView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 16) {
-                        ForEach(coordinator.records) { ChromiumDownloadRow(record: $0) }
+                        ForEach(records) { ChromiumDownloadRow(record: $0) }
                     }
                 }
                 .scrollIndicators(.hidden)

@@ -15,7 +15,8 @@ struct SidebarNewMenuButton: View {
         GlassSymbolButton("plus", label: label, help: label, symbolSize: BrowserDesign.topSymbolSize,
                           symbolWeight: .medium) {
             guard let view = anchor.view else { controller.newTab(); return }
-            SidebarNewMenu(controller: controller, newGroup: newGroup, newSpace: newSpace).popUp(below: view)
+            let menu = SidebarNewMenu(controller: controller, newGroup: newGroup, newSpace: newSpace)
+            menu.popUp(below: view)
         }
         .background { MenuAnchorView(anchor: anchor) }
     }
@@ -63,13 +64,24 @@ final class SidebarNewMenu: NSObject {
         let menu = NSMenu()
         menu.autoenablesItems = false
         let capture = CaptureCoordinator.shared
-        menu.items = [
+        let privateWindow = item("New Private Window", "eye.slash", key: "N") { [controller] in
+            controller.newPrivateWindow()
+        }
+        privateWindow.keyEquivalentModifierMask = [.command, .shift]
+        privateWindow.isEnabled = controller.canOpenPrivateWindows
+        var items = [
             item("New Tab", "plus", key: "t") { [controller] in controller.newTab() },
             item("New Group", "folder.badge.plus") { [newGroup] in newGroup() },
             item("New Window", "macwindow.badge.plus", key: "n") { [controller] in controller.newWindow() },
+            privateWindow,
             spacesItem(),
+        ]
+        if !controller.model.isPrivate { items.append(extensionsItem()) }
+        items += [
             .separator(),
-            captureItem(.screenshot, "Screenshot", "camera.viewfinder") { capture.takeScreenshot() },
+            captureItem(.screenshot, "Screenshot", "camera.viewfinder") { [controller] in
+                capture.takeScreenshot(from: controller.model.selectedTab)
+            },
             captureItem(.recording, capture.isRecording ? "Stop Recording" : "Record Screen",
                         capture.isRecording ? "stop.circle" : "record.circle") { capture.toggleRecording() },
             .separator(),
@@ -77,7 +89,47 @@ final class SidebarNewMenu: NSObject {
                 NSApp.sendAction(#selector(BrowserAppDelegate.showSettings(_:)), to: nil, from: nil)
             },
         ]
+        menu.items = items
         return menu
+    }
+
+    private func extensionsItem() -> NSMenuItem {
+        let store = BrowserExtensionStore.shared
+        store.refresh()
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        for entry in store.extensions {
+            let extensionItem = Item(title: entry.name, action: #selector(run(_:)), keyEquivalent: "")
+            extensionItem.target = self
+            extensionItem.isEnabled = controller.model.selectedTab.map { store.canRun(entry, in: $0) } ?? false
+            if let icon = entry.icon?.copy() as? NSImage {
+                icon.size = NSSize(width: 16, height: 16)
+                Self.setIcon(extensionItem, icon)
+            } else {
+                Self.setIcon(extensionItem, Self.icon("puzzlepiece.extension"))
+            }
+            extensionItem.run = { [controller] in
+                guard let tab = controller.model.selectedTab else { return }
+                store.run(entry, in: tab)
+            }
+            submenu.addItem(extensionItem)
+        }
+        if !submenu.items.isEmpty { submenu.addItem(.separator()) }
+        submenu.addItem(item("Manage Extensions", "slider.horizontal.3") { [controller] in
+            controller.dismissAddress()
+            controller.model.openNativePage(.library(.extensions))
+        })
+        let add = item("Open Chrome Web Store", "arrow.up.right") { [controller] in
+            controller.dismissAddress()
+            controller.model.newTab(url: BrowserExtensionStore.webStoreURL)
+        }
+        add.isEnabled = store.isAvailable
+        submenu.addItem(add)
+
+        let parent = NSMenuItem(title: L10n.string("Extensions"), action: nil, keyEquivalent: "")
+        Self.setIcon(parent, Self.icon("puzzlepiece.extension"))
+        parent.submenu = submenu
+        return parent
     }
 
     private func spacesItem() -> NSMenuItem {

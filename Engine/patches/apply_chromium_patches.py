@@ -207,6 +207,36 @@ if (SRC / 'cef/BUILD.gn').exists():
     edit('chrome/browser/devtools/devtools_window.cc',
          '    create_params.opener = opener;\n',
          '#if BUILDFLAG(ENABLE_CEF)\n    create_params.opener = opener;\n#endif\n')
+    # CEF adds an accelerated widget lookup. A Nous NSWindow has no Chrome
+    # dialog host, but its native view can still parent a modal sheet.
+    edit('components/constrained_window/constrained_window_views.cc',
+         '''    // Use with CEF windowless rendering.
+    gfx::AcceleratedWidget parent_widget =
+        parent ? CurrentBrowserModalClient()
+                     ->GetModalDialogHost(parent)
+                     ->GetAcceleratedWidget()
+               : gfx::kNullAcceleratedWidget;''',
+         '''    // Use with CEF windowless rendering when a dialog host is available.
+    ModalDialogHost* parent_host =
+        parent ? CurrentBrowserModalClient()->GetModalDialogHost(parent)
+               : nullptr;
+    gfx::AcceleratedWidget parent_widget =
+        parent_host ? parent_host->GetAcceleratedWidget()
+                    : gfx::kNullAcceleratedWidget;''')
+    edit('components/constrained_window/constrained_window_views.cc',
+         '''  // Use with CEF windowless rendering.
+  gfx::AcceleratedWidget parent_widget = parent
+                                             ? CurrentBrowserModalClient()
+                                                   ->GetModalDialogHost(parent)
+                                                   ->GetAcceleratedWidget()
+                                             : gfx::kNullAcceleratedWidget;''',
+         '''  // Use with CEF windowless rendering when a dialog host is available.
+  ModalDialogHost* parent_host =
+      parent ? CurrentBrowserModalClient()->GetModalDialogHost(parent)
+             : nullptr;
+  gfx::AcceleratedWidget parent_widget =
+      parent_host ? parent_host->GetAcceleratedWidget()
+                  : gfx::kNullAcceleratedWidget;''')
 
 # 9. Other places that spell the framework as "<product> Framework".
 def import_nous_gni(path):
@@ -348,9 +378,10 @@ edit(F16, '''#endif
   return DevToolsAgentHost::kTypeOther;
 }''')
 
-# 17. Nous has no private windows: never offer "Open Link in Incognito Window".
-edit(F15, '''    if (show_open_link_off_the_record) {
-      if (features::IsMenuSimplificationEnabled()) {''', '''    if (show_open_link_off_the_record && !nous::IsEmbedded()) {
+# 17. Restore Chrome's native menu availability for Incognito. Also revert the
+#     older Nous patch when reusing a pinned checkout.
+edit(F15, '''    if (show_open_link_off_the_record && !nous::IsEmbedded()) {
+      if (features::IsMenuSimplificationEnabled()) {''', '''    if (show_open_link_off_the_record) {
       if (features::IsMenuSimplificationEnabled()) {''')
 
 print('Nous Core Chromium patches are applied.')
@@ -422,3 +453,103 @@ edit('chrome/browser/external_protocol/BUILD.gn', '''  public_deps = [ ":externa
   deps = [
     "//nous:embedder",
     "//base",''')
+
+# 20. The Nous Library and + menu reflect successful installations from the
+#     Chromium profile's extension registry. Skip Chrome's post-install
+#     bubble, which would otherwise create a second browser window.
+#     The Web Store's origin checks, permission prompt, and signed install
+#     continue through their original Chromium paths.
+EI = 'chrome/browser/ui/extensions/extension_install_ui_desktop.cc'
+include_after(EI, '#include "chrome/browser/ui/extensions/extension_install_ui_desktop.h"\n',
+              EMBEDDER)
+edit(EI, '  if (IsUiDisabled() || skip_post_install_ui() || extension->is_theme()) {',
+     '  if (nous::IsEmbedded() || IsUiDisabled() || skip_post_install_ui() ||\n'
+     '      extension->is_theme()) {')
+edit('chrome/browser/ui/extensions/BUILD.gn',
+     '''    sources += [ "extension_install_ui_desktop.cc" ]
+    deps += [''',
+     '''    sources += [ "extension_install_ui_desktop.cc" ]
+    deps += [
+      "//nous:embedder",''')
+
+# 21. Present the checked external-protocol request as an AppKit sheet for
+#     Nous pages. Chromium still owns the security checks, localized strings,
+#     per-origin permission and final application launch.
+EPD = 'chrome/browser/ui/views/external_protocol_dialog.cc'
+include_after(EPD, '#include "chrome/browser/ui/views/external_protocol_dialog.h"\n',
+              '#include "base/functional/bind.h"\n')
+include_after(EPD, '#include "content/public/browser/web_contents.h"\n', EMBEDDER)
+edit('chrome/browser/ui/views/BUILD.gn',
+     '''    "//components/url_formatter",
+    "//ui/base",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/gfx",
+  ]
+  if (!is_android) {
+    deps += [ "//chrome/browser:shell_integration" ]''',
+     '''    "//components/url_formatter",
+    "//nous:embedder",
+    "//ui/base",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/gfx",
+  ]
+  if (!is_android) {
+    deps += [ "//chrome/browser:shell_integration" ]''')
+edit(EPD, '''  // Windowing system takes ownership.
+  new ExternalProtocolDialog(web_contents, url, program_name, initiating_origin,
+                             std::move(initiator_document));''', '''#if BUILDFLAG(IS_MAC)
+  if (nous::IsEmbedded()) {
+    std::u16string elided_program_name;
+    gfx::ElideString(program_name, 32, &elided_program_name);
+    nous::ExternalProtocolDialogStrings strings = {
+        .title = l10n_util::GetStringFUTF16(IDS_EXTERNAL_PROTOCOL_TITLE,
+                                          elided_program_name),
+        .message = GetMessageTextForOrigin(initiating_origin),
+        .open_button = l10n_util::GetStringFUTF16(
+            IDS_EXTERNAL_PROTOCOL_OK_BUTTON_TEXT, program_name),
+        .cancel_button = l10n_util::GetStringUTF16(
+            IDS_EXTERNAL_PROTOCOL_CANCEL_BUTTON_TEXT),
+        .remember_option = {},
+    };
+    Profile* profile =
+        Profile::FromBrowserContext(web_contents->GetBrowserContext());
+    if (profile->GetPrefs()->GetBoolean(
+            prefs::kExternalProtocolDialogShowAlwaysOpenCheckbox) &&
+        MayRememberAllowDecisionsForThisOrigin(
+            base::OptionalToPtr(initiating_origin))) {
+      strings.remember_option = l10n_util::GetStringFUTF16(
+          IDS_EXTERNAL_PROTOCOL_CHECKBOX_PER_ORIGIN_TEXT,
+          url_formatter::FormatOriginForSecurityDisplay(
+              *initiating_origin,
+              url_formatter::SchemeDisplay::OMIT_CRYPTOGRAPHIC));
+    }
+    nous::ExternalProtocolDialogResponse response = base::BindOnce(
+        [](base::WeakPtr<WebContents> contents, const GURL& url,
+           const std::optional<url::Origin>& origin,
+           const content::WeakDocumentPtr& initiator, bool had_initiator,
+           bool accepted, bool remember) {
+          if (!accepted || !contents ||
+              (had_initiator && !initiator.AsRenderFrameHostIfValid())) {
+            RecordHandleStateMetrics(false, BLOCK);
+            return;
+          }
+          RecordHandleStateMetrics(remember, DONT_BLOCK);
+          if (remember && origin) {
+            SetBlockState(url.GetScheme(), *origin, DONT_BLOCK,
+                          Profile::FromBrowserContext(
+                              contents->GetBrowserContext()));
+          }
+          LaunchUrlWithoutSecurityCheck(url, contents.get(), initiator);
+        },
+        web_contents->GetWeakPtr(), url, initiating_origin, initiator_document,
+        initiator_document.AsRenderFrameHostIfValid() != nullptr);
+    if (nous::RunExternalProtocolDialogHook(web_contents, url, strings,
+                                            response)) {
+      return;
+    }
+  }
+#endif
+
+  // Windowing system takes ownership.
+  new ExternalProtocolDialog(web_contents, url, program_name, initiating_origin,
+                             std::move(initiator_document));''')

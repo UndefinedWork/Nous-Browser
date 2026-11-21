@@ -30,8 +30,11 @@ final class FaviconStore {
     nonisolated private static let maximumBytes = 2 * 1024 * 1024
 
     init(directory: URL? = nil, session: URLSession? = nil) {
+        let cacheName = BrowserRuntimePaths.current.distribution == .production
+            ? "Nous Browser" : "Nous Browser Chromium Preview"
         self.directory = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Nous Browser/Favicons", isDirectory: true)
+            .appendingPathComponent(cacheName, isDirectory: true)
+            .appendingPathComponent("Favicons", isDirectory: true)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 8
         configuration.timeoutIntervalForResource = 12

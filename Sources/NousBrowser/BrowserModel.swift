@@ -152,6 +152,7 @@ extension SpaceLayout {
 @MainActor
 @Observable
 final class BrowserModel {
+    let isPrivate: Bool
     private(set) var tabs: [BrowserTab] = []
     private(set) var selectedTabID: UUID? {
         didSet {
@@ -198,6 +199,7 @@ final class BrowserModel {
     @ObservationIgnored var onInsight: ((InsightsEvent) -> Void)?
     @ObservationIgnored var onPageTitleChanged: ((URL, String) -> Void)?
     @ObservationIgnored var onOpenLinkInNewWindow: ((URL) -> Void)?
+    @ObservationIgnored var onOpenLinkInPrivateWindow: ((URL) -> Void)?
     @ObservationIgnored weak var chromiumPresentationWindow: NSWindow? {
         didSet {
             for tab in tabs { tab.webView.dialogPresentationWindow = chromiumPresentationWindow }
@@ -228,17 +230,20 @@ final class BrowserModel {
     var visibleTabs: [BrowserTab] { activeLayout.allTabIDs.compactMap(tab) }
 
     init(sessionURL: URL? = nil, restoreSession: Bool = true, loadSelectedTab: Bool = true, startWithBlankTab: Bool = false,
-         initialTab: BrowserTab? = nil, spaceStore: BrowserSpaceStore? = nil) {
+         initialTab: BrowserTab? = nil, spaceStore: BrowserSpaceStore? = nil, isPrivate: Bool = false) {
+        self.isPrivate = isPrivate
+        let initialTab = initialTab.flatMap { $0.isPrivate == isPrivate ? $0 : nil }
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Nous Browser", isDirectory: true)
         self.sessionURL = sessionURL ?? directory.appendingPathComponent("session.json")
         // A standalone model keeps its spaces and pins beside its session file.
-        let store = spaceStore ?? BrowserSpaceStore(fileURL: sessionURL.map(BrowserSpaceStore.fileURL(besideSession:)))
+        let store = isPrivate ? BrowserSpaceStore(fileURL: nil)
+            : spaceStore ?? BrowserSpaceStore(fileURL: sessionURL.map(BrowserSpaceStore.fileURL(besideSession:)))
         self.spaceStore = store
         activeSpaceID = store.defaultSpaceID
         for space in store.spaces { layouts[space.id] = SpaceLayout() }
 
-        let session = restoreSession && initialTab == nil
+        let session = !isPrivate && restoreSession && initialTab == nil
             ? (try? Data(contentsOf: self.sessionURL)).flatMap { try? JSONDecoder().decode(BrowserSession.self, from: $0) }
             : nil
         if let session {
@@ -318,7 +323,7 @@ final class BrowserModel {
         }
         // A new window, or a session with nothing left in it, starts with one page.
         if initialTab == nil, session == nil || tabs.isEmpty {
-            let tab = startWithBlankTab
+            let tab = isPrivate || startWithBlankTab
                 ? BrowserTab(owner: self)
                 : BrowserTab(title: "Apple", url: URL(string: "https://www.apple.com"), owner: self)
             add(tab, to: activeSpaceID)
@@ -329,7 +334,7 @@ final class BrowserModel {
         initialTab?.finishNativeLifecycleTransfer()
         synchronizeChromiumLifecycleStates()
         if loadSelectedTab, initialTab == nil { selectedTab?.loadIfNeeded() }
-        storeObserver = NotificationCenter.default.addObserver(forName: .nousSpacesDidChange, object: nil, queue: .main) { [weak self] note in
+        storeObserver = NotificationCenter.default.addObserver(forName: store.changeNotification, object: nil, queue: .main) { [weak self] note in
             let origin = note.object.map { ObjectIdentifier($0 as AnyObject) }
             MainActor.assumeIsolated {
                 guard let self, origin != ObjectIdentifier(self) else { return }
@@ -372,7 +377,7 @@ final class BrowserModel {
             } else if location.section == .regular, let index = layout.regular.firstIndex(of: .tab(anchor)) {
                 layout.regular.insert(.tab(tab.id), at: index + 1)
             } else {
-                // Links from a pinned page start the ordinary list.
+                // A new tab from a pinned page starts the ordinary list.
                 layout.regular.insert(.tab(tab.id), at: 0)
             }
         } else {
@@ -390,7 +395,8 @@ final class BrowserModel {
     // MARK: Tabs
 
     func newTab(url: URL? = nil) {
-        guard !isShutDown, !windowCloseApproved else { return }
+        guard !isShutDown, !windowCloseApproved,
+              !isPrivate || url.flatMap(NativePage.init(url:)) == nil else { return }
         let tab = BrowserTab(url: url, owner: self)
         add(tab, to: activeSpaceID)
         selectedTabID = tab.id
@@ -405,9 +411,17 @@ final class BrowserModel {
         return insertLinkTab(url, after: sourceID, activate: activate)
     }
 
-    /// Library and capture pages: reuse an open tab showing the same page.
-    func openNativePage(_ page: NativePage) {
-        guard !isShutDown, !windowCloseApproved else { return }
+    /// Open new captures beside their source and reuse existing Library or capture pages when browsing.
+    func openNativePage(_ page: NativePage, after sourceID: UUID? = nil) {
+        guard !isPrivate, !isShutDown, !windowCloseApproved else { return }
+        if case .screenshot = page, let sourceID, let source = tab(sourceID) {
+            let screenshot = BrowserTab(url: page.url, owner: self)
+            screenshot.screenshotSourceTabID = sourceID
+            add(screenshot, to: source.spaceID ?? activeSpaceID, after: sourceID)
+            selectTab(screenshot.id)
+            onInsight?(.tabOpened)
+            return
+        }
         if let existing = visibleTabs.first(where: { $0.nativePage == page }) {
             selectTab(existing.id)
             return
@@ -490,7 +504,7 @@ final class BrowserModel {
     /// `index` is a slot in the active space's ordinary list.
     @discardableResult
     func adoptTransferredTab(_ tab: BrowserTab, at index: Int) -> Bool {
-        guard tab.owner == nil, canAdoptTransferredTab(withID: tab.id) else { return false }
+        guard tab.isPrivate == isPrivate, tab.owner == nil, canAdoptTransferredTab(withID: tab.id) else { return false }
         tab.owner = self
         tab.spaceID = activeSpaceID
         tab.isPinned = false
@@ -1071,6 +1085,7 @@ final class BrowserModel {
         let removed = tabs.filter { ids.contains($0.id) }
         guard !removed.isEmpty else { return }
         let wasSelected = selectedTabID.map(ids.contains) ?? false
+        let screenshotSourceID = removed.first { $0.id == selectedTabID }?.screenshotSourceTabID
         let siblings = activeLayout.regularTabIDs
         let previousIndex = selectedTabID.flatMap { siblings.firstIndex(of: $0) } ?? 0
         for tab in removed {
@@ -1085,7 +1100,9 @@ final class BrowserModel {
                 synchronizeChromiumLifecycleState(for: fresh)
                 continue
             }
-            closedTabs.append(.init(id: tab.id, title: tab.title, url: tab.url, isPinned: false))
+            if !isPrivate {
+                closedTabs.append(.init(id: tab.id, title: tab.title, url: tab.url, isPinned: false))
+            }
             if let space = tab.spaceID { layouts[space]?.removeTab(tab.id) }
             tabs.removeAll { $0 === tab }
             tab.shutdown()
@@ -1093,6 +1110,10 @@ final class BrowserModel {
         if closedTabs.count > 20 { closedTabs.removeFirst(closedTabs.count - 20) }
         if tabs.isEmpty { newTab() }
         else if wasSelected {
+            if let screenshotSourceID, !ids.contains(screenshotSourceID), tab(screenshotSourceID) != nil {
+                selectTab(screenshotSourceID)
+                return
+            }
             let remaining = activeLayout.regularTabIDs
             selectedTabID = remaining.isEmpty ? nil : remaining[min(previousIndex, remaining.count - 1)]
             selectedTab?.loadIfNeeded()
@@ -1241,7 +1262,7 @@ final class BrowserModel {
     // MARK: Persistence
 
     func persistSession() {
-        guard !isRestoring, !isShutDown else { return }
+        guard !isPrivate, !isRestoring, !isShutDown else { return }
         do { try persistForRestart() }
         catch { NSLog("Nous Browser: Could not save tab session: %@", error.localizedDescription) }
     }
@@ -1258,6 +1279,7 @@ final class BrowserModel {
     /// autosaves retain their best-effort wrapper above; this path never reports
     /// success for an already shut-down or still-restoring model.
     func persistForRestart() throws {
+        guard !isPrivate else { return }
         guard !isRestoring, !isShutDown else {
             throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: sessionURL.path])
         }
@@ -1297,7 +1319,7 @@ final class BrowserModel {
     }
 
     func scheduleSave() {
-        guard !isRestoring, !isShutDown else { return }
+        guard !isPrivate, !isRestoring, !isShutDown else { return }
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(350))
@@ -1318,6 +1340,7 @@ final class BrowserModel {
         onVisit = nil
         onPageTitleChanged = nil
         onOpenLinkInNewWindow = nil
+        onOpenLinkInPrivateWindow = nil
         chromiumPresentationWindow = nil
         onCreateChromiumPopupWindow = nil
         onOpenChromiumImageWindow = nil
@@ -1334,12 +1357,12 @@ final class BrowserModel {
     }
 
     func recordVisit(_ url: URL, title: String) {
-        guard !isShutDown else { return }
+        guard !isPrivate, !isShutDown else { return }
         onVisit?(url, title)
     }
 
     func recordPageTitleChange(_ url: URL, title: String) {
-        guard !isShutDown else { return }
+        guard !isPrivate, !isShutDown else { return }
         onPageTitleChanged?(url, title)
     }
 

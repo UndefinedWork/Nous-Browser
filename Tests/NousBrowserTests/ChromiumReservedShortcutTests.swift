@@ -22,7 +22,7 @@ struct ChromiumReservedShortcutTests {
         for key in ["l", "L", "t", "n", "w", "r", "[", "]", "1", "5", "9"] {
             #expect(ChromiumReservedBrowserShortcuts.isReserved(try event(key)))
         }
-        for key in ["t", "w", "r", "[", "]", "{", "}"] {
+        for key in ["n", "t", "w", "r", "[", "]", "{", "}"] {
             #expect(ChromiumReservedBrowserShortcuts.isReserved(try event(key, modifiers: [.command, .shift])))
         }
         for key in ["a", "c", "v", "x", "z", "k", "p", "f", "g", "0", "=", "-", "\r", "\t"] {
@@ -112,6 +112,16 @@ struct ChromiumReservedShortcutTests {
             }
             #expect(target.invocations == before + 1)
         }
+        let privateWindow = NSMenuItem(title: "Private Window", action: #selector(ReservedShortcutTarget.invoke(_:)), keyEquivalent: "N")
+        let privateModifiers: NSEvent.ModifierFlags = [.command, .shift]
+        privateWindow.keyEquivalentModifierMask = privateModifiers
+        privateWindow.target = target
+        menu.addItem(privateWindow)
+        let beforePrivateWindow = target.invocations
+        #expect(ChromiumReservedBrowserShortcuts.dispatch(try event("N", modifiers: privateModifiers), through: menu))
+        #expect(ChromiumReservedBrowserShortcuts.dispatch(try event("N", modifiers: privateModifiers, isRepeat: true), through: menu))
+        #expect(target.invocations == beforePrivateWindow + 1)
+
         let beforeClose = target.invocations
         #expect(ChromiumReservedBrowserShortcuts.dispatch(try event("w", isRepeat: true), through: menu))
         #expect(target.invocations == beforeClose + 1)

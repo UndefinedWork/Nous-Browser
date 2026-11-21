@@ -27,7 +27,7 @@ enum BrowserHelpWindow {
 
 private struct BrowserShortcutHelp: View {
     private let shortcuts: [(String, String)] = [
-        ("New Tab", "⌘T"), ("New Window", "⌘N"),
+        ("New Tab", "⌘T"), ("New Window", "⌘N"), ("New Private Window", "⇧⌘N"),
         ("Close Tab", "⌘W"), ("Close Window", "⇧⌘W"),
         ("Reopen Closed Tab", "⇧⌘T"), ("Open Address…", "⌘L"),
         ("Expand or Collapse Sidebar", "⌘/"), ("Hide or Show Sidebar", "⌘."),

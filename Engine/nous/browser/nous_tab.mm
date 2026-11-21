@@ -3,7 +3,7 @@
 //
 // Event names and payloads are the contract the Swift UI already consumes:
 // state, load-start, load-end, progress, error, favicon, open-tab,
-// open-window, search, binding, closed.
+// open-window, open-private-window, search, binding, closed.
 
 #import "nous/public/NousChromium.h"
 
@@ -30,6 +30,7 @@
 #include "content/public/common/url_utils.h"
 #include "chrome/browser/file_select_helper.h"
 #include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
+#include "chrome/browser/picture_in_picture/scoped_tuck_picture_in_picture.h"
 #include "chrome/browser/printing/print_view_manager_common.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/permission_bubble/permission_prompt.h"
@@ -116,6 +117,84 @@ typedef void (^NBCommandCompletion)(NSDictionary* result, NSError* error);
 }
 @end
 
+// Match Chrome's activation protection so the opening gesture cannot also
+// confirm the sheet. A floating PiP window must not cover the confirmation.
+@interface NBExternalProtocolInputProtection : NSObject
+- (instancetype)initWithOpenButton:(NSButton*)button
+                      cancelButton:(NSButton*)cancelButton
+                            sheet:(NSWindow*)sheet
+                           parent:(NSWindow*)parent;
+- (void)stop;
+@end
+
+@implementation NBExternalProtocolInputProtection {
+  __weak NSButton* _openButton;
+  id _cancelKeyMonitor;
+  NSUInteger _activation;
+  std::unique_ptr<ScopedTuckPictureInPicture> _pictureInPictureProtection;
+}
+- (instancetype)initWithOpenButton:(NSButton*)button
+                      cancelButton:(NSButton*)cancelButton
+                            sheet:(NSWindow*)sheet
+                           parent:(NSWindow*)parent {
+  if ((self = [super init])) {
+    _openButton = button;
+    _pictureInPictureProtection = std::make_unique<ScopedTuckPictureInPicture>();
+    NSNotificationCenter* center = NSNotificationCenter.defaultCenter;
+    [center addObserver:self selector:@selector(protectActivation:)
+                   name:NSWindowDidBecomeKeyNotification object:sheet];
+    [center addObserver:self selector:@selector(protectActivation:)
+                   name:NSWindowDidBecomeKeyNotification object:parent];
+    [center addObserver:self selector:@selector(protectActivation:)
+                   name:NSApplicationDidBecomeActiveNotification object:NSApp];
+    // AppKit assigns Return to the default button, replacing its Escape
+    // equivalent. Let the attached sheet also use Escape to press Cancel.
+    __weak NSButton* weakCancel = cancelButton;
+    __weak NSWindow* weakSheet = sheet;
+    __weak NSWindow* weakParent = parent;
+    _cancelKeyMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown
+        handler:^NSEvent*(NSEvent* event) {
+          const NSEventModifierFlags modifiers = event.modifierFlags &
+              (NSEventModifierFlagShift | NSEventModifierFlagControl |
+               NSEventModifierFlagOption | NSEventModifierFlagCommand);
+          if (modifiers || ![event.charactersIgnoringModifiers isEqualToString:@"\033"])
+            return event;
+          NSWindow* sheet = weakSheet;
+          NSWindow* parent = weakParent;
+          NSWindow* eventWindow = event.window ?: NSApp.keyWindow;
+          if (!sheet || !parent || sheet.sheetParent != parent ||
+              (eventWindow != sheet && eventWindow != parent)) {
+            return event;
+          }
+          [weakCancel performClick:nil];
+          return nil;
+        }];
+    [self protectActivation:nil];
+  }
+  return self;
+}
+- (void)protectActivation:(NSNotification*)notification {
+  _openButton.enabled = NO;
+  const NSUInteger activation = ++_activation;
+  __weak NBExternalProtocolInputProtection* weak = self;
+  const int64_t interval = static_cast<int64_t>(NSEvent.doubleClickInterval * NSEC_PER_SEC);
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, interval), dispatch_get_main_queue(), ^{
+    NBExternalProtocolInputProtection* protection = weak;
+    if (protection && protection->_activation == activation)
+      protection->_openButton.enabled = YES;
+  });
+}
+- (void)stop {
+  ++_activation;
+  [NSNotificationCenter.defaultCenter removeObserver:self];
+  if (_cancelKeyMonitor) {
+    [NSEvent removeMonitor:_cancelKeyMonitor];
+    _cancelKeyMonitor = nil;
+  }
+  _pictureInPictureProtection.reset();
+}
+@end
+
 @interface NBChromiumView () {
  @public
   std::unique_ptr<NousTab> _tab;
@@ -137,6 +216,9 @@ typedef void (^NBCommandCompletion)(NSDictionary* result, NSError* error);
   __weak NSWindow* _dialogPresentationWindow;
   BOOL _managesDialogPresentationWindow;
   NSUInteger _dialogPresentationGeneration;
+  NSAlert* _pendingExternalProtocolAlert;
+  void (^_pendingExternalProtocolCompletion)(NSModalResponse);
+  __weak NBPageDialog* _externalProtocolDialog;
   void (^_findCompletion)(BOOL);
   BOOL _activeInWindow;
   BOOL _pinned;
@@ -163,6 +245,9 @@ typedef void (^NBCommandCompletion)(NSDictionary* result, NSError* error);
 - (void)cancelCommands:(NSError*)error;
 - (void)invalidateContexts;
 - (void)cancelPageDialogs;
+- (void)queueExternalProtocolAlert:(NSAlert*)alert completion:(void (^)(NSModalResponse))completion;
+- (void)presentPendingExternalProtocolAlert;
+- (void)cancelExternalProtocolDialog;
 - (void)findReplyCount:(int)count final:(BOOL)finalUpdate;
 - (void)beforeUnloadFired:(BOOL)proceed;
 - (void)pageFullscreenChanged:(BOOL)fullscreen;
@@ -254,7 +339,8 @@ class NousTab final : public content::WebContentsDelegate,
                                                    options:0
                                                      error:nil];
     if (!data) return;
-    if (getenv("NOUS_TRACE")) fprintf(stderr, "Nous devtools -> %d %s\n", identifier, method.UTF8String);
+    if (contents_ && !contents_->GetBrowserContext()->IsOffTheRecord() && getenv("NOUS_TRACE"))
+      fprintf(stderr, "Nous devtools -> %d %s\n", identifier, method.UTF8String);
     agent_->DispatchProtocolMessage(
         this, base::span<const uint8_t>(static_cast<const uint8_t*>(data.bytes), data.length));
   }
@@ -262,7 +348,7 @@ class NousTab final : public content::WebContentsDelegate,
   // DevToolsAgentHostClient ------------------------------------------------
   void DispatchProtocolMessage(content::DevToolsAgentHost*, base::span<const uint8_t> message) override {
     NSData* data = [NSData dataWithBytes:message.data() length:message.size()];
-    if (getenv("NOUS_TRACE"))
+    if (contents_ && !contents_->GetBrowserContext()->IsOffTheRecord() && getenv("NOUS_TRACE"))
       fprintf(stderr, "Nous devtools <- %.*s\n", (int)std::min<size_t>(message.size(), 160), (const char*)message.data());
     id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
     if ([parsed isKindOfClass:NSDictionary.class]) [view_ devToolsMessage:parsed];
@@ -353,9 +439,13 @@ class NousTab final : public content::WebContentsDelegate,
       case WindowOpenDisposition::NEW_POPUP:
         [view_ emit:@"open-window" payload:@{@"url" : url}];
         return nullptr;
-      default:
-        // OFF_THE_RECORD has no private window yet; never downgrade it to a
-        // regular-profile tab. SAVE_TO_DISK is handled by Chrome itself.
+      case WindowOpenDisposition::OFF_THE_RECORD:
+        if (!source->GetBrowserContext()->IsOffTheRecord() &&
+            params.started_from_context_menu && params.url.SchemeIsHTTPOrHTTPS()) {
+          [view_ emit:@"open-private-window" payload:@{@"url" : url}];
+        }
+        return nullptr;
+      default: // SAVE_TO_DISK is handled by Chrome itself.
         return nullptr;
     }
   }
@@ -374,7 +464,8 @@ class NousTab final : public content::WebContentsDelegate,
                             disposition == WindowOpenDisposition::NEW_POPUP;
     NBChromiumView* target =
         view.popupHandler(new_window, disposition != WindowOpenDisposition::NEW_BACKGROUND_TAB);
-    if (!target) {
+    if (!target ||
+        target.isPrivateBrowsing != new_contents->GetBrowserContext()->IsOffTheRecord()) {
       if (was_blocked) *was_blocked = true;
       return nullptr;
     }
@@ -490,6 +581,7 @@ class NousTab final : public content::WebContentsDelegate,
   void PrimaryMainFrameRenderProcessGone(base::TerminationStatus status) override {
     NBChromiumView* view = view_;
     view->_navigationGeneration++;
+    [view cancelExternalProtocolDialog];
     [view invalidateContexts];
     [view cancelCommands:Failure(@"The page renderer was closed.")];
     [view emit:@"error" payload:@{@"message" : Localized(@"The webpage stopped responding. Reload to continue.")}];
@@ -571,6 +663,12 @@ namespace nous {
 NSWindow* WindowForWebContents(content::WebContents* contents) {
   NousTab* tab = NousTab::From(contents);
   return tab ? tab->view().dialogPresentationWindow : nil;
+}
+
+content::WebContents* WebContentsForView(NBChromiumView* view) {
+  if (!view) return nullptr;
+  NousTab* tab = [view tab];
+  return tab ? tab->contents() : nullptr;
 }
 }  // namespace nous
 
@@ -711,6 +809,49 @@ static std::unique_ptr<permissions::PermissionPrompt> CreateNousPermissionPrompt
   return std::make_unique<NousPermissionPrompt>(view, delegate);
 }
 
+static bool PresentNousExternalProtocolDialog(
+    content::WebContents* contents,
+    const GURL& url,
+    const nous::ExternalProtocolDialogStrings& strings,
+    nous::ExternalProtocolDialogResponse& response) {
+  NousTab* tab = NousTab::From(contents);
+  if (!tab) return false;
+  NBChromiumView* view = tab->view();
+  if (!view) {
+    std::move(response).Run(false, false);
+    return true;
+  }
+
+  NSAlert* alert = [NSAlert new];
+  alert.messageText = String(strings.title);
+  alert.informativeText = String(strings.message);
+  // Keep Cancel as the native Return action.
+  NSButton* cancel = [alert addButtonWithTitle:String(strings.cancel_button)];
+  NSButton* open = [alert addButtonWithTitle:String(strings.open_button)];
+  open.keyEquivalent = @"";
+
+  NSURL* target = [NSURL URLWithString:String(url.spec())];
+  NSURL* application = target ? [NSWorkspace.sharedWorkspace URLForApplicationToOpenURL:target] : nil;
+  if (application.isFileURL)
+    alert.icon = [NSWorkspace.sharedWorkspace iconForFile:application.path];
+
+  if (!strings.remember_option.empty()) {
+    alert.showsSuppressionButton = YES;
+    alert.suppressionButton.title = String(strings.remember_option);
+    alert.suppressionButton.state = NSControlStateValueOff;
+  }
+  alert.window.defaultButtonCell = (NSButtonCell*)cancel.cell;
+
+  __block nous::ExternalProtocolDialogResponse callback = std::move(response);
+  [view queueExternalProtocolAlert:alert completion:^(NSModalResponse result) {
+    const bool accepted = result == NSAlertSecondButtonReturn;
+    const bool remember = accepted && alert.showsSuppressionButton &&
+                          alert.suppressionButton.state == NSControlStateValueOn;
+    if (callback) std::move(callback).Run(accepted, remember);
+  }];
+  return true;
+}
+
 // Chrome's normal external-protocol cleanup requires a Chrome TabStripModel.
 // Nous owns the tab strip, so apply the same initial-navigation / sibling-tab
 // rule here, and never close the existing page that initiated the request.
@@ -743,6 +884,7 @@ static void DidLaunchExternalProtocol(content::WebContents* contents) {
 namespace nous {
 void InstallTabServices() {
   SetCreatePermissionPromptFunction(&CreateNousPermissionPrompt);
+  SetExternalProtocolDialogHook(&PresentNousExternalProtocolDialog);
   SetExternalProtocolLaunchedHook(&DidLaunchExternalProtocol);
 }
 void CloseAllTabs() {
@@ -784,6 +926,7 @@ void CloseAllTabs() {
 }
 
 - (void)dealloc {
+  [self cancelExternalProtocolDialog];
   [self cancelCommands:Failure(@"The tab was released.")];
   _tab.reset();
 }
@@ -841,7 +984,7 @@ void CloseAllTabs() {
 // it needs an owning window for dialogs (same rule as the CEF host).
 - (void)ensureContents {
   if (_tab || _closed || _reserved) return;
-  Profile* profile = nous::GetProfile();
+  Profile* profile = self.isPrivateBrowsing ? nous::GetPrivateProfile() : nous::GetProfile();
   if (!profile || !self.dialogPresentationWindow) {
     LOG(WARNING) << "Nous: page creation deferred (profile=" << !!profile
                  << " window=" << !!self.dialogPresentationWindow << ")";
@@ -1060,14 +1203,23 @@ void CloseAllTabs() {
   if (!_tab) return;
   NSView* native = _tab->NativeView();
   if (native.hidden == visible) native.hidden = !visible;
-  if (visible) _tab->contents()->WasShown();
-  else _tab->contents()->WasHidden();
+  if (visible) {
+    _tab->contents()->WasShown();
+    [self presentPendingExternalProtocolAlert];
+  } else {
+    _tab->contents()->WasHidden();
+  }
 }
 - (void)setTabActiveInWindow:(BOOL)active pinned:(BOOL)pinned autoDiscardable:(BOOL)autoDiscardable {
   _activeInWindow = active;
   _pinned = pinned;
   _autoDiscardable = autoDiscardable;
-  if (!active) [self exitPageFullscreen];
+  if (active) {
+    [self presentPendingExternalProtocolAlert];
+  } else {
+    [_externalProtocolDialog finish:NSModalResponseCancel];
+    [self exitPageFullscreen];
+  }
 }
 
 - (void)setZoomFactor:(double)value {
@@ -1111,7 +1263,53 @@ void CloseAllTabs() {
                 completionHandler:^(NSModalResponse response) { [dialog finish:response]; }];
   return dialog;
 }
+- (void)queueExternalProtocolAlert:(NSAlert*)alert completion:(void (^)(NSModalResponse))completion {
+  if (_closed || _pendingExternalProtocolAlert || _externalProtocolDialog) {
+    completion(NSModalResponseCancel);
+    return;
+  }
+  _pendingExternalProtocolAlert = alert;
+  _pendingExternalProtocolCompletion = [completion copy];
+  [self presentPendingExternalProtocolAlert];
+}
+- (void)presentPendingExternalProtocolAlert {
+  if (!_pendingExternalProtocolAlert || !_activeInWindow) return;
+  NSWindow* parent = self.dialogPresentationWindow;
+  // Foreground selection precedes mounting for newly created auxiliary tabs.
+  // Leave a background request pending until its own page is really visible.
+  if (!parent || self.window != parent || self.isHiddenOrHasHiddenAncestor) return;
+
+  NSAlert* alert = _pendingExternalProtocolAlert;
+  void (^completion)(NSModalResponse) = _pendingExternalProtocolCompletion;
+  _pendingExternalProtocolAlert = nil;
+  _pendingExternalProtocolCompletion = nil;
+  if (_closed || parent.attachedSheet) {
+    completion(NSModalResponseCancel);
+    return;
+  }
+
+  NBExternalProtocolInputProtection* protection =
+      [[NBExternalProtocolInputProtection alloc] initWithOpenButton:alert.buttons[1]
+                                                      cancelButton:alert.buttons[0]
+                                                            sheet:alert.window
+                                                           parent:parent];
+  __weak NBChromiumView* weak = self;
+  _externalProtocolDialog = [self presentAlert:alert javaScript:NO completion:^(NSModalResponse response) {
+    [protection stop];
+    NBChromiumView* view = weak;
+    if (view) view->_externalProtocolDialog = nil;
+    completion(view && view->_activeInWindow ? response : NSModalResponseCancel);
+  }];
+}
+- (void)cancelExternalProtocolDialog {
+  void (^completion)(NSModalResponse) = _pendingExternalProtocolCompletion;
+  _pendingExternalProtocolAlert = nil;
+  _pendingExternalProtocolCompletion = nil;
+  if (completion) completion(NSModalResponseCancel);
+  [_externalProtocolDialog finish:NSModalResponseCancel];
+}
 - (void)cancelPageDialogs {
+  [self cancelExternalProtocolDialog];
   for (NBPageDialog* dialog in _dialogs.allObjects) [dialog finish:NSModalResponseCancel];
 }
 

@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import NousBrowser
 
-@Suite("Pinning and duplicating tabs")
+@Suite("Tab management")
 struct BrowserTabManagementTests {
     @MainActor private func fixture(_ tabs: [BrowserSession.Tab], selected: UUID? = nil) throws -> (model: BrowserModel, directory: URL) {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -129,6 +129,27 @@ struct BrowserTabManagementTests {
         #expect(source.isPinned)
         #expect(source.webView.url == nil)
         #expect(duplicate.webView !== source.webView)
+    }
+
+    @Test @MainActor func screenshotOpensBelowItsSourceAndReturnsToItOnClose() async throws {
+        let a = UUID(), source = UUID(), c = UUID()
+        let setup = try fixture([a, source, c].map { .init(id: $0, title: "Blank", url: nil) }, selected: source)
+        defer { try? FileManager.default.removeItem(at: setup.directory) }
+        let model = setup.model
+        let page = NativePage.screenshot("capture.png")
+
+        // The selection can change while the system screenshot UI is open.
+        model.selectTab(c)
+        model.openNativePage(page, after: source)
+        let screenshot = try #require(model.selectedTab)
+        #expect(screenshot.nativePage == page)
+        #expect(model.tabs.map(\.id) == [a, source, screenshot.id, c])
+        #expect(model.tab(source)?.url == nil)
+
+        model.closeTab(screenshot.id)
+        try await waitForBrowserTest { model.tab(screenshot.id) == nil }
+        #expect(model.selectedTabID == source)
+        #expect(model.tabs.map(\.id) == [a, source, c])
     }
 
     @Test @MainActor func closingAPinUnloadsItInPlaceAndKeepsItPinned() async throws {

@@ -210,15 +210,12 @@ nonisolated struct SpaceLayout: Equatable, Sendable {
 
 // MARK: - Store
 
-extension Notification.Name {
-    static let nousSpacesDidChange = Notification.Name("NousSpacesDidChange")
-}
-
-/// Shared by every window. Each window mirrors the pinned items into its own
-/// live tabs and is told about changes made by another window.
+/// The regular windows share a store. Each window mirrors the store's pinned
+/// items into its own live tabs.
 @MainActor
 @Observable
 final class BrowserSpaceStore {
+    let changeNotification = Notification.Name("NousSpacesDidChange.\(UUID())")
     private(set) var spaces: [BrowserSpaceRecord]
     /// The space a new window opens in.
     private(set) var lastActiveSpaceID: UUID?
@@ -349,7 +346,7 @@ final class BrowserSpaceStore {
 
     private func changed(origin: AnyObject?) {
         scheduleSave()
-        NotificationCenter.default.post(name: .nousSpacesDidChange, object: origin)
+        NotificationCenter.default.post(name: changeNotification, object: origin)
     }
 
     private func scheduleSave() {

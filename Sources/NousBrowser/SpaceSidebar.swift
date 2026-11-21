@@ -1249,8 +1249,20 @@ private struct SidebarControls: View {
             NavigationCluster(controller: controller, vertical: compact)
                 .position(x: compact ? 28 : BrowserDesign.inset + 42, y: compact ? size.height - 56 : size.height - 28)
 
-            LibraryButton(controller: controller)
-                .position(x: compact ? 28 : size.width - 28, y: compact ? size.height - 124 : size.height - 28)
+            Group {
+                if model.isPrivate {
+                    Image(systemName: "eye.slash")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .frame(width: BrowserDesign.bottomButtonSize, height: BrowserDesign.bottomButtonSize)
+                        .glassEffect(.regular, in: Circle())
+                        .accessibilityLabel(L10n.string("Private Browsing"))
+                        .help(L10n.string("Private Browsing"))
+                } else {
+                    LibraryButton(controller: controller)
+                }
+            }
+            .position(x: compact ? 28 : size.width - 28, y: compact ? size.height - 124 : size.height - 28)
 
             // The dots live in the free space between the navigation capsule
             // and the Library button, keeping 8pt clear of each; a narrow
@@ -1386,7 +1398,7 @@ private struct LibraryButton: View {
 
     var body: some View {
         let updater = BrowserUpdater.shared
-        let active = downloads.records.filter { $0.state.isActive }
+        let active = downloads.activeRegularDownloads
         GlassSymbolButton("rectangle.stack", label: L10n.string("Library"), help: L10n.string("Library") + "  ⇧⌘L",
                           size: BrowserDesign.bottomButtonSize, symbolSize: 12, symbolWeight: .regular) {
             controller.model.openNativePage(.library(updater.showsButton ? .updates : active.isEmpty ? .all : .downloads))

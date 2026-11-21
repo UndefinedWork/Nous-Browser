@@ -119,6 +119,11 @@
 "Bing" = "Bing";
 "DuckDuckGo" = "DuckDuckGo";
 "Baidu" = "Baidu";
+"Yahoo!" = "Yahoo!";
+"Brave Search" = "Brave Search";
+"Ecosia" = "Ecosia";
+"Qwant" = "Qwant";
+"Startpage" = "Startpage";
 "Choose how Nous Browser looks." = "Escolha a aparência do Nous Browser.";
 "Password Import" = "Importação de Senhas";
 "Reload Without Cache" = "Recarregar sem Cache";
@@ -517,3 +522,23 @@
 "from this time yesterday" = "em relação a ontem neste horário";
 "from this point last week" = "em relação à semana passada até agora";
 "from this point last month" = "em relação ao mês passado até agora";
+
+"Default Browser" = "Navegador padrão";
+"Make Default" = "Definir como padrão";
+"Nous Browser is your default web browser." = "O Nous Browser é seu navegador padrão.";
+"Nous Browser isn’t your default web browser." = "O Nous Browser não é seu navegador padrão.";
+"Couldn’t set Nous Browser as the default web browser." = "Não foi possível definir o Nous Browser como navegador padrão.";
+"New Private Window" = "Nova janela privada";
+"Private Browsing" = "Navegação privada";
+"Browsing history isn’t saved. Site data is cleared when you close all private windows." = "O histórico de navegação não é salvo. Os dados dos sites são apagados ao fechar todas as janelas privadas.";
+"Extensions" = "Extensões";
+"Extensions are unavailable in this build." = "As extensões não estão disponíveis nesta versão.";
+"No Extensions Installed" = "Nenhuma extensão instalada";
+"Installed Extensions" = "Extensões instaladas";
+"Open Chrome Web Store" = "Abrir a Chrome Web Store";
+"Manage Extensions" = "Gerenciar extensões";
+"Disabled" = "Desativada";
+"Enable Extension" = "Ativar extensão";
+"Disable Extension" = "Desativar extensão";
+"Remove Extension…" = "Remover extensão…";
+"Extension Options" = "Opções da extensão";

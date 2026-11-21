@@ -27,6 +27,7 @@
 #include "components/history/core/browser/history_service.h"
 #include "components/keyed_service/core/service_access_type.h"
 #include "components/download/public/common/download_item.h"
+#include "components/download/public/common/download_source.h"
 #include "components/download/public/common/download_target_info.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/download_item_utils.h"
@@ -93,17 +94,25 @@ class NousDownloadManagerDelegate final : public ChromeDownloadManagerDelegate {
 
   bool DetermineDownloadTarget(download::DownloadItem *item,
                                download::DownloadTargetCallback *callback) override {
-    if (getenv("NOUS_TRACE")) fprintf(stderr, "Nous: download target requested %s\n", item->GetURL().spec().c_str());
+    // The Web Store installer owns its approved CRX and assigns a temporary
+    // destination under the profile. Let Chromium finish and remove it there.
+    if (item->GetDownloadSource() == download::DownloadSource::EXTENSION_INSTALLER) {
+      return ChromeDownloadManagerDelegate::DetermineDownloadTarget(item, callback);
+    }
+
+    content::BrowserContext *context = content::DownloadItemUtils::GetBrowserContext(item);
+    const bool is_private = context && context->IsOffTheRecord();
+    if (!is_private && getenv("NOUS_TRACE"))
+      fprintf(stderr, "Nous: download target requested %s\n", item->GetURL().spec().c_str());
     download::DownloadTargetCallback original = std::move(*callback);
     const std::string guid = item->GetGuid();
-    content::BrowserContext *context = content::DownloadItemUtils::GetBrowserContext(item);
     content::DownloadManager *manager = context ? context->GetDownloadManager() : nullptr;
     *callback = base::BindOnce(
-        [](std::string guid, content::DownloadManager *manager,
+        [](std::string guid, content::DownloadManager *manager, bool is_private,
            download::DownloadTargetCallback original,
            download::DownloadTargetInfo info) {
           download::DownloadItem *found = manager ? manager->GetDownloadByGuid(guid) : nullptr;
-          if (getenv("NOUS_TRACE"))
+          if (!is_private && getenv("NOUS_TRACE"))
             fprintf(stderr, "Nous: download target found=%d path=%s reason=%d\n", found != nullptr,
                     info.target_path.value().c_str(), static_cast<int>(info.interrupt_reason));
           if (!found || info.target_path.empty() ||
@@ -115,7 +124,7 @@ class NousDownloadManagerDelegate final : public ChromeDownloadManagerDelegate {
                                                       target:std::move(info)
                                                     callback:std::move(original)];
         },
-        guid, manager, std::move(original));
+        guid, manager, is_private, std::move(original));
     return ChromeDownloadManagerDelegate::DetermineDownloadTarget(item, callback);
   }
 
@@ -177,8 +186,10 @@ class NousDownloadManagerDelegate final : public ChromeDownloadManagerDelegate {
   _callback = std::move(callback);
   _observer = std::make_unique<ItemObserver>(self, item);
   self.hasDurableObservation = YES;
+  content::BrowserContext* context = content::DownloadItemUtils::GetBrowserContext(item);
   self.snapshot = @{@"state" : @0, @"received" : @(item->GetReceivedBytes()),
-                    @"total" : @(item->GetTotalBytes()), @"percent" : @(item->PercentComplete())};
+                    @"total" : @(item->GetTotalBytes()), @"percent" : @(item->PercentComplete()),
+                    @"privateBrowsing" : @(context && context->IsOffTheRecord())};
 }
 
 - (void)chooseDestination:(NSURL *)url {
@@ -265,6 +276,14 @@ class NousDownloadManagerDelegate final : public ChromeDownloadManagerDelegate {
 - (void)beginItem:(download::DownloadItem *)item
            target:(download::DownloadTargetInfo)info
          callback:(download::DownloadTargetCallback)callback {
+  content::BrowserContext* context = content::DownloadItemUtils::GetBrowserContext(item);
+  if (context && context->IsOffTheRecord() && context != nous::GetPrivateProfile()) {
+    // Target selection may finish while an ended session's renderers unwind.
+    download::DownloadTargetInfo cancelled;
+    cancelled.interrupt_reason = download::DOWNLOAD_INTERRUPT_REASON_USER_CANCELED;
+    std::move(callback).Run(std::move(cancelled));
+    return;
+  }
   NBChromiumDownloadJob *job = [NBChromiumDownloadJob new];
   job.identifier = NSUUID.UUID.UUIDString;
   job.suggestedFilename = base::SysUTF8ToNSString(info.target_path.BaseName().value());
@@ -293,6 +312,7 @@ void InstallDownloadDelegate(Profile *profile) {
   auto delegate = std::make_unique<NousDownloadManagerDelegate>(profile);
   NousDownloadManagerDelegate *installed = delegate.get();
   service->SetDownloadManagerDelegateForTesting(std::move(delegate));
+  if (profile->IsOffTheRecord()) return;
   // The replaced delegate had already asked history for the next download
   // id; without asking again every download waited for an id forever, so
   // nothing (Save Image/Video/Link As, any download) ever started.

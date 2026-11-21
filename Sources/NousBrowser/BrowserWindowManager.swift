@@ -1,4 +1,5 @@
 import AppKit
+import NousCore
 import Observation
 import SwiftUI
 
@@ -17,6 +18,7 @@ final class BrowserWindowManager {
     private(set) var windows: [BrowserWindowContext] = []
     private(set) var activeWindowID: UUID?
     private(set) var keyWindowID: UUID?
+    @ObservationIgnored private var lastActiveRegularWindowID: UUID?
 
     @ObservationIgnored private let workspace: BrowserWorkspaceStore
     @ObservationIgnored private let showsWindows: Bool
@@ -24,8 +26,10 @@ final class BrowserWindowManager {
     /// The last window the user closed. Its session file keeps its tabs; the
     /// next window (Dock, ⌘N, a capture, or the next launch) reopens it.
     @ObservationIgnored private var reopenableSession: BrowserWindowSession?
+    var regularWindows: [BrowserWindowContext] { windows.filter { !$0.controller.model.isPrivate } }
     private var manifestWindows: [BrowserWindowSession] {
-        windows.isEmpty ? reopenableSession.map { [$0] } ?? [] : windows.map(\.session)
+        let sessions = regularWindows.map(\.session)
+        return sessions.isEmpty ? reopenableSession.map { [$0] } ?? [] : sessions
     }
     @ObservationIgnored private var isTerminating = false
     @ObservationIgnored private var terminationCallbacks: [(Bool) -> Void] = []
@@ -35,6 +39,13 @@ final class BrowserWindowManager {
         windows.first { $0.session.id == activeWindowID } ?? windows.last
     }
     var activeController: BrowserController? { activeContext?.controller }
+    var activeRegularContext: BrowserWindowContext? {
+        let regular = regularWindows
+        return regular.first { $0.session.id == lastActiveRegularWindowID } ?? regular.last
+    }
+    var canOpenPrivateWindows: Bool {
+        !isTerminating && NBChromiumRuntime.canOpenPrivateWindows()
+    }
     /// The browser window the user is looking at: the active one when it is on
     /// the current Space, else the frontmost one there. Capture results open
     /// as a tab in it rather than pulling the user to another desktop.
@@ -79,6 +90,7 @@ final class BrowserWindowManager {
         }
         activeWindowID = windows.contains { $0.session.id == workspace.restoredActiveWindowID }
             ? workspace.restoredActiveWindowID : windows.last?.session.id
+        lastActiveRegularWindowID = activeWindowID
         if showsWindows {
             for context in windows where context.session.id != activeWindowID {
                 context.window.orderFront(nil)
@@ -91,7 +103,7 @@ final class BrowserWindowManager {
     @discardableResult
     func newWindow() -> BrowserWindowContext? {
         guard !isTerminating else { return nil }
-        if windows.isEmpty, let session = reopenableSession {
+        if regularWindows.isEmpty, let session = reopenableSession {
             reopenableSession = nil
             let context = makeWindow(session: session, restoring: true)
             activate(context)
@@ -107,10 +119,24 @@ final class BrowserWindowManager {
     }
 
     @discardableResult
+    func newPrivateWindow() -> BrowserWindowContext? {
+        openPrivateWindow()
+    }
+
+    private func openPrivateWindow(url: URL? = nil) -> BrowserWindowContext? {
+        guard canOpenPrivateWindows, NBChromiumRuntime.beginPrivateBrowsing() else { return nil }
+        let context = makeWindow(session: BrowserWindowSession(), restoring: false, isPrivate: true)
+        if let url { context.controller.model.selectedTab?.load(url) }
+        activate(context)
+        return context
+    }
+
+    @discardableResult
     func openLinkInNewWindow(_ url: URL, from sourceID: UUID) -> BrowserWindowContext? {
         guard !isTerminating, BrowserModel.canOpenExternalURL(url),
-              windows.contains(where: { $0.session.id == sourceID }) else { return nil }
-        let context = makeWindow(session: workspace.makeWindowSession(), restoring: false)
+              let source = windows.first(where: { $0.session.id == sourceID }) else { return nil }
+        let context = makeWindow(session: workspace.makeWindowSession(), restoring: false,
+                                 isPrivate: source.controller.model.isPrivate)
         context.controller.model.selectedTab?.load(url)
         context.controller.model.persistSession()
         activate(context)
@@ -129,7 +155,8 @@ final class BrowserWindowManager {
         source.controller.find.dismiss()
         source.controller.passwords.dismiss()
         guard let transferred = sourceModel.takeTabForTransfer(id) else { return nil }
-        let destination = makeWindow(session: workspace.makeWindowSession(), restoring: false, initialTab: transferred)
+        let destination = makeWindow(session: workspace.makeWindowSession(), restoring: false,
+                                     initialTab: transferred, isPrivate: sourceModel.isPrivate)
         destination.controller.model.isSidebarVisible = sourceModel.isSidebarVisible
         destination.controller.model.isSidebarCompact = sourceModel.isSidebarCompact
         destination.controller.model.resizeSidebar(to: sourceModel.sidebarWidth)
@@ -152,6 +179,7 @@ final class BrowserWindowManager {
         guard !isTerminating, sourceID != destinationID,
               let source = windows.first(where: { $0.session.id == sourceID }),
               let destination = windows.first(where: { $0.session.id == destinationID }),
+              source.controller.model.isPrivate == destination.controller.model.isPrivate,
               let sourceIndex = source.controller.model.tabs.firstIndex(where: { $0.id == id }),
               destination.controller.model.canAdoptTransferredTab(withID: id) else { return false }
         let sourceModel = source.controller.model
@@ -254,7 +282,7 @@ final class BrowserWindowManager {
                 didRestoreWindows = true
             }
         }
-        if let context = activeContext {
+        if let context = activeRegularContext {
             // When every window was closed, the first incoming URL occupies
             // the one fresh blank tab instead of leaving an extra blank page.
             if context.controller.model.tabs.count == 1,
@@ -307,6 +335,7 @@ final class BrowserWindowManager {
         passwordImporter.dismiss()
         BrowserPopupWindow.closeAll()
         windows.forEach { $0.shutdown() }
+        if windows.contains(where: { $0.controller.model.isPrivate }) { endPrivateSession() }
         history.flush()
         spaceStore.save()
     }
@@ -316,8 +345,8 @@ final class BrowserWindowManager {
     /// This is also callable from Chromium's final approval phase, where the
     /// normal best-effort saveWorkspace() intentionally does nothing.
     func persistForRestart() throws {
-        for context in windows { try context.controller.model.persistForRestart() }
-        try workspace.save(windows: manifestWindows, activeWindowID: activeWindowID)
+        for context in regularWindows { try context.controller.model.persistForRestart() }
+        try workspace.save(windows: manifestWindows, activeWindowID: lastActiveRegularWindowID)
     }
 
     /// All windows participate in ONE approval phase. Canceling any native
@@ -338,7 +367,7 @@ final class BrowserWindowManager {
         let transactionID = UUID()
         var participants: [BrowserWindowContext] = []
         var restoredWindows: [BrowserWindowSession] = []
-        let restoredActiveID = activeWindowID
+        let restoredActiveID = lastActiveRegularWindowID
         let transaction = ChromiumCloseTransaction(id: transactionID, targets: { [weak self] in
             guard let self else { return nil }
             var targets: [ChromiumCloseTransaction.Target] = []
@@ -402,16 +431,19 @@ final class BrowserWindowManager {
         for callback in callbacks { callback(accepted) }
     }
 
-    private func makeWindow(session: BrowserWindowSession, restoring: Bool, initialTab: BrowserTab? = nil) -> BrowserWindowContext {
+    private func makeWindow(session: BrowserWindowSession, restoring: Bool, initialTab: BrowserTab? = nil,
+                            isPrivate: Bool = false) -> BrowserWindowContext {
         let model = BrowserModel(sessionURL: workspace.sessionURL(for: session), restoreSession: restoring,
                                  startWithBlankTab: !restoring || !session.usesLegacySession, initialTab: initialTab,
-                                 spaceStore: spaceStore)
-        model.onVisit = { [weak self] url, title in
-            self?.history.recordVisit(url: url, title: title)
-            BrowsingInsights.shared.note(.visit(url))
+                                 spaceStore: spaceStore, isPrivate: isPrivate)
+        if !isPrivate {
+            model.onVisit = { [weak self] url, title in
+                self?.history.recordVisit(url: url, title: title)
+                BrowsingInsights.shared.note(.visit(url))
+            }
+            model.onInsight = { BrowsingInsights.shared.note($0) }
+            model.onPageTitleChanged = { [weak self] url, title in self?.history.updateTitle(url: url, title: title) }
         }
-        model.onInsight = { BrowsingInsights.shared.note($0) }
-        model.onPageTitleChanged = { [weak self] url, title in self?.history.updateTitle(url: url, title: title) }
         if restoring {
             for tab in model.tabs {
                 if let url = tab.url { history.rememberExistingPage(url: url, title: tab.title) }
@@ -436,6 +468,8 @@ final class BrowserWindowManager {
             self.didClose(context)
         }
         controller.onNewWindow = { [weak self] in _ = self?.newWindow() }
+        controller.onNewPrivateWindow = { [weak self] in _ = self?.newPrivateWindow() }
+        controller.privateWindowAvailability = { [weak self] in self?.canOpenPrivateWindows == true }
         controller.onCloseWindow = { [weak self] in self?.closeWindow(session.id) }
         // Closing the last tab is closing that tab: this window does not come back.
         model.onLastTabClosed = { [weak self, weak context] in
@@ -443,6 +477,9 @@ final class BrowserWindowManager {
             self?.closeWindow(session.id)
         }
         model.onOpenLinkInNewWindow = { [weak self] url in _ = self?.openLinkInNewWindow(url, from: session.id) }
+        if !isPrivate {
+            model.onOpenLinkInPrivateWindow = { [weak self] url in _ = self?.openPrivateWindow(url: url) }
+        }
         model.onLastChromiumTabClose = { [weak context] completion in
             guard let context else { completion(false); return }
             context.closesWithLastTab = true
@@ -454,7 +491,8 @@ final class BrowserWindowManager {
         model.onOpenChromiumImageWindow = { [weak self] url in
             guard let self, !self.isTerminating, BrowserNativeImageURL.allows(url),
                   self.windows.contains(where: { $0.session.id == session.id }) else { return }
-            let destination = self.makeWindow(session: self.workspace.makeWindowSession(), restoring: false)
+            let destination = self.makeWindow(session: self.workspace.makeWindowSession(), restoring: false,
+                                              isPrivate: isPrivate)
             destination.controller.model.selectedTab?.load(url)
             destination.controller.model.persistSession()
             self.activate(destination)
@@ -473,7 +511,7 @@ final class BrowserWindowManager {
         }
         model.onCreateChromiumPopupWindow = { [weak self, weak context] in
             guard let self, !self.isTerminating else { return nil }
-            return BrowserPopupWindow.make(over: context?.window)
+            return BrowserPopupWindow.make(over: context?.window, isPrivate: isPrivate)
         }
         controller.onMoveTabToNewWindow = { [weak self] id, point in
             self?.moveTabToNewWindow(id, from: session.id, at: point) != nil
@@ -493,9 +531,13 @@ final class BrowserWindowManager {
         windows.remove(at: index)
         if keyWindowID == context.session.id { keyWindowID = nil }
         if activeWindowID == context.session.id { activeWindowID = windows.last?.session.id }
-        if !isTerminating, windows.isEmpty, !context.closesWithLastTab {
+        if context.controller.model.isPrivate {
+            if !windows.contains(where: { $0.controller.model.isPrivate }) {
+                endPrivateSession()
+            }
+        } else if !isTerminating, regularWindows.isEmpty, !context.closesWithLastTab {
             reopenableSession = context.session
-            activeWindowID = context.session.id
+            if windows.isEmpty { activeWindowID = context.session.id }
         }
         if !isTerminating { saveWorkspace() }
     }
@@ -507,11 +549,18 @@ final class BrowserWindowManager {
         // never finish by filling a page left in a different window.
         activeController?.passwords.dismiss()
         activeWindowID = id
+        if regularWindows.contains(where: { $0.session.id == id }) { lastActiveRegularWindowID = id }
+    }
+
+    private func endPrivateSession() {
+        BrowserPopupWindow.closePrivateWindows()
+        ChromiumDownloadCoordinator.shared.endPrivateSession()
+        NBChromiumRuntime.endPrivateBrowsing()
     }
 
     private func saveWorkspace() {
         guard !isTerminating else { return }
-        do { try workspace.save(windows: manifestWindows, activeWindowID: activeWindowID) }
+        do { try workspace.save(windows: manifestWindows, activeWindowID: lastActiveRegularWindowID) }
         catch { NSLog("Nous Browser: Could not save window workspace: %@", error.localizedDescription) }
     }
 }
@@ -547,14 +596,18 @@ final class BrowserWindowContext: NSObject, NSWindowDelegate {
         window.isMovableByWindowBackground = false
         window.minSize = NSSize(width: 540, height: 400)
         window.isReleasedWhenClosed = false
+        if controller.model.isPrivate {
+            window.isRestorable = false
+            window.appearance = NSAppearance(named: .darkAqua)
+        }
         window.collectionBehavior = [.fullScreenPrimary]
         window.tabbingMode = .disallowed
         window.delegate = self
         controller.model.chromiumPresentationWindow = window
         window.contentView = NSHostingView(rootView: BrowserShell(controller: controller))
         let frameName = session.usesLegacySession ? "NousBrowserMainWindow" : "NousBrowserWindow-" + session.id.uuidString
-        window.setFrameAutosaveName(frameName)
-        if !window.setFrameUsingName(frameName) {
+        if !controller.model.isPrivate { window.setFrameAutosaveName(frameName) }
+        if controller.model.isPrivate || !window.setFrameUsingName(frameName) {
             if let cascadeFrom {
                 window.cascadeTopLeft(from: NSPoint(x: cascadeFrom.frame.minX + 24, y: cascadeFrom.frame.maxY - 24))
             } else { window.center() }
@@ -654,7 +707,8 @@ final class BrowserWindowContext: NSObject, NSWindowDelegate {
     private func observeWindowTitle() {
         guard !isShutDown else { return }
         withObservationTracking {
-            window.title = controller.model.selectedTab?.displayTitle ?? "Nous Browser"
+            window.title = controller.model.isPrivate ? L10n.string("Private Browsing")
+                : controller.model.selectedTab?.displayTitle ?? "Nous Browser"
         } onChange: { [weak self] in
             // Observation notifies before a setter completes. Resume on the
             // main actor to read the final selected tab/title and subscribe again.

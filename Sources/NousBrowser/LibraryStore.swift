@@ -69,24 +69,25 @@ final class LibraryStore {
             .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
     }
     nonisolated static var localRoot: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Nous Browser/Library", isDirectory: true)
+        BrowserRuntimePaths.current.directory.appendingPathComponent("Library", isDirectory: true)
     }
     nonisolated static var iCloudDriveAvailable: Bool {
+        guard BrowserRuntimePaths.currentDistribution == .production else { return false }
         var isDirectory: ObjCBool = false
         return FileManager.default.fileExists(atPath: iCloudDriveRoot.path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 
     private init() {
         let defaults = UserDefaults.standard
-        syncsWithICloud = defaults.object(forKey: Self.syncDefaultsKey) == nil || defaults.bool(forKey: Self.syncDefaultsKey)
+        syncsWithICloud = BrowserRuntimePaths.currentDistribution == .production
+            && (defaults.object(forKey: Self.syncDefaultsKey) == nil || defaults.bool(forKey: Self.syncDefaultsKey))
         if let saved = defaults.string(forKey: "NousLibraryDeviceID") { deviceID = saved }
         else {
             let created = (Host.current().localizedName ?? "Mac") + " " + UUID().uuidString.prefix(8)
             defaults.set(created, forKey: "NousLibraryDeviceID")
             deviceID = created
         }
-        root = Self.localRoot
+        root = Self.qaRoot ?? Self.localRoot
         relocate()
     }
 
@@ -288,7 +289,7 @@ final class LibraryStore {
     // MARK: Downloads
 
     private func observe(_ records: [ChromiumDownloadRecord]) {
-        for record in records where recordCancellables[record.id] == nil {
+        for record in records where !record.isPrivate && recordCancellables[record.id] == nil {
             recordCancellables[record.id] = record.$state.sink { [weak self, weak record] state in
                 MainActor.assumeIsolated {
                     guard let self, let record else { return }
@@ -322,7 +323,7 @@ final class LibraryStore {
 
     func clearDownloads() {
         downloads.removeAll { $0.device == deviceID }
-        ChromiumDownloadCoordinator.shared.clearFinished()
+        ChromiumDownloadCoordinator.shared.clearFinished(onlyPrivate: false)
         saveDeviceFile([LibraryDownload](), folder: downloadsFolder)
     }
 

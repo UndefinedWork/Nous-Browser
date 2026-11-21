@@ -9,7 +9,13 @@
 #define NOUS_COMMON_NOUS_EMBEDDER_H_
 
 #include <memory>
+#include <string>
 
+class GURL;
+namespace base {
+template <typename Signature>
+class OnceCallback;
+}
 namespace content {
 class WebContents;
 }
@@ -48,6 +54,26 @@ using PermissionPromptFactory =
                                                       void* delegate);
 void SetPermissionPromptFactory(PermissionPromptFactory factory);
 PermissionPromptFactory GetPermissionPromptFactory();
+
+// Chromium supplies the localized prompt and retains the permission decision.
+// The host takes the callback only when it owns the requesting page.
+struct ExternalProtocolDialogStrings {
+  std::u16string title;
+  std::u16string message;
+  std::u16string open_button;
+  std::u16string cancel_button;
+  std::u16string remember_option;
+};
+using ExternalProtocolDialogResponse =
+    base::OnceCallback<void(bool accepted, bool remember)>;
+using ExternalProtocolDialogHook = bool (*)(
+    content::WebContents*, const GURL&, const ExternalProtocolDialogStrings&,
+    ExternalProtocolDialogResponse&);
+void SetExternalProtocolDialogHook(ExternalProtocolDialogHook hook);
+bool RunExternalProtocolDialogHook(content::WebContents* contents,
+                                   const GURL& url,
+                                   const ExternalProtocolDialogStrings& strings,
+                                   ExternalProtocolDialogResponse& response);
 
 // Runs only after Chrome has approved and dispatched an external-protocol
 // launch. The host may close an otherwise empty auxiliary tab; this hook does

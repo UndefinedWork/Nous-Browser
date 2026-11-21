@@ -58,3 +58,36 @@ struct QuickLinkIcon: View {
         }
     }
 }
+
+/// Opening a private palette uses only artwork from the app or its own live tabs.
+struct PrivateQuickLinkIcon: View {
+    let url: URL
+    let tabIcon: NSImage?
+
+    var body: some View {
+        Group {
+            if let icon = tabIcon ?? Self.bundledIcon(for: url) {
+                Image(nsImage: icon).resizable().interpolation(.high).scaledToFit()
+            } else {
+                Image(systemName: "globe").font(.system(size: 15))
+            }
+        }
+        .frame(width: 24, height: 24)
+        .accessibilityHidden(true)
+    }
+
+    private static let bundledIcons: [String: NSImage] = [
+        "apple.com": "apple", "google.com": "google",
+        "wikipedia.org": "wikipedia", "chatgpt.com": "chatgpt"
+    ].compactMapValues { name in
+        Bundle.main.url(forResource: name, withExtension: "png", subdirectory: "QuickLinkIcons")
+            .flatMap { NSImage(contentsOf: $0) }
+    }
+
+    private static func bundledIcon(for url: URL) -> NSImage? {
+        guard url.scheme?.lowercased() == "https", url.port == nil || url.port == 443,
+              let host = url.host?.lowercased() else { return nil }
+        let domain = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+        return bundledIcons[domain]
+    }
+}

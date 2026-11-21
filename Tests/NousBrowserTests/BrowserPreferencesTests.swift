@@ -57,8 +57,14 @@ struct BrowserPreferencesTests {
             (.google, "www.google.com", "/search", "q"),
             (.bing, "www.bing.com", "/search", "q"),
             (.duckDuckGo, "duckduckgo.com", "/", "q"),
-            (.baidu, "www.baidu.com", "/s", "wd")
+            (.baidu, "www.baidu.com", "/s", "wd"),
+            (.yahoo, "search.yahoo.com", "/search", "p"),
+            (.braveSearch, "search.brave.com", "/search", "q"),
+            (.ecosia, "www.ecosia.org", "/search", "q"),
+            (.qwant, "www.qwant.com", "/", "q"),
+            (.startpage, "www.startpage.com", "/sp/search", "query")
         ]
+        #expect(cases.map { $0.0 } == BrowserSearchEngine.allCases)
         for (engine, host, path, parameter) in cases {
             let url = engine.searchURL(query: query)
             let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))

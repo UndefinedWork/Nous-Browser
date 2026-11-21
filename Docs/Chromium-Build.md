@@ -1,6 +1,6 @@
 # Build Nous Browser with Chromium (NousCore)
 
-## Current source — 1.4.19 (75), 2026-11-13
+## Current source — 1.4.20 (76), 2026-11-21
 
 Nous Browser embeds Chromium the way Dia/Arc do (see
 [Dia-Architecture-Research.md](Dia-Architecture-Research.md)): Chromium's full
@@ -61,9 +61,13 @@ passwords. Team-signed builds keep the secret in the keychain instead.
 
 ## Acceptance
 
-`ChromiumSmokeCheck` runs only in the `chromium-preview` bundle with
+`ChromiumSmokeCheck` is compiled only for the `chromium-preview` bundle. Run it with
 `NOUS_CHROMIUM_SMOKE_REPORT` set, against `Tests/Fixtures/chromium_test_server.py`.
 Last full run (1.3.0): 16 passed, 3 manual-only skipped (trusted popup click, password
-fill, Finder drop/IME). Not yet established: Developer ID signing/notarization,
-Memory Saver auto-discard and extensions (need Chrome `Browser`/`TabStripModel`
-integration), Chrome performance parity.
+fill, Finder drop/IME). The suite also checks the private-window and extension menu
+commands, isolation from regular browsing, and clearing website storage after the
+last private window closes. Verify Chrome Web Store installation in the regular
+profile with the real permission prompt. Extensions that depend on Chrome’s
+native `Browser` or `TabStripModel`, including native side panels, still have
+compatibility gaps. Developer ID signing, notarization, Memory Saver
+auto-discard and Chrome performance parity remain unverified.

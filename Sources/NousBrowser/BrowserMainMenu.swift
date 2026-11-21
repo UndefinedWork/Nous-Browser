@@ -105,12 +105,18 @@ final class BrowserMainMenu: NSObject, NSMenuItemValidation, NSMenuDelegate {
         submenu(appName, app)
 
         let hasPageNow: () -> Bool = { [weak self] in self?.controller?.model.selectedTab?.hasWebContent == true }
+        let canOpenLibrary: () -> Bool = { [weak self] in
+            self?.windows?.activeController?.model.isPrivate != true
+        }
         submenu(L10n.string("File"), [
             item(L10n.string("New Tab"), "t") { [weak self] in
                 self?.windows?.newTab()
                 self?.windows?.showWindow()
             },
             item(L10n.string("New Window"), "n") { [weak self] in self?.windows?.newWindow() },
+            item(L10n.string("New Private Window"), "N", [.command, .shift], enabled: { [weak self] in
+                self?.windows?.canOpenPrivateWindows == true
+            }) { [weak self] in self?.windows?.newPrivateWindow() },
             item(L10n.string("Open Address…"), "l", enabled: { [weak self] in self?.controller != nil }) { [weak self] in
                 self?.controller?.toggleAddress()
             },
@@ -134,10 +140,10 @@ final class BrowserMainMenu: NSObject, NSMenuItemValidation, NSMenuDelegate {
                 self?.controller?.model.selectedTab?.hasWebContent == true && NSApp.keyWindow?.attachedSheet == nil
             }) { [weak self] in self?.controller?.model.selectedTab?.webView.printPage() },
             .separator(),
-            item(L10n.string("Library"), "l", [.command, .shift]) { [weak self] in self?.openLibrary(.all) },
-            item(L10n.string("Downloads"), "j", [.command, .shift]) { [weak self] in self?.openLibrary(.downloads) },
-            item(L10n.string("History"), "y") { [weak self] in self?.openLibrary(.history) },
-            item(L10n.string("Bookmarks"), "b", [.command, .option]) { [weak self] in self?.openLibrary(.bookmarks) },
+            item(L10n.string("Library"), "l", [.command, .shift], enabled: canOpenLibrary) { [weak self] in self?.openLibrary(.all) },
+            item(L10n.string("Downloads"), "j", [.command, .shift], enabled: canOpenLibrary) { [weak self] in self?.openLibrary(.downloads) },
+            item(L10n.string("History"), "y", enabled: canOpenLibrary) { [weak self] in self?.openLibrary(.history) },
+            item(L10n.string("Bookmarks"), "b", [.command, .option], enabled: canOpenLibrary) { [weak self] in self?.openLibrary(.bookmarks) },
             item(L10n.string("Add Bookmark"), "d",
                  enabled: { [weak self] in self?.controller?.model.selectedTab?.hasWebContent == true },
                  title: { [weak self] in
@@ -146,7 +152,9 @@ final class BrowserMainMenu: NSObject, NSMenuItemValidation, NSMenuDelegate {
                 self?.controller?.toggleBookmark()
             },
             .separator(),
-            capture(.screenshot, item(L10n.string("Take Screenshot")) { CaptureCoordinator.shared.takeScreenshot() }),
+            capture(.screenshot, item(L10n.string("Take Screenshot")) { [weak self] in
+                CaptureCoordinator.shared.takeScreenshot(from: self?.controller?.model.selectedTab)
+            }),
             capture(.capturePage, item(L10n.string("Capture Page"), enabled: hasPageNow) { [weak self] in
                 CaptureCoordinator.shared.capturePage(self?.controller?.model.selectedTab)
             }),
@@ -274,6 +282,7 @@ final class BrowserMainMenu: NSObject, NSMenuItemValidation, NSMenuDelegate {
     // MARK: Actions and validation
 
     private func openLibrary(_ section: LibrarySection) {
+        guard windows?.activeController?.model.isPrivate != true else { return }
         if controller == nil { windows?.showWindow() }
         controller?.dismissAddress()
         controller?.model.openNativePage(.library(section))

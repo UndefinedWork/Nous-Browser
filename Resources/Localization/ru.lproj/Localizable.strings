@@ -119,6 +119,11 @@
 "Bing" = "Bing";
 "DuckDuckGo" = "DuckDuckGo";
 "Baidu" = "Baidu";
+"Yahoo!" = "Yahoo!";
+"Brave Search" = "Brave Search";
+"Ecosia" = "Ecosia";
+"Qwant" = "Qwant";
+"Startpage" = "Startpage";
 "Choose how Nous Browser looks." = "Выберите оформление Nous Browser.";
 "Password Import" = "Импорт паролей";
 "Reload Without Cache" = "Обновить без кеша";
@@ -517,3 +522,23 @@
 "from this time yesterday" = "по сравнению со вчера в это же время";
 "from this point last week" = "по сравнению с прошлой неделей на этот момент";
 "from this point last month" = "по сравнению с прошлым месяцем на этот момент";
+
+"Default Browser" = "Браузер по умолчанию";
+"Make Default" = "Использовать по умолчанию";
+"Nous Browser is your default web browser." = "Nous Browser используется по умолчанию.";
+"Nous Browser isn’t your default web browser." = "Nous Browser не используется по умолчанию.";
+"Couldn’t set Nous Browser as the default web browser." = "Не удалось установить Nous Browser как браузер по умолчанию.";
+"New Private Window" = "Новое приватное окно";
+"Private Browsing" = "Приватный просмотр";
+"Browsing history isn’t saved. Site data is cleared when you close all private windows." = "История просмотров не сохраняется. Данные сайтов удаляются после закрытия всех приватных окон.";
+"Extensions" = "Расширения";
+"Extensions are unavailable in this build." = "В этой сборке расширения недоступны.";
+"No Extensions Installed" = "Нет установленных расширений";
+"Installed Extensions" = "Установленные расширения";
+"Open Chrome Web Store" = "Открыть Интернет-магазин Chrome";
+"Manage Extensions" = "Управление расширениями";
+"Disabled" = "Отключено";
+"Enable Extension" = "Включить расширение";
+"Disable Extension" = "Отключить расширение";
+"Remove Extension…" = "Удалить расширение…";
+"Extension Options" = "Параметры расширения";

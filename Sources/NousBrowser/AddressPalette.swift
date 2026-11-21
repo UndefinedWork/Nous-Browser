@@ -23,6 +23,13 @@ struct AddressPalette: View {
                     .id(controller.addressFocusToken)
                     .frame(height: 26)
                     .onChange(of: controller.addressText) { highlighted = 0 }
+                if controller.model.isPrivate {
+                    Image(systemName: "eye.slash")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(L10n.string("Private Browsing"))
+                        .help(L10n.string("Private Browsing"))
+                }
             }
             .padding(.horizontal, 22).padding(.vertical, 21)
 
@@ -101,7 +108,15 @@ struct AddressPalette: View {
             controller.submitAddress()
         } label: {
             VStack(spacing: 9) {
-                QuickLinkIcon(link: link).frame(height: 24)
+                Group {
+                    if controller.model.isPrivate {
+                        let tabIcon = controller.model.tabs.first { $0.url == link.url && $0.favicon != nil }?.favicon
+                        PrivateQuickLinkIcon(url: link.url, tabIcon: tabIcon)
+                    } else {
+                        QuickLinkIcon(link: link)
+                    }
+                }
+                .frame(height: 24)
                 Text(link.title).font(.system(size: 11)).lineLimit(1)
             }
             .foregroundStyle(.primary.opacity(0.8))
@@ -117,8 +132,11 @@ struct AddressPalette: View {
             HStack(spacing: 12) {
                 Group {
                     if let titleIcon { Text(verbatim: titleIcon).font(.system(size: 22)).fixedSize() }
-                    else if let iconURL { QuickLinkIcon(url: iconURL, preferredImage: preferredIcon) }
-                    else { Image(systemName: symbol).font(.system(size: 15)) }
+                    else if controller.model.isPrivate, let preferredIcon {
+                        Image(nsImage: preferredIcon).resizable().scaledToFit().frame(width: 18, height: 18)
+                    } else if !controller.model.isPrivate, let iconURL {
+                        QuickLinkIcon(url: iconURL, preferredImage: preferredIcon)
+                    } else { Image(systemName: symbol).font(.system(size: 15)) }
                 }.frame(width: 26, height: 24)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 5) {
@@ -161,24 +179,43 @@ struct NewTabView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Image(nsImage: Self.logo)
-                .resizable()
-                .interpolation(.high)
-                .scaledToFill()
-                .frame(width: 48, height: 48)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(.primary.opacity(0.08), lineWidth: 0.5)
-                }
-                .shadow(color: .black.opacity(0.08), radius: 2.5, y: 2)
-                .accessibilityHidden(true)
+            if controller.model.isPrivate {
+                Image(systemName: "eye.slash")
+                    .font(.system(size: 20, weight: .medium))
+                    .frame(width: 48, height: 48)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .accessibilityHidden(true)
+            } else {
+                Image(nsImage: Self.logo)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFill()
+                    .frame(width: 48, height: 48)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(.primary.opacity(0.08), lineWidth: 0.5)
+                    }
+                    .shadow(color: .black.opacity(0.08), radius: 2.5, y: 2)
+                    .accessibilityHidden(true)
+            }
 
-            Text(verbatim: "Nous Browser")
+            Text(verbatim: controller.model.isPrivate ? L10n.string("Private Browsing") : "Nous Browser")
                 .font(.custom("InstrumentSerif-Regular", size: 24))
                 .foregroundStyle(.primary)
                 .frame(height: 24)
                 .padding(.top, 12)
+                .accessibilityAddTraits(.isHeader)
+
+            if controller.model.isPrivate {
+                Text(L10n.string("Browsing history isn’t saved. Site data is cleared when you close all private windows."))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 300)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 10)
+            }
 
             Button(action: controller.showAddress) {
                 HStack(spacing: 6) {
