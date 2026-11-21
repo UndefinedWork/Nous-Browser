@@ -37,14 +37,22 @@ struct LibraryView: View {
                 header
                     .frame(width: inner)
                     .frame(maxWidth: .infinity)
-                ScrollView {
-                    content
-                        .frame(width: inner, alignment: .topLeading)
-                        .padding(.top, 10)
-                        .padding(.bottom, 40)
-                        .frame(maxWidth: .infinity)
+                GeometryReader { viewport in
+                    ScrollView {
+                        if centersExtensionState {
+                            content
+                                .frame(width: inner)
+                                .frame(maxWidth: .infinity, minHeight: viewport.size.height)
+                        } else {
+                            content
+                                .frame(width: inner, alignment: .topLeading)
+                                .padding(.top, 10)
+                                .padding(.bottom, 40)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .scrollIndicators(.hidden)
                 }
-                .scrollIndicators(.hidden)
             }
             .onChange(of: inner, initial: true) { _, value in contentWidth = value }
         }
@@ -162,6 +170,12 @@ struct LibraryView: View {
 
     // MARK: Content
 
+    private var centersExtensionState: Bool {
+        guard section == .extensions else { return false }
+        let store = BrowserExtensionStore.shared
+        return !store.isAvailable || store.extensions.isEmpty
+    }
+
     @ViewBuilder private var content: some View {
         switch section {
         case .all: overview
@@ -269,14 +283,12 @@ private struct LibraryExtensionsView: View {
             if !store.isAvailable {
                 ContentUnavailableView(L10n.string("Extensions are unavailable in this build."),
                                        systemImage: "puzzlepiece.extension")
-                    .padding(.top, 80)
             } else if store.extensions.isEmpty {
                 ContentUnavailableView {
                     Label(L10n.string("No Extensions Installed"), systemImage: "puzzlepiece.extension")
                 } actions: {
                     storeButton.buttonStyle(.glassProminent)
                 }
-                .padding(.top, 80)
             } else {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack {
