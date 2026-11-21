@@ -185,7 +185,7 @@ def validate_bundle(app, tagged):
     signature = subprocess.check_output(["/usr/bin/codesign", "-dvvv", app], stderr=subprocess.STDOUT)
     cdhash = re.search(rb"(?m)^CDHash=([0-9a-f]+)$", signature)
     require(cdhash, "Could not read the bundle code signature.")
-    return cdhash[1]
+    return cdhash[1], b"Signature=adhoc" in signature.splitlines()
 
 
 def prepare():
@@ -199,8 +199,12 @@ def prepare():
     check_order(info, build)
     snap = snapshot(info)
     (WORK/"tag.plist").write_bytes(tagged)
-    notes = english_notes(source(f"Docs/releases/{VERSION}.md", commit).decode())
-    (WORK/"notes.md").write_text(notes)
+    notes_path = f"Docs/releases/{VERSION}.md"
+    note_files = metadata(f"contents/Docs/releases?ref={commit}")
+    if any(entry["path"] == notes_path for entry in note_files):
+        notes = english_notes(source(notes_path, commit).decode())
+    else:
+        notes = english_notes(info.get("body") or "")
     for name in PAYLOADS:
         download(assets(info)[name], WORK/name)
     recorded = (WORK/SUMS).read_text().splitlines()
@@ -219,6 +223,15 @@ def prepare():
         require(validate_bundle(mount/app, plist) == zipped_signature, "DMG and ZIP contain different apps.")
     finally:
         subprocess.run(["/usr/bin/hdiutil", "detach", mount], check=True)
+    notes += (f"\nRequires an Apple silicon Mac running macOS {plist['LSMinimumSystemVersion']} "
+              "or later. Choose **Nous Browser → Check for Updates** to update, "
+              "or download the DMG for a new installation.\n")
+    _, is_ad_hoc = zipped_signature
+    if is_ad_hoc:
+        notes += ("\nThis build is ad hoc signed and has not been notarized by Apple. "
+                  "If the previous app used a different signing identity, macOS may ask for "
+                  "screen recording permission again.\n")
+    (WORK/"notes.md").write_text(notes)
     os.link(WORK/ZIP, FEED_DIR/ZIP)
     (FEED_DIR/(STEM + ".html")).write_text("<pre>" + html.escape(notes) + "</pre>")
     state = {"id": info["id"], "commit": commit, "assets": snap, "build": build,
