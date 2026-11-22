@@ -14,7 +14,7 @@ Nous 1.1.9 起，GitHub 发行版使用 Sparkle 2.10.1 检查、验证、下载�
 
 ## 从另一台 Mac 发布新版
 
-**每次发版只需在开发 Mac 上构建、测试、上传三个文件，然后在 GitHub 点一次发布工作流。** GitHub 用老用户已经信任的密钥签名。开发 Mac 只需仓库写权限，原发布 Mac 可以关机。
+**在配置好应用代码签名身份的开发 Mac 上构建、测试并上传三个文件，然后在 GitHub 运行发布工作流。** GitHub 用老用户信任的 Sparkle 密钥签署更新包和清单。开发 Mac 需要仓库写权限和项目的应用签名身份。
 
 可以把下面这段话直接发给另一台电脑上的开发助手。
 
@@ -85,6 +85,10 @@ gh workflow run publish-nous-update.yml --ref main \
 
 GitHub 的 `production-updates` 发布环境保存了加密密钥，只用于签署更新 ZIP 和更新清单。其他开发电脑无需复制、导出或重新生成私钥。仓库、Release 附件和发版说明里只应包含公开信息。
 
-macOS 通过应用代码签名身份识别录屏授权。1.4.19 使用本地签名证书，1.4.21 使用 ad-hoc 签名，切换身份后系统可能要求重新授权。GitHub 的更新签名不会改变应用已有的 macOS 签名或 Apple 公证状态。
+macOS 按应用的代码签名身份保存录屏等隐私授权。1.4.22 和 1.4.23 的临时签名各自只对应一个构建，从这类版本首次迁移时，系统可能会再询问一次。用户在系统提示中作出选择即可。
+
+在钥匙串中配置发行团队的 **Developer ID Application** 证书及对应私钥。首次配置时，由 Apple Developer 账号持有人在 Xcode 签发证书，或者用发布机生成的证书请求（CSR）在 Apple 开发者网站签发，再把 `.cer` 导入这台 Mac。用 `security find-identity -v -p codesigning` 确认本机能签名。`Resources/Info.plist` 的 `NousStableStorageTeam` 应与发行证书的 Team ID（证书主题的 `OU` 字段）一致。
+
+构建脚本支持显式指定 `NOUS_SIGNING_IDENTITY`，也兼容 1.4.19 的原始 Nous Browser Local Signing 证书。更换发布机时沿用同一发行身份。打包会验证发行身份，GitHub 工作流会对照上一正式版的实际安装包验证 macOS 签名要求。普通开发和预览可以使用临时签名。
 
 保有原更新私钥的 Mac 仍可用 `zsh Scripts/package-release.sh` 完成本地离线签名。请将原私钥单独安全备份。

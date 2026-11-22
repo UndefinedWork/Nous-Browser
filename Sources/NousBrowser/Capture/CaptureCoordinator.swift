@@ -19,18 +19,13 @@ final class CaptureCoordinator {
 
     private init() {
         recorder.failed = { [weak self] message in self?.report(message) }
-        recorder.screenAccessDenied = { [weak self] in self?.selectRecording(afterDenial: true) }
+        recorder.screenAccessDenied = { [weak self] in self?.screenAccess.offerSettingsAfterDenial() }
         recorder.finished = { [weak self] result in self?.recordingFinished(result) }
     }
 
     /// Crosshair selection; Space switches to window capture; Escape cancels.
     func takeScreenshot(from source: BrowserTab?) {
-        guard screenshotProcess == nil else { return }
-        screenAccess.perform { [weak self, weak source] in self?.startScreenshot(from: source) }
-    }
-
-    private func startScreenshot(from source: BrowserTab?) {
-        guard screenshotProcess == nil else { return }
+        guard screenshotProcess == nil, !screenAccess.isPresenting else { return }
         let output = FileManager.default.temporaryDirectory.appendingPathComponent("NousScreenshot-\(UUID().uuidString).png")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
@@ -50,11 +45,7 @@ final class CaptureCoordinator {
                 case .file(let data):
                     self.saveScreenshot(data, from: source)
                 case .noFile:
-                    if status != 0, !CGPreflightScreenCaptureAccess() {
-                        self.screenAccess.perform(afterDenial: true) { [weak self, weak source] in
-                            self?.startScreenshot(from: source)
-                        }
-                    }
+                    break
                 case .failed:
                     self.report(L10n.string("Could not complete the screenshot."))
                 }
@@ -103,11 +94,7 @@ final class CaptureCoordinator {
 
     func toggleRecording() {
         if recorder.isRecording { recorder.stop() }
-        else if !recorder.isBusy { selectRecording() }
-    }
-
-    private func selectRecording(afterDenial: Bool = false) {
-        screenAccess.perform(afterDenial: afterDenial) { [weak self] in self?.recorder.start() }
+        else if !recorder.isBusy, !screenAccess.isPresenting { recorder.start() }
     }
 
     private func recordingFinished(_ result: ScreenRecordingController.Result) {

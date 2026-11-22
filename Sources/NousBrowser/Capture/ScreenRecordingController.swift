@@ -344,9 +344,15 @@ nonisolated struct CursorTrack: Codable, Equatable, Sendable {
             phase = .idle
             guard !Task.isCancelled, !(error is CancellationError) else { return }
             let streamError = error as NSError
-            if streamError.domain == SCStreamErrorDomain, streamError.code == SCStreamError.userDeclined.rawValue {
-                screenAccessDenied()
-                return
+            if streamError.domain == SCStreamErrorDomain {
+                switch streamError.code {
+                case SCStreamError.userDeclined.rawValue:
+                    screenAccessDenied()
+                    return
+                case SCStreamError.userStopped.rawValue:
+                    return
+                default: break
+                }
             }
             failed(error is RecordingFailure ? error.localizedDescription
                    : L10n.string("Could not start screen recording:") + " " + error.localizedDescription)

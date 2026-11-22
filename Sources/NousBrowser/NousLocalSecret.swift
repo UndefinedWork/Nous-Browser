@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 import Security
 
@@ -14,19 +15,34 @@ nonisolated enum NousLocalSecret {
     }
 
     /// 32 random bytes, created once. Never synced or logged.
-    static func load(in directory: URL) throws -> Data {
+    static func load(in directory: URL, mayCreate: () throws -> Bool = { true }) throws -> Data {
         let file = url(in: directory)
-        if let data = try? Data(contentsOf: file), data.count == 32 { return data }
+        func readKey() throws -> Data {
+            let data = try Data(contentsOf: file)
+            guard data.count == 32 else { throw CocoaError(.fileReadCorruptFile) }
+            return data
+        }
+        do { return try readKey() }
+        catch CocoaError.fileReadNoSuchFile {
+            guard try mayCreate() else { throw CocoaError(.fileReadNoSuchFile) }
+        }
         let folder = file.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
         var bytes = Data(count: 32)
         let status = bytes.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
         guard status == errSecSuccess else { throw BrowserPasswordStoreError.keychain(status) }
-        // Exclusive create: a racing launch keeps whichever key landed first.
-        if FileManager.default.createFile(atPath: file.path, contents: bytes, attributes: [.posixPermissions: 0o600]) == false {
-            throw CocoaError(.fileWriteUnknown)
-        }
+        // Publish a complete, private key without ever replacing a key created by another caller.
+        var template = Array(folder.appendingPathComponent(".storage-key.XXXXXX").path.utf8CString)
+        let descriptor = mkstemp(&template)
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        let temporary = URL(fileURLWithFileSystemRepresentation: template, isDirectory: false, relativeTo: nil)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        try handle.write(contentsOf: bytes)
+        try handle.close()
+        do { try FileManager.default.linkItem(at: temporary, to: file) }
+        catch CocoaError.fileWriteFileExists { return try readKey() }
         return bytes
     }
 

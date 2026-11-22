@@ -273,9 +273,7 @@
 "Allow Camera for Nous Browser in System Settings › Privacy & Security › Camera" = "「システム設定 › プライバシーとセキュリティ › カメラ」で Nous Browser を許可してください";
 "Allow Microphone for Nous Browser in System Settings, or record with the microphone off." = "システム設定で Nous Browser のマイクを許可するか、マイクをオフにして録画してください。";
 "Allow Screen Capture" = "画面の収録を許可";
-"Turn on Nous Browser in System Settings → Privacy & Security → Screen & System Audio Recording. If macOS asks you to quit and reopen Nous Browser, do so, then try the capture again." = "「システム設定」→「プライバシーとセキュリティ」→「画面収録とシステムオーディオ録音」で Nous Browser をオンにしてください。macOS から求められた場合は、Nous Browser を終了して開き直してから、もう一度お試しください。";
-"Screen Capture Is Still Unavailable" = "画面のキャプチャはまだ利用できません";
-"If Nous Browser is already on in Screen & System Audio Recording, turn it off and on again. Follow any prompt to quit and reopen Nous Browser, then try the capture again." = "「画面収録とシステムオーディオ録音」で Nous Browser がすでにオンになっている場合は、一度オフにしてからオンに戻してください。macOS から求められた場合は、Nous Browser を終了して開き直し、もう一度お試しください。";
+"macOS did not allow this recording. You can review screen recording access for Nous Browser in System Settings." = "macOS でこの収録が許可されませんでした。「システム設定」で Nous Browser の画面収録の権限を確認できます。";
 "Open System Settings" = "システム設定を開く";
 "Could not complete the screenshot." = "スクリーンショットを撮影できませんでした。";
 "Allow Screen Recording for Nous Browser in System Settings, then try again." = "システム設定で Nous Browser の画面収録を許可してから、もう一度お試しください。";

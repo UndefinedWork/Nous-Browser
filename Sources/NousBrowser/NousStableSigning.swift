@@ -2,14 +2,8 @@ import CryptoKit
 import Foundation
 import Security
 
-/// Stable website-data identity for team-signed builds.
-///
-/// Ad-hoc builds are identified by their code hash, so macOS Keychain treats
-/// every rebuild as a new app and each build must keep isolated data. Builds
-/// signed with an Apple-issued certificate of the configured team get a team
-/// keychain partition instead, so one Safe Storage item, profile and password
-/// vault survive updates without a keychain prompt. This is decided from the
-/// running code's verified signature, never from Info.plist alone.
+/// Identifies builds eligible for team-backed Keychain storage. Installations
+/// that already use local encryption retain their existing profile and vault.
 nonisolated enum NousStableSigning {
     /// `NousStableStorageTeam` in Info.plist names the only accepted team.
     static func verifiedTeam(bundle: Bundle = .main) -> String? {

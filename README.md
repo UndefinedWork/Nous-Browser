@@ -37,7 +37,7 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 - 当前发布包与受支持构建目标为 **Apple Silicon（arm64）**，没有 Intel 发行包。
 - 宿主需要 **Swift 6.2+** 及匹配 SDK；从头构建 NousCore 需要本机 Chromium 源码树与 depot_tools，具体要求见 [Chromium 构建说明](Docs/Chromium-Build.md)。
 
-当前源码版本为 **1.4.23（Build 79）**。预编译安装包的构建号见对应 Release。
+当前源码版本为 **1.4.24（Build 80）**。预编译安装包的构建号见对应 Release。
 
 ## 下载与安装
 
@@ -45,7 +45,7 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 2. 打开 DMG，将 **Nous Browser.app** 拖入 **Applications／应用程序** 文件夹。
 3. 从“应用程序”打开 Nous Browser，然后推出磁盘映像。
 
-当前发布使用 **ad-hoc 临时签名，尚未经过 Apple 公证**。首次打开时，macOS 可能要求额外确认；确认安装包来自本仓库 Release 后，可在“系统设置 → 隐私与安全性”中查看打开选项。无需关闭系统的安全检查。
+1.4.22 和 1.4.23 使用临时签名，未经过 Apple 公证。首次打开这些版本时，macOS 可能要求额外确认。请从本仓库的 GitHub Release 下载安装包。
 
 ### 设为默认浏览器
 
@@ -113,7 +113,7 @@ Nous Browser 是一款轻量、简洁的原生 macOS 浏览器，使用 SwiftUI�
 
 ### 截图与录屏权限
 
-1.4.1 起，本机构建用一张本地自签名证书签名（私钥文件位于 `~/Library/Application Support/NousSigning/`，不进钥匙串）。macOS 按证书识别应用，所以「屏幕与系统录音」权限授予一次后，后续更新会继续有效。从 1.4.0 及更早版本升级后需要再授权一次。
+macOS 通过应用签名识别「屏幕与系统录音」授权。1.4.22 和 1.4.23 使用按构建变化的临时签名。后续正式包会检查发行身份的连续性，从临时签名版本首次升级时，系统可能再询问一次。[应用签名与更新](Docs/Updates.md#密钥和-macos-授权)
 
 ### 从 Apple「密码」或 Chrome 导入
 

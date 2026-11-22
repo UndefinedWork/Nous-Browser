@@ -114,47 +114,71 @@ for version in versions:
             strings.write_text(f'CFBundleDisplayName = "{display}";\nCFBundleName = "{display}";\n', encoding='utf-16')
 BRAND
 
-# Signing identity. A build signed by the NousStableStorageTeam team keeps one
-# keychain partition across updates, so website logins survive (see
-# NousStableSigning.swift); set NOUS_SIGNING_IDENTITY to that team's identity.
-# Not Developer ID signed or notarized: for this Mac, not for distribution.
-# Default is ad-hoc: a team identity is used only when explicitly named, so a
-# build never touches a signing key (or its keychain password) by surprise.
-SIGN_ID="${NOUS_SIGNING_IDENTITY:--}"
+# An explicit identity takes priority. For GitHub builds, prefer this team's
+# Developer ID, then fall back to the historical local signing setup.
+LOCAL_SIGNING="${NOUS_LOCAL_SIGNING_DIR:-$HOME/Library/Application Support/NousSigning}"
+RCODESIGN="${NOUS_RCODESIGN:-$LOCAL_SIGNING/rcodesign}"
+use_local_cert=0
+if [[ -r "$LOCAL_SIGNING/identity.key" && -r "$LOCAL_SIGNING/identity.crt" && -x "$RCODESIGN" ]]; then
+    use_local_cert=1
+fi
+SIGN_ID="${NOUS_SIGNING_IDENTITY:-}"
+developer_id=""
+if [[ "$SIGN_ID" != "-" && ( "$CHANNEL" == github || -n "$SIGN_ID" ) ]]; then
+    team="$(/usr/libexec/PlistBuddy -c 'Print :NousStableStorageTeam' "$CONTENTS/Info.plist")"
+    developer_id="$(/usr/bin/security find-identity -v -p codesigning |
+        /usr/bin/awk -v team="$team" -v requested="$SIGN_ID" '
+            /"Developer ID Application: / && index($0, "(" team ")\"") &&
+            index(tolower($0), tolower(requested)) && !found { print $2; found=1 }')"
+fi
+SIGN_ID="${SIGN_ID:-${developer_id:--}}"
 print "Signing identity: ${SIGN_ID}"
+sign=(/usr/bin/codesign --force --sign "$SIGN_ID")
+runtime=()
+if [[ -n "$developer_id" ]]; then
+    sign+=(--timestamp)
+    runtime=(--options runtime)
+    # Sparkle's manually embedded distribution includes ad-hoc helpers. Sign
+    # them inside out; only Downloader may need its upstream sandbox entitlement.
+    sparkle_framework="$CONTENTS/Frameworks/Sparkle.framework"
+    sparkle_version="$sparkle_framework/Versions/Current"
+    "${sign[@]}" "${runtime[@]}" "$sparkle_version/XPCServices/Installer.xpc"
+    "${sign[@]}" "${runtime[@]}" --preserve-metadata=entitlements "$sparkle_version/XPCServices/Downloader.xpc"
+    "${sign[@]}" "${runtime[@]}" "$sparkle_version/Autoupdate"
+    "${sign[@]}" "${runtime[@]}" "$sparkle_version/Updater.app"
+    "${sign[@]}" "$sparkle_framework"
+fi
 VERSIONED="$(cd "$FRAMEWORK/Versions" && print -r -- *(/[1]))"
 for HELPER in "$FRAMEWORK/Versions/$VERSIONED/Helpers/"*.app(N/); do
     ENTITLEMENTS="$PROJECT_DIR/Resources/Chromium/helper-entitlements.plist"
-    if [[ "$HELPER" == *"(GPU).app" || "$HELPER" == *"(Renderer).app" || "$HELPER" == *"Helper.app" ]]; then
+    if [[ "$HELPER" == *"GPU).app" || "$HELPER" == *"Renderer).app" || ( -z "$developer_id" && "$HELPER" == *"Helper.app" ) ]]; then
         ENTITLEMENTS="$PROJECT_DIR/Resources/Chromium/jit-entitlements.plist"
     fi
-    codesign --force --timestamp=none --sign "$SIGN_ID" --entitlements "$ENTITLEMENTS" "$HELPER"
+    "${sign[@]}" "${runtime[@]}" --entitlements "$ENTITLEMENTS" "$HELPER"
 done
 for TOOL in "$FRAMEWORK/Versions/$VERSIONED/Helpers/"*(N.); do
-    codesign --force --timestamp=none --sign "$SIGN_ID" "$TOOL"
+    "${sign[@]}" "${runtime[@]}" "$TOOL"
 done
 for LIBRARY in "$FRAMEWORK/Versions/$VERSIONED/Libraries/"*.dylib(N); do
-    codesign --force --timestamp=none --sign "$SIGN_ID" "$LIBRARY"
+    "${sign[@]}" "$LIBRARY"
 done
-codesign --force --timestamp=none --sign "$SIGN_ID" "$FRAMEWORK"
-codesign --force --timestamp=none --sign "$SIGN_ID" "$CONTENTS/MacOS/NousBrowserMCP"
-codesign --force --timestamp=none --sign "$SIGN_ID" --entitlements Resources/Chromium/main-entitlements.plist "$STAGED_APP"
+"${sign[@]}" "$FRAMEWORK"
+"${sign[@]}" "${runtime[@]}" "$CONTENTS/MacOS/NousBrowserMCP"
+"${sign[@]}" "${runtime[@]}" --entitlements Resources/Chromium/main-entitlements.plist "$STAGED_APP"
 # Screen Recording (and other privacy) permissions follow the app's
 # designated requirement. Ad-hoc, that is the build's code hash, so every
 # update asked again. A self-signed local certificate (a key file, never a
 # keychain item) gives every build the same requirement:
 #   identifier "com.cellier.nous-browser" and certificate root = H"<cert>".
 # Only the outer app is re-signed; nested code keeps the signatures above.
-LOCAL_SIGNING="${NOUS_LOCAL_SIGNING_DIR:-$HOME/Library/Application Support/NousSigning}"
-RCODESIGN="${NOUS_RCODESIGN:-$LOCAL_SIGNING/rcodesign}"
-if [[ "$SIGN_ID" == "-" && -r "$LOCAL_SIGNING/identity.key" && -r "$LOCAL_SIGNING/identity.crt" && -x "$RCODESIGN" ]]; then
+if [[ "$SIGN_ID" == "-" && "$use_local_cert" == 1 ]]; then
     "$RCODESIGN" sign --exclude '**' \
         --entitlements-xml-file Resources/Chromium/main-entitlements.plist \
         --pem-file "$LOCAL_SIGNING/identity.key" --pem-file "$LOCAL_SIGNING/identity.crt" \
         "$STAGED_APP" >/dev/null
     print "Signed with the local certificate: $(codesign -d -r- "$STAGED_APP" 2>&1 | tail -1)"
-else
-    print -u2 "Local signing certificate not found; ad-hoc (privacy permissions reset on update)."
+elif [[ "$SIGN_ID" == "-" ]]; then
+    print -u2 "Ad-hoc signature for local testing. To package a release, configure the Nous release signing identity."
 fi
 codesign --verify --deep --strict "$STAGED_APP"
 

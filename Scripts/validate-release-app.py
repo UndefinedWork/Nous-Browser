@@ -42,7 +42,7 @@ def validate(app):
     info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
     source = plistlib.loads((ROOT / 'Resources/Info.plist').read_bytes())
     for key in ('CFBundleIdentifier', 'CFBundleExecutable', 'CFBundleVersion', 'CFBundleShortVersionString',
-                'NousDistributionChannel', 'NousCredentialStorage', 'NousChromiumVersion',
+                'NousDistributionChannel', 'NousCredentialStorage', 'NousChromiumVersion', 'NousStableStorageTeam',
                 'SUFeedURL', 'SUPublicEDKey', 'SURequireSignedFeed', 'SUVerifyUpdateBeforeExtraction'):
         require(info.get(key) == source.get(key) and info.get(key) is not None, f'Metadata mismatch: {key}')
     require(info['CFBundleIdentifier'] == 'com.cellier.nous-browser' and info['NousDistributionChannel'] == 'github', 'Invalid distribution identity')

@@ -109,8 +109,7 @@ def check_commit():
     return commit
 
 
-def check_order(info, build):
-    current = metadata("releases/latest")
+def check_order(info, build, current):
     stable = not info["draft"] and not info["prerelease"]
     if stable:
         require(current["id"] == info["id"], "Cannot replace or promote an older public release.")
@@ -173,7 +172,7 @@ def validate_bundle(app, tagged):
                 "SURequireSignedFeed": True, "SUVerifyUpdateBeforeExtraction": True}
     for field, value in expected.items():
         require(info.get(field) == value, f"Invalid packaged {field}.")
-    for field in (*expected, "CFBundleVersion", "LSMinimumSystemVersion", "NousChromiumVersion"):
+    for field in (*expected, "CFBundleVersion", "LSMinimumSystemVersion", "NousChromiumVersion", "NousStableStorageTeam"):
         require(field in tagged and info[field] == tagged[field], f"Package differs from tag: {field}.")
     require(re.fullmatch(r"[1-9][0-9]*", info["CFBundleVersion"]), "Invalid app build number.")
     require(re.fullmatch(r"[0-9]+(?:\.[0-9]+){0,2}", info["LSMinimumSystemVersion"]),
@@ -196,7 +195,8 @@ def prepare():
     tagged = source("Resources/Info.plist", commit)
     plist = plistlib.loads(tagged)
     build = plist["CFBundleVersion"]
-    check_order(info, build)
+    latest = metadata("releases/latest")
+    already_published = check_order(info, build, latest)
     snap = snapshot(info)
     (WORK/"tag.plist").write_bytes(tagged)
     notes_path = f"Docs/releases/{VERSION}.md"
@@ -215,6 +215,17 @@ def prepare():
     subprocess.run(["/usr/bin/ditto", "-x", "-k", WORK/ZIP, extracted], check=True)
     app = "Nous Browser.app"
     zipped_signature = validate_bundle(extracted/app, plist)
+    if not already_published:
+        prior_zip = f"Nous-Browser-{latest['tag_name'].removeprefix('v')}-macOS-arm64.zip"
+        previous_asset = assets(latest).get(prior_zip)
+        require(previous_asset, "Missing previous stable update archive for the macOS identity check.")
+        previous = WORK/"previous-stable"
+        previous.mkdir()
+        download(previous_asset, previous/prior_zip)
+        inspect_zip(previous/prior_zip)
+        subprocess.run(["/usr/bin/ditto", "-x", "-k", previous/prior_zip, previous], check=True)
+        subprocess.run(["/bin/zsh", ROOT/"Scripts/verify-release-identity.sh", extracted/app, previous/app],
+                       check=True)
     mount = WORK/"mounted"
     mount.mkdir()
     subprocess.run(["/usr/bin/hdiutil", "attach", "-readonly", "-nobrowse", "-mountpoint", mount, WORK/DMG],
@@ -234,7 +245,7 @@ def prepare():
     (WORK/"notes.md").write_text(notes)
     os.link(WORK/ZIP, FEED_DIR/ZIP)
     (FEED_DIR/(STEM + ".html")).write_text("<pre>" + html.escape(notes) + "</pre>")
-    state = {"id": info["id"], "commit": commit, "assets": snap, "build": build,
+    state = {"id": info["id"], "commit": commit, "assets": snap, "build": build, "previous_id": latest["id"],
              "minimum": plist["LSMinimumSystemVersion"]}
     (WORK/"state.json").write_text(json.dumps(state))
     print(f"Verified tagged source and both packages for {VERSION} ({build}).", flush=True)
@@ -307,7 +318,11 @@ def recheck():
     info = release()
     require(info["id"] == expected["id"] and snapshot(info) == expected["assets"]
             and check_commit() == expected["commit"], "The release or its assets changed. Start a new run.")
-    return info, check_order(info, expected["build"])
+    latest = metadata("releases/latest")
+    stable = check_order(info, expected["build"], latest)
+    require(stable or latest["id"] == expected["previous_id"],
+            "The stable release changed after the macOS identity check. Start a new run.")
+    return info, stable
 
 
 def publish():

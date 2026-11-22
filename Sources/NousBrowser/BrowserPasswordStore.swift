@@ -258,11 +258,26 @@ actor BrowserPasswordKeychainBackend: BrowserPasswordVaultBackend {
         self.account = account
     }
 
-    private var query: [String: Any] {
+    private static func query(service: String, account: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
          kSecAttrService as String: service,
          kSecAttrAccount as String: account,
          kSecUseDataProtectionKeychain as String: false]
+    }
+
+    private var query: [String: Any] { Self.query(service: service, account: account) }
+
+    /// A metadata-only probe for installations that also have a file vault.
+    /// Never request the item's data or prompt the user while choosing a backend.
+    static func hasVault(service: String) throws -> Bool {
+        var request = query(service: service, account: "vault-v1")
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        request[kSecUseAuthenticationContext as String] = context
+        let status = SecItemCopyMatching(request as CFDictionary, nil)
+        if status == errSecItemNotFound { return false }
+        guard status == errSecSuccess else { throw BrowserPasswordStoreError.keychain(status) }
+        return true
     }
 
     func load() throws -> Data? {
@@ -305,7 +320,9 @@ actor BrowserPasswordFileBackend: BrowserPasswordVaultBackend {
 
     func load() throws -> Data? {
         try Task.checkCancellation()
-        guard let sealed = try? Data(contentsOf: url) else { return nil }
+        let sealed: Data
+        do { sealed = try Data(contentsOf: url) }
+        catch CocoaError.fileReadNoSuchFile { return nil }
         do { return try AES.GCM.open(AES.GCM.SealedBox(combined: sealed), using: key) }
         catch { throw BrowserPasswordStoreError.corruptVault }
     }
@@ -345,6 +362,17 @@ nonisolated enum BrowserPasswordVaultScope {
     }
 
     static func fileURL(in directory: URL) -> URL { directory.appendingPathComponent("Passwords.vault") }
+
+    static func hasLocalVault(in directory: URL) throws -> Bool {
+        do {
+            _ = try FileManager.default.attributesOfItem(atPath: fileURL(in: directory).path)
+            return true
+        } catch CocoaError.fileReadNoSuchFile { return false }
+    }
+
+    static func usesTeamVault(in directory: URL, teamVaultExists: () throws -> Bool) throws -> Bool {
+        try !hasLocalVault(in: directory) || teamVaultExists()
+    }
 }
 
 /// A distribution without a valid storage policy never opens any vault.
@@ -362,17 +390,20 @@ final class BrowserPasswordStore {
             storagePolicy: bundle.object(forInfoDictionaryKey: "NousCredentialStorage") as? String) else {
             return BrowserPasswordStore(backend: BrowserUnavailablePreviewPasswordBackend())
         }
+        let paths = BrowserRuntimePaths.current
         if let team = NousStableSigning.verifiedTeam(bundle: bundle), let identifier = bundle.bundleIdentifier {
             let fingerprint = NousStableSigning.fingerprint(team: team, bundleIdentifier: identifier)
-            return BrowserPasswordStore(backend: BrowserPasswordKeychainBackend(
-                service: BrowserPasswordVaultScope.teamService(distribution, teamFingerprint: fingerprint)))
+            let service = BrowserPasswordVaultScope.teamService(distribution, teamFingerprint: fingerprint)
+            guard let usesTeam = try? BrowserPasswordVaultScope.usesTeamVault(in: paths.directory, teamVaultExists: {
+                try BrowserPasswordKeychainBackend.hasVault(service: service)
+            }) else { return BrowserPasswordStore(backend: BrowserUnavailablePreviewPasswordBackend()) }
+            if usesTeam { return BrowserPasswordStore(backend: BrowserPasswordKeychainBackend(service: service)) }
         }
-        let directory = BrowserRuntimePaths.current.directory
-        guard let secret = try? NousLocalSecret.load(in: directory) else {
+        guard let secret = try? paths.localStorageSecret() else {
             return BrowserPasswordStore(backend: BrowserUnavailablePreviewPasswordBackend())
         }
         return BrowserPasswordStore(backend: BrowserPasswordFileBackend(
-            url: BrowserPasswordVaultScope.fileURL(in: directory),
+            url: BrowserPasswordVaultScope.fileURL(in: paths.directory),
             key: NousLocalSecret.derive(secret, purpose: "password-vault")))
     }()
     private let backend: any BrowserPasswordVaultBackend

@@ -273,9 +273,7 @@
 "Allow Camera for Nous Browser in System Settings › Privacy & Security › Camera" = "請在「系統設定 › 隱私權與安全性 › 相機」中允許 Nous Browser";
 "Allow Microphone for Nous Browser in System Settings, or record with the microphone off." = "請在系統設定中允許 Nous Browser 使用麥克風，或關閉麥克風後錄製。";
 "Allow Screen Capture" = "允許截圖與螢幕錄影";
-"Turn on Nous Browser in System Settings → Privacy & Security → Screen & System Audio Recording. If macOS asks you to quit and reopen Nous Browser, do so, then try the capture again." = "在「系統設定 → 隱私權與安全性 → 螢幕與系統錄音」中開啟 Nous Browser。若 macOS 提示結束並重新打開瀏覽器，請依照提示操作後再試一次。";
-"Screen Capture Is Still Unavailable" = "仍無法截圖或錄製螢幕";
-"If Nous Browser is already on in Screen & System Audio Recording, turn it off and on again. Follow any prompt to quit and reopen Nous Browser, then try the capture again." = "如果「螢幕與系統錄音」中的 Nous Browser 已開啟，請關閉並重新開啟該開關。如果 macOS 提示結束並重新打開瀏覽器，請依照提示操作後再試一次。";
+"macOS did not allow this recording. You can review screen recording access for Nous Browser in System Settings." = "macOS 未允許這次錄影。你可以在系統設定中查看 Nous Browser 的螢幕錄製權限。";
 "Open System Settings" = "打開系統設定";
 "Could not complete the screenshot." = "無法完成截圖。";
 "Allow Screen Recording for Nous Browser in System Settings, then try again." = "請在系統設定中允許 Nous Browser 錄製螢幕，然後再試一次。";

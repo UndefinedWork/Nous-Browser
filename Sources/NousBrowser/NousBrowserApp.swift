@@ -60,10 +60,37 @@ struct NousBrowserLauncher {
     }
 }
 
-/// One Chromium profile per distribution that every update reopens.
-/// Team-signed builds keep Chromium's Safe Storage secret in the keychain;
-/// ad-hoc builds (whose keychain access is tied to one build's code hash)
-/// derive it from `NousLocalSecret`, so no keychain item is read or created.
+extension BrowserRuntimePaths {
+    var localChromiumProfile: URL {
+        chromiumProfileDirectory.appendingPathComponent(distribution == .production ? "Local/GitHub" : "Local/Preview", isDirectory: true)
+    }
+
+    var teamChromiumProfile: URL {
+        chromiumProfileDirectory.appendingPathComponent(distribution == .production ? "Stable/GitHub" : "Stable/Preview", isDirectory: true)
+    }
+
+    // A launch can leave an empty directory. Check Chromium's initialization markers,
+    // without opening any browser data.
+    static func hasProfile(at url: URL) throws -> Bool {
+        let manager = FileManager.default
+        do {
+            _ = try manager.attributesOfItem(atPath: url.appendingPathComponent("Local State").path)
+            return true
+        } catch CocoaError.fileReadNoSuchFile {}
+        do {
+            return try !manager.contentsOfDirectory(at: url.appendingPathComponent("Default"),
+                includingPropertiesForKeys: nil, options: .skipsHiddenFiles).isEmpty
+        } catch CocoaError.fileReadNoSuchFile { return false }
+    }
+
+    func localStorageSecret() throws -> Data {
+        try NousLocalSecret.load(in: directory) {
+            try !Self.hasProfile(at: localChromiumProfile) && !BrowserPasswordVaultScope.hasLocalVault(in: directory)
+        }
+    }
+}
+
+/// Existing profiles retain their Safe Storage backend across a code-signing change.
 struct ChromiumStorageIdentity {
     let profile: URL
     let keychainService: String
@@ -71,20 +98,22 @@ struct ChromiumStorageIdentity {
     let safeStoragePassword: String?
 
     static func current() -> ChromiumStorageIdentity? {
-        let paths = BrowserRuntimePaths.current
+        try? resolve(paths: .current, teamSigned: NousStableSigning.verifiedTeam() != nil)
+    }
+
+    static func resolve(paths: BrowserRuntimePaths, teamSigned: Bool) throws -> ChromiumStorageIdentity {
         let production = paths.distribution == .production
         let service = production ? "Nous Browser Safe Storage" : "Nous Browser Preview Safe Storage"
         let account = production ? "Nous Browser" : "Nous Browser Preview"
-        if NousStableSigning.verifiedTeam() != nil {
+        if try teamSigned && (BrowserRuntimePaths.hasProfile(at: paths.teamChromiumProfile)
+                              || !BrowserRuntimePaths.hasProfile(at: paths.localChromiumProfile)) {
             return ChromiumStorageIdentity(
-                profile: paths.chromiumProfileDirectory
-                    .appendingPathComponent(production ? "Stable/GitHub" : "Stable/Preview", isDirectory: true),
+                profile: paths.teamChromiumProfile,
                 keychainService: service, keychainAccount: account, safeStoragePassword: nil)
         }
-        guard let secret = try? NousLocalSecret.load(in: paths.directory) else { return nil }
+        let secret = try paths.localStorageSecret()
         return ChromiumStorageIdentity(
-            profile: paths.chromiumProfileDirectory
-                .appendingPathComponent(production ? "Local/GitHub" : "Local/Preview", isDirectory: true),
+            profile: paths.localChromiumProfile,
             keychainService: service, keychainAccount: account,
             safeStoragePassword: NousLocalSecret.chromiumPassword(secret))
     }

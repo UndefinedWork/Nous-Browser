@@ -24,6 +24,7 @@ esac
 [[ -f "$SOURCE_INFO" ]] || fail "Missing project Info.plist."
 
 INFO_PATH="$APP_DIR/Contents/Info.plist"
+zsh "$PROJECT_DIR/Scripts/verify-release-identity.sh" "$APP_DIR"
 VERSION="$(plist_value "$INFO_PATH" CFBundleShortVersionString)"
 BUILD_NUMBER="$(plist_value "$INFO_PATH" CFBundleVersion)"
 EXECUTABLE_NAME="$(plist_value "$INFO_PATH" CFBundleExecutable)"
@@ -82,10 +83,6 @@ python3 "$PROJECT_DIR/Scripts/validate-release-app.py" "$APP_DIR"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 SIGNATURE_DETAILS="$(/usr/bin/codesign --display --verbose=4 "$APP_DIR" 2>&1)"
 print -r -- "$SIGNATURE_DETAILS"
-if [[ "$SIGNATURE_DETAILS" == *"Signature=adhoc"* ]]; then
-    print -u2 -- "Distribution notice: ad hoc signed; not Developer ID signed or notarized."
-    print -u2 -- "Internet downloads may be blocked by Gatekeeper on first open."
-fi
 
 ARCHITECTURES="$(/usr/bin/lipo -archs "$EXECUTABLE_PATH" | /usr/bin/tr ' ' '\n' | /usr/bin/sort | /usr/bin/xargs)"
 case "$ARCHITECTURES" in

@@ -1,6 +1,6 @@
 # Build Nous Browser with Chromium (NousCore)
 
-## Current source — 1.4.20 (76), 2026-11-21
+## Chromium integration
 
 Nous Browser embeds Chromium the way Dia/Arc do (see
 [Dia-Architecture-Research.md](Dia-Architecture-Research.md)): Chromium's full
@@ -25,14 +25,15 @@ guards the few CEF patches that otherwise break `enable_cef = false` builds.
 
 ## Signing
 
-Nested code is ad-hoc signed. When `~/Library/Application Support/NousSigning/`
-holds `identity.key`, `identity.crt` and `rcodesign`, the build re-signs the
-outer app with that self-signed certificate (no keychain involved), giving it
-the designated requirement `identifier "com.cellier.nous-browser" and
-certificate root = H"…"`. macOS privacy permissions (Screen Recording) follow
-that requirement, so they survive updates. Without those files the app stays
-ad-hoc and the permission is asked again after every update.
-`NOUS_SIGNING_IDENTITY` still selects a team identity instead.
+GitHub builds look for the Nous team's Developer ID Application identity in
+the keychain. The build signs the embedded Chromium and Sparkle code with
+the same identity and requests secure timestamps. If the Developer ID is
+unavailable, the original `identity.key`, `identity.crt` and `rcodesign` in
+`~/Library/Application Support/NousSigning/` can sign the outer app with
+the legacy certificate. Use `NOUS_SIGNING_IDENTITY` to select a keychain
+identity explicitly. Local builds can run ad hoc. Release packaging verifies the publisher, and GitHub checks that
+both versions satisfy each other's designated requirements once a stable
+signing identity has been established.
 
 ## Build
 
@@ -45,8 +46,8 @@ NOUS_DISTRIBUTION_CHANNEL=chromium-preview zsh Scripts/build.sh   # isolated pre
 
 A first engine build compiles about 80k steps (several hours on 12 jobs);
 later changes to `//nous` are incremental and relink the framework. Packaging
-rebrands Chromium's helper apps (name, icon, bundle id) as Nous and ad-hoc
-signs the bundle. It does not install, notarize or publish.
+rebrands Chromium's helper apps (name, icon, bundle id) as Nous and signs
+the bundle with the configured identity.
 
 ## Website data
 
@@ -56,8 +57,9 @@ signed builds cannot share a keychain item (macOS ties it to one build's code
 hash), so Chromium's Safe Storage secret is derived from a random key kept in
 `~/Library/Application Support/Nous Browser/Secrets/storage.key` (0600, folder
 0700) and handed to OSCrypt through a `//nous` keychain override; no keychain
-item is read or created. Updates therefore keep website sign-ins and saved
-passwords. Team-signed builds keep the secret in the keychain instead.
+item is read or created. On first launch of a team-signed build, existing
+local profiles and password vaults continue to use their original keys.
+New team-signed installations use the team keychain.
 
 ## Acceptance
 
