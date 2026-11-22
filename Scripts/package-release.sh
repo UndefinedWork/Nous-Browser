@@ -4,7 +4,7 @@ set -euo pipefail
 # Package an already-built app. This script never builds, installs, or launches it.
 PROJECT_DIR="${0:A:h:h}"
 APP_NAME="Nous Browser.app"
-APP_DIR="${NOUS_BUILD_APP_DIR:-$PROJECT_DIR/build/$APP_NAME}"
+BUILT_APP="${NOUS_BUILD_APP_DIR:-$PROJECT_DIR/build/$APP_NAME}"
 SOURCE_INFO="$PROJECT_DIR/Resources/Info.plist"
 DIST_DIR="$PROJECT_DIR/dist"
 
@@ -20,8 +20,32 @@ case "${1:-}" in
     *) fail "Usage: package-release.sh [--for-github]" ;;
 esac
 
-[[ -d "$APP_DIR" ]] || fail "Build the app first: $APP_DIR"
+[[ -d "$BUILT_APP" ]] || fail "Build the app first: $BUILT_APP"
 [[ -f "$SOURCE_INFO" ]] || fail "Missing project Info.plist."
+
+WORK_DIR="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/nous-release-package.XXXXXX")"
+PAYLOAD_DIR="$WORK_DIR/dmg-content"
+MOUNT_DIR="$WORK_DIR/mounted"
+MOUNTED=0
+
+cleanup() {
+    if (( MOUNTED )); then
+        if ! /usr/bin/hdiutil detach "$MOUNT_DIR" -quiet; then
+            print -u2 -- "Could not detach release verification image; preserved $WORK_DIR"
+            return
+        fi
+    fi
+    /bin/rm -rf "$WORK_DIR"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# File Provider can add FinderInfo to a signed app in a synced checkout. Verify
+# the exact distribution payload in a local scratch directory, before archiving.
+mkdir -p "$PAYLOAD_DIR" "$MOUNT_DIR"
+APP_DIR="$PAYLOAD_DIR/$APP_NAME"
+/usr/bin/ditto --noextattr --norsrc "$BUILT_APP" "$APP_DIR"
 
 INFO_PATH="$APP_DIR/Contents/Info.plist"
 zsh "$PROJECT_DIR/Scripts/verify-release-identity.sh" "$APP_DIR"
@@ -100,25 +124,6 @@ MCP_EXECUTABLE_SHA="$(/usr/bin/shasum -a 256 "$MCP_EXECUTABLE_PATH" | /usr/bin/a
 [[ "$(/usr/bin/lipo -archs "$MCP_EXECUTABLE_PATH" | /usr/bin/tr ' ' '\n' | /usr/bin/sort | /usr/bin/xargs)" == "$ARCHITECTURES" ]] || fail "MCP helper architectures do not match the app."
 /usr/bin/codesign --verify --strict "$MCP_EXECUTABLE_PATH"
 INFO_SHA="$(/usr/bin/shasum -a 256 "$INFO_PATH" | /usr/bin/awk '{print $1}')"
-mkdir -p "$PROJECT_DIR/.build" "$DIST_DIR"
-WORK_DIR="$(/usr/bin/mktemp -d "$PROJECT_DIR/.build/release-package.XXXXXX")"
-PAYLOAD_DIR="$WORK_DIR/dmg-content"
-MOUNT_DIR="$WORK_DIR/mounted"
-MOUNTED=0
-
-cleanup() {
-    if (( MOUNTED )); then
-        if ! /usr/bin/hdiutil detach "$MOUNT_DIR" -quiet; then
-            print -u2 -- "Could not detach release verification image; preserved $WORK_DIR"
-            return
-        fi
-    fi
-    /bin/rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
-
 verify_packaged_app() {
     local candidate="$1"
     python3 "$PROJECT_DIR/Scripts/validate-release-app.py" "$candidate" --reference "$APP_DIR"
@@ -130,11 +135,6 @@ verify_packaged_app() {
     [[ "$(/usr/bin/shasum -a 256 "$candidate/Contents/Info.plist" | /usr/bin/awk '{print $1}')" == "$INFO_SHA" ]] || fail "Packaged metadata changed."
 }
 
-mkdir -p "$PAYLOAD_DIR" "$MOUNT_DIR"
-# Omit extended filesystem metadata and resource forks from this developer build.
-# The original bundle is never modified, and its code signature must still verify.
-/usr/bin/ditto --noextattr --norsrc "$APP_DIR" "$PAYLOAD_DIR/$APP_NAME"
-verify_packaged_app "$PAYLOAD_DIR/$APP_NAME"
 /bin/ln -s /Applications "$PAYLOAD_DIR/Applications"
 
 /usr/bin/hdiutil create -volname "Nous Browser $VERSION" \
@@ -174,6 +174,7 @@ verify_packaged_app "$WORK_DIR/zip-verification/$APP_NAME"
     cd "$WORK_DIR"
     /usr/bin/shasum -a 256 "$ASSET_BASENAME.dmg" "$ASSET_BASENAME.zip" > SHA256SUMS.txt
 )
+mkdir -p "$DIST_DIR"
 for asset in "$ASSET_BASENAME.dmg" "$ASSET_BASENAME.zip" SHA256SUMS.txt; do
     /bin/chmod 644 "$WORK_DIR/$asset"
     /bin/mv -f "$WORK_DIR/$asset" "$DIST_DIR/$asset"
