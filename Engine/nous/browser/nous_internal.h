@@ -4,10 +4,15 @@
 
 #import <AppKit/AppKit.h>
 
+#include <memory>
+
 @class NBChromiumView;
 
 class Profile;
 namespace content {
+class EyeDropper;
+class EyeDropperListener;
+class RenderFrameHost;
 class WebContents;
 }
 
@@ -24,6 +29,11 @@ content::WebContents* WebContentsForView(NBChromiumView* view);
 void InstallDownloadDelegate(Profile* profile);
 // Chrome UI singletons (JS dialogs, permission prompts) routed to Nous tabs.
 void InstallTabServices();
+// Custom Liquid Glass EyeDropper bridge (returns nullptr when no Swift handler is installed).
+std::unique_ptr<content::EyeDropper> OpenEyeDropper(
+    content::RenderFrameHost* frame,
+    content::EyeDropperListener* listener,
+    NBChromiumView* source_view);
 // Destroys every remaining Nous page before Chromium tears down profiles.
 void CloseAllTabs();
 }  // namespace nous

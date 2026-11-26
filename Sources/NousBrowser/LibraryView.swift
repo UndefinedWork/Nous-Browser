@@ -96,7 +96,8 @@ struct LibraryView: View {
             tabs
             ScrollViewReader { scroll in
                 ScrollView(.horizontal) { tabs }
-                    .scrollIndicators(.hidden)
+                    // Keep the capsule clear even when macOS is set to show scroll bars.
+                    .scrollIndicators(.never, axes: .horizontal)
                     .onChange(of: section, initial: true) { _, section in scroll.scrollTo(section) }
             }
         }
@@ -115,8 +116,8 @@ struct LibraryView: View {
                         if item == .updates, BrowserUpdater.shared.showsButton {
                             Circle().fill(Color.accentColor).frame(width: 6, height: 6)
                         }
-                        if item == .downloads, ChromiumDownloadCoordinator.shared.hasActiveRegularDownloads {
-                            ProgressView().controlSize(.mini)
+                        if item == .downloads {
+                            LibraryDownloadIndicator()
                         }
                     }
                     .padding(.horizontal, 11).frame(height: 28)
@@ -271,6 +272,20 @@ struct LibraryView: View {
             }
         }
         .animation(reduceMotion ? nil : BrowserMotion.spring, value: items.map(\.id))
+    }
+}
+
+private struct LibraryDownloadIndicator: View {
+    @ObservedObject private var downloads = ChromiumDownloadCoordinator.shared
+
+    var body: some View {
+        if downloads.hasActiveRegularDownloads {
+            ProgressView()
+                .progressViewStyle(.circular)
+                .controlSize(.mini)
+                .frame(width: 10, height: 10)
+                .accessibilityHidden(true)
+        }
     }
 }
 

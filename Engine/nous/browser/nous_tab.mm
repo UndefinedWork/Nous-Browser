@@ -36,6 +36,7 @@
 #include "chrome/browser/ui/permission_bubble/permission_prompt.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/ui/tab_helpers.h"
+#include "chrome/browser/ui/views/eye_dropper/eye_dropper.h"
 #include "components/favicon/content/content_favicon_driver.h"
 #include "components/favicon/core/favicon_driver_observer.h"
 #include "components/find_in_page/find_tab_helper.h"
@@ -53,6 +54,7 @@
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/devtools_agent_host_client.h"
+#include "content/public/browser/eye_dropper.h"
 #include "content/public/browser/file_select_listener.h"
 #include "content/public/browser/javascript_dialog_manager.h"
 #include "content/public/browser/keyboard_event_processing_result.h"
@@ -365,6 +367,15 @@ class NousTab final : public content::WebContentsDelegate,
   bool MayWriteLocalFiles() override { return false; }
 
   // WebContentsDelegate ----------------------------------------------------
+  std::unique_ptr<content::EyeDropper> OpenEyeDropper(
+      content::RenderFrameHost* frame,
+      content::EyeDropperListener* listener) override {
+    if (auto dropper = nous::OpenEyeDropper(frame, listener, view_)) {
+      return dropper;
+    }
+    return ShowEyeDropper(frame, listener);
+  }
+
   // Use Chrome's native chooser, including accept filters, multiple selection,
   // folder confirmation and cancellation when the requesting frame goes away.
   // The base delegate cancels these requests without displaying a dialog.

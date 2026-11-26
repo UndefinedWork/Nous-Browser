@@ -8,3 +8,4 @@
 #import <NousCore/NBChromiumExtensions.h>
 #import <NousCore/NousChromium.h>
 #import <NousCore/NBPictureInPicture.h>
+#import <NousCore/NBEyeDropper.h>

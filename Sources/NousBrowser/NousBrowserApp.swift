@@ -331,6 +331,7 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate {
         BrowserServiceMenuFilter.install()
         ChromiumDownloadCoordinator.shared.start()
         PictureInPicturePlayer.shared.start()
+        EyeDropperCoordinator.shared.start()
         // Active time goes to the site in the key browser window's selected tab.
         BrowsingInsights.shared.start { [weak self] in
             guard let model = self?.windowManager.keyController?.model, !model.isPrivate,
@@ -435,6 +436,7 @@ final class BrowserAppDelegate: NSObject, NSApplicationDelegate {
 
     /// Chromium's main loop ended (Chromium, not AppKit, ends the process).
     func chromiumWillShutDown() {
+        EyeDropperCoordinator.shared.cancelIfActive()
         automation.stop()
         ChromiumDownloadCoordinator.shared.shutdown()
     }

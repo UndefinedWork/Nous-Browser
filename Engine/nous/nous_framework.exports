@@ -17,3 +17,7 @@ _OBJC_CLASS_$_NBPictureInPictureSession
 _OBJC_METACLASS_$_NBPictureInPictureSession
 _OBJC_CLASS_$_NBPictureInPictureCenter
 _OBJC_METACLASS_$_NBPictureInPictureCenter
+_OBJC_CLASS_$_NBEyeDropperSession
+_OBJC_METACLASS_$_NBEyeDropperSession
+_OBJC_CLASS_$_NBEyeDropperCenter
+_OBJC_METACLASS_$_NBEyeDropperCenter
