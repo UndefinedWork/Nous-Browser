@@ -959,12 +959,66 @@ static void DidLaunchExternalProtocol(content::WebContents* contents) {
       }, contents->GetWeakPtr()));
 }
 
+static bool PresentNousPasswordSavePrompt(
+    content::WebContents* contents,
+    const nous::PasswordPromptRequest& request,
+    nous::PasswordPromptResponse& response) {
+  NousTab* tab = NousTab::From(contents);
+  if (!tab) return false;
+  NBChromiumView* view = tab->view();
+  if (!view) return false;
+  NSWindow* parent = view.dialogPresentationWindow ?: view.window;
+  if (!parent || parent.attachedSheet) return false;
+
+  NSString* host = String(request.host);
+  if (!host.length) host = view.URLString ?: @"";
+
+  NSAlert* alert = [NSAlert new];
+  alert.messageText = [NSString stringWithFormat:
+      Localized(request.is_update ? @"Update password for %@?" : @"Save password for %@?"), host];
+  alert.informativeText = Localized(request.is_update
+      ? @"Update the saved password for this account?"
+      : @"Nous Browser can remember this password and fill it in automatically next time.");
+  if (NSImage* keyIcon = [NSImage imageWithSystemSymbolName:@"key.fill" accessibilityDescription:nil]) {
+    alert.icon = keyIcon;
+  }
+
+  NSTextField* usernameField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 260, 24)];
+  usernameField.stringValue = String(request.username);
+  usernameField.placeholderString = Localized(@"Username");
+  usernameField.bezelStyle = NSTextFieldRoundedBezel;
+  usernameField.usesSingleLineMode = YES;
+  alert.accessoryView = usernameField;
+
+  [alert addButtonWithTitle:Localized(request.is_update ? @"Update" : @"Save")];
+  NSButton* notNow = [alert addButtonWithTitle:Localized(@"Not Now")];
+  notNow.keyEquivalent = @"\033";
+  if (!request.is_update) {
+    [alert addButtonWithTitle:Localized(@"Never for This Site")];
+  }
+
+  __block nous::PasswordPromptResponse callback = std::move(response);
+  NBPageDialog* dialog = [view presentAlert:alert javaScript:NO completion:^(NSModalResponse result) {
+    if (!callback) return;
+    nous::PasswordPromptDecision decision = nous::PasswordPromptDecision::kNotNow;
+    if (result == NSAlertFirstButtonReturn) {
+      decision = nous::PasswordPromptDecision::kSave;
+    } else if (!request.is_update && result == NSAlertThirdButtonReturn) {
+      decision = nous::PasswordPromptDecision::kNever;
+    }
+    std::u16string edited = base::SysNSStringToUTF16(usernameField.stringValue ?: @"");
+    std::move(callback).Run(decision, std::move(edited));
+  }];
+  return dialog != nil;
+}
+
 namespace nous {
 void InstallTabServices() {
   SetCreatePermissionPromptFunction(&CreateNousPermissionPrompt);
   SetExternalProtocolDialogHook(&PresentNousExternalProtocolDialog);
   SetExtensionInstallPresenter(&PresentNousExtensionInstallDialog);
   SetExternalProtocolLaunchedHook(&DidLaunchExternalProtocol);
+  SetPasswordSavePromptHook(&PresentNousPasswordSavePrompt);
 }
 void CloseAllTabs() {
   std::vector<NBChromiumView*> views;

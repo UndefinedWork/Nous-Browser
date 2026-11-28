@@ -97,6 +97,30 @@ struct PictureInPictureHooks {
 void SetPictureInPictureHooks(const PictureInPictureHooks& hooks);
 const PictureInPictureHooks& GetPictureInPictureHooks();
 
+// Native Save/Update Password prompt when ManagePasswordsUIController has no
+// Chrome BrowserWindowInterface to host its toolbar bubble. Plaintext passwords
+// stay inside Chromium; only host and username cross to the prompt UI.
+enum class PasswordPromptDecision {
+  kSave,
+  kNotNow,
+  kNever,
+};
+struct PasswordPromptRequest {
+  bool is_update = false;
+  std::u16string host;
+  std::u16string username;
+};
+using PasswordPromptResponse =
+    base::OnceCallback<void(PasswordPromptDecision decision,
+                            std::u16string edited_username)>;
+using PasswordSavePromptHook = bool (*)(content::WebContents*,
+                                        const PasswordPromptRequest&,
+                                        PasswordPromptResponse&);
+void SetPasswordSavePromptHook(PasswordSavePromptHook hook);
+bool RunPasswordSavePromptHook(content::WebContents* contents,
+                               const PasswordPromptRequest& request,
+                               PasswordPromptResponse& response);
+
 }  // namespace nous
 
 #endif  // NOUS_COMMON_NOUS_EMBEDDER_H_

@@ -10,6 +10,7 @@ PermissionPromptFactory g_permission_prompt_factory = nullptr;
 ExternalProtocolDialogHook g_external_protocol_dialog = nullptr;
 ExternalProtocolLaunchedHook g_external_protocol_launched = nullptr;
 PictureInPictureHooks g_picture_in_picture_hooks;
+PasswordSavePromptHook g_password_save_prompt = nullptr;
 }  // namespace
 
 bool IsEmbedded() { return g_embedded; }
@@ -62,6 +63,16 @@ void SetPictureInPictureHooks(const PictureInPictureHooks& hooks) {
 }
 const PictureInPictureHooks& GetPictureInPictureHooks() {
   return g_picture_in_picture_hooks;
+}
+
+void SetPasswordSavePromptHook(PasswordSavePromptHook hook) {
+  g_password_save_prompt = hook;
+}
+bool RunPasswordSavePromptHook(content::WebContents* contents,
+                               const PasswordPromptRequest& request,
+                               PasswordPromptResponse& response) {
+  return g_password_save_prompt &&
+         g_password_save_prompt(contents, request, response);
 }
 
 }  // namespace nous

@@ -624,3 +624,238 @@ edit('chrome/browser/ui/extensions/BUILD.gn', '''source_set("impl") {
   }
   sources += [
     "controlled_home_dialog.cc",''')
+
+# 23. Autofill tab-modal dialogs: Nous pages live outside Chrome's TabStripModel,
+#     so tabs::TabInterface::GetFromContents() crashes with SIGSEGV. Fall back
+#     to constrained_window's WebContentsModalDialogHost (implemented by NousTab)
+#     whenever no TabInterface is attached.
+SAF = 'chrome/browser/ui/views/autofill/payments/save_and_fill_view_desktop.cc'
+include_after(SAF, '#include "components/tabs/public/tab_interface.h"\n',
+              '#include "components/constrained_window/constrained_window_views.h"\n')
+edit(SAF, '''  TabInterface* tab_interface = TabInterface::GetFromContents(web_contents);
+  CHECK(tab_interface);
+  dialog_widget_ = tab_interface->GetTabFeatures()
+                       ->tab_dialog_manager()
+                       ->CreateAndShowDialog(
+                           dialog_view.release(),
+                           std::make_unique<tabs::TabDialogManager::Params>());''', '''  if (TabInterface* tab_interface = TabInterface::MaybeGetFromContents(web_contents)) {
+    dialog_widget_ = tab_interface->GetTabFeatures()
+                         ->tab_dialog_manager()
+                         ->CreateAndShowDialog(
+                             dialog_view.release(),
+                             std::make_unique<tabs::TabDialogManager::Params>());
+  } else {
+    dialog_widget_ = constrained_window::ShowWebModalDialogViewsOwned(
+        dialog_view.release(), web_contents,
+        views::Widget::InitParams::CLIENT_OWNS_WIDGET);
+  }''')
+
+EAP = 'chrome/browser/ui/views/autofill/edit_address_profile_view.cc'
+include_after(EAP, '#include "components/tabs/public/tab_interface.h"\n',
+              '#include "components/constrained_window/constrained_window_views.h"\n')
+edit(EAP, '''  tabs::TabInterface* tab_interface =
+      tabs::TabInterface::GetFromContents(web_contents);
+  auto widget =
+      tab_interface->GetTabFeatures()
+          ->tab_dialog_manager()
+          ->CreateAndShowDialog(
+              dialog, std::make_unique<tabs::TabDialogManager::Params>());''', '''  std::unique_ptr<views::Widget> widget;
+  if (tabs::TabInterface* tab_interface =
+          tabs::TabInterface::MaybeGetFromContents(web_contents)) {
+    widget = tab_interface->GetTabFeatures()
+                 ->tab_dialog_manager()
+                 ->CreateAndShowDialog(
+                     dialog, std::make_unique<tabs::TabDialogManager::Params>());
+  } else {
+    widget = constrained_window::ShowWebModalDialogViewsOwned(
+        dialog, web_contents, views::Widget::InitParams::CLIENT_OWNS_WIDGET);
+  }''')
+
+APD = 'chrome/browser/ui/views/autofill/payments/autofill_progress_dialog_views.cc'
+include_after(APD, '#include "components/tabs/public/tab_interface.h"\n',
+              '#include "components/constrained_window/constrained_window_views.h"\n')
+edit(APD, '''  auto* tab_interface = tabs::TabInterface::GetFromContents(web_contents);
+  CHECK(tab_interface);
+  dialog_ = tab_interface->GetTabFeatures()
+                ->tab_dialog_manager()
+                ->CreateAndShowDialog(
+                    autofill_progress_dialog_view.release(),
+                    std::make_unique<tabs::TabDialogManager::Params>());''', '''  if (auto* tab_interface = tabs::TabInterface::MaybeGetFromContents(web_contents)) {
+    dialog_ = tab_interface->GetTabFeatures()
+                  ->tab_dialog_manager()
+                  ->CreateAndShowDialog(
+                      autofill_progress_dialog_view.release(),
+                      std::make_unique<tabs::TabDialogManager::Params>());
+  } else {
+    dialog_ = constrained_window::ShowWebModalDialogViewsOwned(
+        autofill_progress_dialog_view.release(), web_contents,
+        views::Widget::InitParams::CLIENT_OWNS_WIDGET);
+  }''')
+
+AED = 'chrome/browser/ui/views/autofill/payments/autofill_error_dialog_view_native_views.cc'
+include_after(AED, '#include "components/tabs/public/tab_interface.h"\n',
+              '#include "components/constrained_window/constrained_window_views.h"\n')
+edit(AED, '''  tabs::TabInterface* tab_interface =
+      tabs::TabInterface::GetFromContents(web_contents);
+  tab_interface->GetTabFeatures()
+      ->tab_dialog_manager()
+      ->CreateAndShowDialog(dialog_view,
+                            std::make_unique<tabs::TabDialogManager::Params>())
+      .release();''', '''  if (tabs::TabInterface* tab_interface =
+          tabs::TabInterface::MaybeGetFromContents(web_contents)) {
+    tab_interface->GetTabFeatures()
+        ->tab_dialog_manager()
+        ->CreateAndShowDialog(dialog_view,
+                              std::make_unique<tabs::TabDialogManager::Params>())
+        .release();
+  } else {
+    constrained_window::ShowWebModalDialogViews(dialog_view, web_contents);
+  }''')
+
+CUA = 'chrome/browser/ui/views/autofill/payments/card_unmask_authentication_selection_dialog_view.cc'
+include_after(CUA, '#include "components/tabs/public/tab_interface.h"\n',
+              '#include "components/constrained_window/constrained_window_views.h"\n')
+edit(CUA, '''  auto* tab_interface = tabs::TabInterface::GetFromContents(web_contents);
+  tab_interface->GetTabFeatures()
+      ->tab_dialog_manager()
+      ->CreateAndShowDialog(dialog_view,
+                            std::make_unique<tabs::TabDialogManager::Params>())
+      .release();''', '''  if (auto* tab_interface = tabs::TabInterface::MaybeGetFromContents(web_contents)) {
+    tab_interface->GetTabFeatures()
+        ->tab_dialog_manager()
+        ->CreateAndShowDialog(dialog_view,
+                              std::make_unique<tabs::TabDialogManager::Params>())
+        .release();
+  } else {
+    constrained_window::ShowWebModalDialogViews(dialog_view, web_contents);
+  }''')
+
+AFPB = 'chrome/browser/ui/views/autofill/payments/BUILD.gn'
+edit(AFPB, '''source_set("save_and_fill_view_desktop") {
+  public = [ "save_and_fill_view_desktop.h" ]
+  sources = [ "save_and_fill_view_desktop.cc" ]
+  public_deps = [
+    ":save_and_fill_dialog",
+    "//base",
+    "//components/autofill/core/browser",
+    "//ui/views",
+  ]
+  deps = [
+    "//chrome/browser/ui/autofill/payments",''', '''source_set("save_and_fill_view_desktop") {
+  public = [ "save_and_fill_view_desktop.h" ]
+  sources = [ "save_and_fill_view_desktop.cc" ]
+  public_deps = [
+    ":save_and_fill_dialog",
+    "//base",
+    "//components/autofill/core/browser",
+    "//ui/views",
+  ]
+  deps = [
+    "//chrome/browser/ui/autofill/payments",
+    "//components/constrained_window",''')
+edit(AFPB, '''source_set("autofill_error_dialog_view_native_views") {
+  public = [ "autofill_error_dialog_view_native_views.h" ]
+  sources = [ "autofill_error_dialog_view_native_views.cc" ]
+  public_deps = [
+    "//base",
+    "//components/autofill/core/browser",
+    "//ui/views",
+  ]
+  deps = [
+    ":payments_view_util",
+    "//chrome/browser/ui/autofill/payments",''', '''source_set("autofill_error_dialog_view_native_views") {
+  public = [ "autofill_error_dialog_view_native_views.h" ]
+  sources = [ "autofill_error_dialog_view_native_views.cc" ]
+  public_deps = [
+    "//base",
+    "//components/autofill/core/browser",
+    "//ui/views",
+  ]
+  deps = [
+    ":payments_view_util",
+    "//chrome/browser/ui/autofill/payments",
+    "//components/constrained_window",''')
+
+# 24. Save / Update Password prompt: Chrome's ManagePasswordsUIController drops
+#     its toolbar bubble when FindBrowserWithTab() is null (all Nous tabs live
+#     outside Chrome's BrowserWindowInterface). Route pending save/update prompts
+#     to Nous's native AppKit sheet so Chromium saves credentials into Login Data.
+MPU = 'chrome/browser/ui/passwords/manage_passwords_ui_controller.cc'
+include_after(MPU, '#include "chrome/browser/ui/passwords/manage_passwords_ui_controller.h"\n',
+              '#include "base/strings/utf_string_conversions.h"\n' + EMBEDDER)
+edit(MPU, '''  BrowserWindowInterface* browser =
+      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
+          web_contents());
+  if (!browser) {
+    return;
+  }''', '''  BrowserWindowInterface* browser =
+      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
+          web_contents());
+  if (!browser) {
+    if (nous::IsEmbedded() &&
+        bubble_status_ == BubbleStatus::SHOULD_POP_UP &&
+        !web_contents()->GetBrowserContext()->IsOffTheRecord() &&
+        (GetState() == password_manager::ui::PENDING_PASSWORD_STATE ||
+         GetState() == password_manager::ui::PENDING_PASSWORD_UPDATE_STATE)) {
+      const bool is_update =
+          GetState() == password_manager::ui::PENDING_PASSWORD_UPDATE_STATE;
+      const password_manager::PasswordForm& pending = GetPendingPassword();
+      nous::PasswordPromptRequest request = {
+          .is_update = is_update,
+          .host = base::UTF8ToUTF16(pending.url.GetHost()),
+          .username = pending.username_value,
+      };
+      nous::PasswordPromptResponse response = base::BindOnce(
+          [](base::WeakPtr<ManagePasswordsUIController> controller,
+             bool is_update,
+             nous::PasswordPromptDecision decision,
+             std::u16string edited_username) {
+            if (!controller) {
+              return;
+            }
+            const auto expected_state =
+                is_update ? password_manager::ui::PENDING_PASSWORD_UPDATE_STATE
+                          : password_manager::ui::PENDING_PASSWORD_STATE;
+            if (controller->GetState() != expected_state) {
+              controller->OnBubbleHidden();
+              return;
+            }
+            switch (decision) {
+              case nous::PasswordPromptDecision::kSave: {
+                const password_manager::PasswordForm& form =
+                    controller->GetPendingPassword();
+                controller->SavePassword(
+                    edited_username.empty() ? form.username_value
+                                            : edited_username,
+                    form.password_value);
+                controller->OnBubbleHidden();
+                break;
+              }
+              case nous::PasswordPromptDecision::kNever:
+                if (!is_update) {
+                  controller->NeverSavePassword();
+                }
+                controller->OnBubbleHidden();
+                break;
+              case nous::PasswordPromptDecision::kNotNow:
+                if (is_update) {
+                  controller->OnNopeUpdateClicked();
+                } else {
+                  controller->OnNotNowClicked();
+                }
+                controller->OnBubbleHidden();
+                break;
+            }
+          },
+          weak_ptr_factory_.GetWeakPtr(), is_update);
+      if (nous::RunPasswordSavePromptHook(web_contents(), request, response)) {
+        OnBubbleShown();
+      }
+    }
+    return;
+  }''')
+
+edit('chrome/browser/ui/passwords/BUILD.gn', '''    sources += [
+      "credential_leak_dialog_controller_impl.cc",''', '''    deps += [ "//nous:embedder" ]
+    sources += [
+      "credential_leak_dialog_controller_impl.cc",''')
